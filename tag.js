@@ -4,17 +4,27 @@
 /**
  * Tag and publish Go modules in a monorepo.
  *
+ * When called with no arguments, reads the version field from package.json
+ * and tags every module with that version.
+ *
  * Library usage:
  *     import { main } from './tag.js';
  *     main({ cache: 'v0.1.0', rpc: 'v0.2.0' });
+ *     main();  // uses package.json version for all modules
  *
  * CLI usage:
+ *     node tag.js                          # tag all modules with package.json version
+ *     node tag.js --cache=v0.1.0           # tag only lark_cache
  *     node tag.js --cache=v0.1.0 --rpc=v0.2.0
  */
 
+import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+/** @type {string} */
+const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {Record<string, string>} */
 const MODULES = {
@@ -39,12 +49,36 @@ function run(command) {
 }
 
 /**
+ * Ensure the version string has a "v" prefix.
+ * "1.0.0" -> "v1.0.0", "v1.0.0" -> "v1.0.0".
+ * @param {string} ver
+ * @returns {string}
+ */
+function normalizeVersion(ver) {
+  return ver.startsWith("v") ? ver : `v${ver}`;
+}
+
+/**
  * Validate that a version string matches semver (vX.Y.Z).
  * @param {string} ver
  * @returns {boolean}
  */
 function isValidVersion(ver) {
   return /^v\d+\.\d+\.\d+/.test(ver);
+}
+
+/**
+ * Read the version field from package.json, prefixed with "v".
+ * @returns {string}
+ */
+function readPackageVersion() {
+  const pkgPath = path.join(ROOT_DIR, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+  const ver = /** @type {string} */ (pkg.version);
+  if (!ver) {
+    throw new Error("package.json does not contain a version field");
+  }
+  return normalizeVersion(ver);
 }
 
 /**
@@ -56,18 +90,36 @@ function isValidVersion(ver) {
  */
 
 /**
- * Tag and push specified module versions.
- * @param {Versions} versions
+ * Tag and push module versions.
+ *
+ * When `versions` is omitted or empty, reads package.json and tags every
+ * module with that version.
+ *
+ * @param {Versions} [versions]
  */
 function main(versions) {
+  /** @type {Versions} */
+  let resolved;
+
+  if (!versions || Object.keys(versions).length === 0) {
+    const ver = readPackageVersion();
+    console.log(`No modules specified, using package.json version: ${ver}\n`);
+    resolved = /** @type {Versions} */ (
+      Object.fromEntries(Object.keys(MODULES).map((k) => [k, ver]))
+    );
+  } else {
+    resolved = versions;
+  }
+
   /** @type {string[]} */
   const tagged = [];
 
   for (const [key, mod] of Object.entries(MODULES)) {
-    const ver = versions[/** @type {keyof Versions} */ (key)];
-    if (!ver) continue;
+    const raw = resolved[/** @type {keyof Versions} */ (key)];
+    if (!raw) continue;
+    const ver = normalizeVersion(raw);
     if (!isValidVersion(ver)) {
-      throw new Error(`invalid version for ${key}: "${ver}" (expected vX.Y.Z)`);
+      throw new Error(`invalid version for ${key}: "${raw}" (expected [v]X.Y.Z)`);
     }
     const tag = `${mod}/${ver}`;
     run(["git", "tag", tag]);
@@ -84,17 +136,14 @@ function main(versions) {
 
 /**
  * Parse CLI arguments into a Versions object.
+ * Returns an empty object when no arguments are provided (triggers package.json fallback).
  * @param {string[]} argv
  * @returns {Versions}
  */
 function parseArgs(argv) {
   const args = argv.slice(2);
   if (args.length === 0) {
-    const keys = Object.keys(MODULES)
-      .map((k) => `--${k}=vX.Y.Z`)
-      .join(" ");
-    console.log(`Usage: node tag.js ${keys}`);
-    process.exit(1);
+    return {};
   }
 
   /** @type {Versions} */
@@ -124,4 +173,4 @@ if (
   main(parseArgs(process.argv));
 }
 
-export { main, parseArgs, isValidVersion, MODULES };
+export { main, parseArgs, normalizeVersion, isValidVersion, readPackageVersion, MODULES };
