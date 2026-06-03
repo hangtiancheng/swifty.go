@@ -41,3 +41,21 @@ git push origin repo3/v0.0.1
 git tag repo4/v0.0.1
 git push origin repo4/v0.0.1
 ```
+
+## Install
+
+```bash
+go mod download github.com/hangtiancheng/lark-go/lark_cache@v0.0.1
+go mod download github.com/hangtiancheng/lark-go/lark_http@v0.0.1
+go mod download github.com/hangtiancheng/lark-go/lark_orm@v0.0.1
+go mod download github.com/hangtiancheng/lark-go/lark_rpc@v0.0.1
+```
+
+/skill-creator
+
+- 阅读 lark_cache 源代码, 创建 '.github/skills/lark_cache/SKILL.md' Agent Skill
+- 阅读 lark_http 源代码，创建 '.github/skills/lark_http/SKILL.md' Agent Skill
+- 阅读 lark_orm 源代码，创建 '.github/skills/lark_orm/SKILL.md' Agent Skill
+- 阅读 lark_rpc 源代码，创建 '.github/skills/lark_rpc/SKILL.md' Agent Skill
+
+使用专业的英语, 保证专业、全面、Agent 友好
