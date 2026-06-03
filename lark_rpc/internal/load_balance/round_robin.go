@@ -3,7 +3,7 @@ package load_balance
 import (
 	"sync/atomic"
 
-	"github.com/hangtiancheng/lark_rpc/internal/registry"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/registry"
 )
 
 type RoundRobin struct {

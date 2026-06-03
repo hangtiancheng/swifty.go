@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	lark_cache "github.com/hangtiancheng/lark_cache"
+	lark_cache "github.com/hangtiancheng/lark-go/lark_cache"
 )
 
 type cache struct {

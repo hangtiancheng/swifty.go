@@ -4,7 +4,7 @@ description: >
   TCP-based RPC framework (lark_rpc module). Use this skill when working on RPC
   servers, clients, streaming, codec implementations, connection pools, circuit
   breakers, rate limiters, load balancers, etcd service registry, or any code that
-  imports github.com/hangtiancheng/lark_rpc. Also use it when the user asks about
+  imports github.com/hangtiancheng/lark-go/lark_rpc. Also use it when the user asks about
   the wire protocol, request multiplexing, or lark_rpc's internal architecture.
 ---
 
@@ -14,7 +14,7 @@ A TCP-based RPC framework with request multiplexing, streaming, pluggable codecs
 (JSON / Protobuf / Gzip compression), connection pooling, circuit breakers, token
 bucket rate limiting, load balancing, and etcd service discovery.
 
-Module path: `github.com/hangtiancheng/lark_rpc`
+Module path: `github.com/hangtiancheng/lark-go/lark_rpc`
 
 Source root: `lark_rpc/`
 

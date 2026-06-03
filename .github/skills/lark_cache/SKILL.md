@@ -4,7 +4,7 @@ description: >
   Distributed cache framework (lark_cache module). Use this skill when working on
   cache groups, LRU/LRU-2 eviction, consistent hashing, gRPC cache servers or clients,
   etcd service discovery for cache peers, single-flight deduplication, or any code
-  that imports github.com/hangtiancheng/lark_cache. Also use it when the user asks
+  that imports github.com/hangtiancheng/lark-go/lark_cache. Also use it when the user asks
   about cache topology, peer synchronization, or ByteView semantics.
 ---
 
@@ -14,7 +14,7 @@ A distributed, groupcache-inspired caching framework with gRPC transport, etcd-b
 service discovery, consistent hashing with automatic rebalancing, single-flight
 request coalescing, and pluggable LRU / LRU-2 eviction stores.
 
-Module path: `github.com/hangtiancheng/lark_cache`
+Module path: `github.com/hangtiancheng/lark-go/lark_cache`
 
 Source root: `lark_cache/`
 

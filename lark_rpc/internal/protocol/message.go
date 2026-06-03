@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
 )
 
 const Magic uint16 = 0x1234

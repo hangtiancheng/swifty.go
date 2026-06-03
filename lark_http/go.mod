@@ -1,3 +1,3 @@
-module github.com/hangtiancheng/lark_http
+module github.com/hangtiancheng/lark-go/lark_http
 
 go 1.26.0

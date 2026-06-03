@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
 )
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {

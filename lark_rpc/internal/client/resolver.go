@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/breaker"
-	"github.com/hangtiancheng/lark_rpc/internal/transport"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/breaker"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/transport"
 )
 
 func (c *Client) getPool(addr string) *transport.ConnectionPool {

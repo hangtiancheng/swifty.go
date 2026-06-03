@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	internal_client "github.com/hangtiancheng/lark_rpc/internal/client"
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/load_balance"
-	"github.com/hangtiancheng/lark_rpc/internal/protocol"
-	"github.com/hangtiancheng/lark_rpc/internal/registry"
-	internal_server "github.com/hangtiancheng/lark_rpc/internal/server"
-	"github.com/hangtiancheng/lark_rpc/internal/transport"
+	internal_client "github.com/hangtiancheng/lark-go/lark_rpc/internal/client"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/load_balance"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/protocol"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/registry"
+	internal_server "github.com/hangtiancheng/lark-go/lark_rpc/internal/server"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/transport"
 )
 
 type Server struct {

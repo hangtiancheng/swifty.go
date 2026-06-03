@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/hangtiancheng/lark_cache/pb"
+	pb "github.com/hangtiancheng/lark-go/lark_cache/pb"
 )
 
 func TestGetterFuncAndByteView(t *testing.T) {

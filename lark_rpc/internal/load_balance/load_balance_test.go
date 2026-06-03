@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/hangtiancheng/lark_rpc/internal/registry"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/registry"
 )
 
 func instances() []registry.Instance {

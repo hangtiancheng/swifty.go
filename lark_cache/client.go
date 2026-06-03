@@ -7,7 +7,7 @@ import (
 
 	"log"
 
-	pb "github.com/hangtiancheng/lark_cache/pb"
+	pb "github.com/hangtiancheng/lark-go/lark_cache/pb"
 	client_v3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

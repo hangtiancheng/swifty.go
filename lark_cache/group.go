@@ -10,7 +10,7 @@ import (
 
 	"log"
 
-	"github.com/hangtiancheng/lark_cache/single_flight"
+	"github.com/hangtiancheng/lark-go/lark_cache/single_flight"
 )
 
 var (

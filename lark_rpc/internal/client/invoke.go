@@ -5,10 +5,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/protocol"
-	"github.com/hangtiancheng/lark_rpc/internal/stream"
-	"github.com/hangtiancheng/lark_rpc/internal/transport"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/protocol"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/stream"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/transport"
 )
 
 func (c *Client) InvokeAsync(ctx context.Context, service string, method string, args interface{}) (*transport.Future, error) {

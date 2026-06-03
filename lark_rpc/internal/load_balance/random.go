@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/registry"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/registry"
 )
 
 type Random struct {

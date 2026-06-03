@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hangtiancheng/lark_cache/store"
+	"github.com/hangtiancheng/lark-go/lark_cache/store"
 )
 
 // Cache wraps the underlying store implementation with lazy initialization and stats.

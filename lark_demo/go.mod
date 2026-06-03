@@ -3,10 +3,10 @@ module github.com/hangtiancheng/lark_demo
 go 1.26.0
 
 require (
-	github.com/hangtiancheng/lark_cache v0.0.0
-	github.com/hangtiancheng/lark_http v0.0.0
-	github.com/hangtiancheng/lark_orm v0.0.0
-	github.com/hangtiancheng/lark_rpc v0.0.0
+	github.com/hangtiancheng/lark-go/lark_cache v0.0.0
+	github.com/hangtiancheng/lark-go/lark_http v0.0.0
+	github.com/hangtiancheng/lark-go/lark_orm v0.0.0
+	github.com/hangtiancheng/lark-go/lark_rpc v0.0.0
 	github.com/tmc/langchaingo v0.1.14
 	go.mongodb.org/mongo-driver v1.17.6
 )
@@ -58,10 +58,10 @@ require (
 	nhooyr.io/websocket v1.8.7 // indirect
 )
 
-replace github.com/hangtiancheng/lark_cache => ../lark_cache
+replace github.com/hangtiancheng/lark-go/lark_cache => ../lark_cache
 
-replace github.com/hangtiancheng/lark_http => ../lark_http
+replace github.com/hangtiancheng/lark-go/lark_http => ../lark_http
 
-replace github.com/hangtiancheng/lark_orm => ../lark_orm
+replace github.com/hangtiancheng/lark-go/lark_orm => ../lark_orm
 
-replace github.com/hangtiancheng/lark_rpc => ../lark_rpc
+replace github.com/hangtiancheng/lark-go/lark_rpc => ../lark_rpc

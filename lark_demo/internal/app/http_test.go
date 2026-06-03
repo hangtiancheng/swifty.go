@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	rpc "github.com/hangtiancheng/lark-go/lark_rpc/pkg/rpc"
 	"github.com/hangtiancheng/lark_demo/internal/ai"
 	"github.com/hangtiancheng/lark_demo/internal/auth"
 	"github.com/hangtiancheng/lark_demo/internal/code"
@@ -19,7 +20,6 @@ import (
 	"github.com/hangtiancheng/lark_demo/internal/service"
 	"github.com/hangtiancheng/lark_demo/internal/store"
 	"github.com/hangtiancheng/lark_demo/internal/test_util"
-	rpc "github.com/hangtiancheng/lark_rpc/pkg/rpc"
 )
 
 func newFakeCache() *fakeCache {

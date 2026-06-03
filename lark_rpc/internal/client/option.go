@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/load_balance"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/load_balance"
 )
 
 type ClientOption func(*Client) error

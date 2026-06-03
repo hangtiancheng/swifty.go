@@ -4,11 +4,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/limiter"
-	"github.com/hangtiancheng/lark_rpc/internal/load_balance"
-	"github.com/hangtiancheng/lark_rpc/internal/registry"
-	"github.com/hangtiancheng/lark_rpc/internal/transport"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/limiter"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/load_balance"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/registry"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/transport"
 )
 
 type Client struct {

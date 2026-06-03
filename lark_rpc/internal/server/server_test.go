@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/protocol"
-	"github.com/hangtiancheng/lark_rpc/internal/transport"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/protocol"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/transport"
 )
 
 type testArgs struct {

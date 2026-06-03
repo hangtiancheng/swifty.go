@@ -38,7 +38,7 @@ func NewRegistry(endpoints []string) (*Registry, error) {
 
 	return &Registry{
 		client:   cli,
-		prefix:   "/github.com/hangtiancheng/lark_rpc/services/",
+		prefix:   "/github.com/hangtiancheng/lark-go/lark_rpc/services/",
 		services: make(map[string]map[string]Instance),
 		ctx:      ctx,
 		cancel:   cancel,

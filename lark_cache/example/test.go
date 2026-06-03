@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/hangtiancheng/lark_cache"
+	"github.com/hangtiancheng/lark-go/lark_cache"
 )
 
 func main() {

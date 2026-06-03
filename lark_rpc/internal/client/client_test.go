@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/registry"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/registry"
 )
 
 func TestNewClientUsesDefaultCodec(t *testing.T) {

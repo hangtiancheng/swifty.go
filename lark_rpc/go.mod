@@ -1,4 +1,4 @@
-module github.com/hangtiancheng/lark_rpc
+module github.com/hangtiancheng/lark-go/lark_rpc
 
 go 1.26.0
 

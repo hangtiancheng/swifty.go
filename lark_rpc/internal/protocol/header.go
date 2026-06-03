@@ -1,6 +1,6 @@
 package protocol
 
-import "github.com/hangtiancheng/lark_rpc/internal/codec"
+import "github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
 
 type CodecType byte
 

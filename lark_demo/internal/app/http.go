@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/hangtiancheng/lark-go/lark_http"
+	rpc "github.com/hangtiancheng/lark-go/lark_rpc/pkg/rpc"
 	"github.com/hangtiancheng/lark_demo/internal/ai"
 	"github.com/hangtiancheng/lark_demo/internal/auth"
 	"github.com/hangtiancheng/lark_demo/internal/cache"
@@ -20,8 +22,6 @@ import (
 	"github.com/hangtiancheng/lark_demo/internal/config"
 	rpc_client "github.com/hangtiancheng/lark_demo/internal/rpc_client"
 	"github.com/hangtiancheng/lark_demo/internal/service"
-	"github.com/hangtiancheng/lark_http"
-	rpc "github.com/hangtiancheng/lark_rpc/pkg/rpc"
 )
 
 type RPCClient interface {

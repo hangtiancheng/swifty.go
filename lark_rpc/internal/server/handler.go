@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/protocol"
-	istream "github.com/hangtiancheng/lark_rpc/internal/stream"
-	"github.com/hangtiancheng/lark_rpc/internal/transport"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/protocol"
+	istream "github.com/hangtiancheng/lark-go/lark_rpc/internal/stream"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/transport"
 )
 
 var serverStreamType = reflect.TypeOf((*istream.ServerStream)(nil)).Elem()

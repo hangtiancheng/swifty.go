@@ -5,13 +5,13 @@ import (
 	"log"
 	"time"
 
+	rpc "github.com/hangtiancheng/lark-go/lark_rpc/pkg/rpc"
 	"github.com/hangtiancheng/lark_demo/internal/ai"
 	"github.com/hangtiancheng/lark_demo/internal/app"
 	"github.com/hangtiancheng/lark_demo/internal/config"
 	"github.com/hangtiancheng/lark_demo/internal/rpc_client"
 	"github.com/hangtiancheng/lark_demo/internal/service"
 	"github.com/hangtiancheng/lark_demo/internal/store"
-	rpc "github.com/hangtiancheng/lark_rpc/pkg/rpc"
 )
 
 type AIService struct {

@@ -4,7 +4,7 @@ description: >
   MongoDB ORM framework (lark_orm module). Use this skill when working on MongoDB
   queries, the chainable Query builder, aggregation operations, collection naming,
   transactions, auto-incrementing sequences, or any code that imports
-  github.com/hangtiancheng/lark_orm. Also use it when the user asks about Knex-style
+  github.com/hangtiancheng/lark-go/lark_orm. Also use it when the user asks about Knex-style
   query chaining, BSON filter construction, or lark_orm's Engine lifecycle.
 ---
 
@@ -14,7 +14,7 @@ A Knex-inspired, chainable query builder ORM for MongoDB in Go. Provides a fluen
 API for CRUD operations, aggregation, transactions, and auto-incrementing sequences
 on top of the official `mongo-driver`.
 
-Module path: `github.com/hangtiancheng/lark_orm`
+Module path: `github.com/hangtiancheng/lark-go/lark_orm`
 
 Source root: `lark_orm/`
 

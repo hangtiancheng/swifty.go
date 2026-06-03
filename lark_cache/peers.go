@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hangtiancheng/lark_cache/consistent_hash"
-	"github.com/hangtiancheng/lark_cache/registry"
+	"github.com/hangtiancheng/lark-go/lark_cache/consistent_hash"
+	"github.com/hangtiancheng/lark-go/lark_cache/registry"
 	client_v3 "go.etcd.io/etcd/client/v3"
 )
 

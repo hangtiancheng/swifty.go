@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	pb "github.com/hangtiancheng/lark_cache/pb"
+	pb "github.com/hangtiancheng/lark-go/lark_cache/pb"
 	"google.golang.org/grpc"
 )
 

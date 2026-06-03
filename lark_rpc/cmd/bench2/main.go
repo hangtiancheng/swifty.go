@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hangtiancheng/lark_rpc/internal/client"
-	"github.com/hangtiancheng/lark_rpc/internal/codec"
-	"github.com/hangtiancheng/lark_rpc/internal/registry"
-	"github.com/hangtiancheng/lark_rpc/pkg/api"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/client"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark-go/lark_rpc/internal/registry"
+	"github.com/hangtiancheng/lark-go/lark_rpc/pkg/api"
 )
 
 var (

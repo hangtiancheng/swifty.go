@@ -4,7 +4,7 @@ description: >
   Lightweight HTTP framework (lark_http module). Use this skill when working on
   HTTP routing, middleware chains, Context request/response handling, SSE streaming,
   router groups, trie-based route matching, or any code that imports
-  github.com/hangtiancheng/lark_http. Also use it when the user asks about the
+  github.com/hangtiancheng/lark-go/lark_http. Also use it when the user asks about the
   deferred response pattern, Koa-style middleware, or lark_http's Engine lifecycle.
 ---
 
@@ -14,7 +14,7 @@ A lightweight, Koa-inspired HTTP framework for Go with trie-based routing,
 middleware chains, deferred response rendering, Server-Sent Events support,
 and router group prefixing.
 
-Module path: `github.com/hangtiancheng/lark_http`
+Module path: `github.com/hangtiancheng/lark-go/lark_http`
 
 Source root: `lark_http/`
 

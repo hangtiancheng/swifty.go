@@ -10,8 +10,8 @@ import (
 
 	"log"
 
-	pb "github.com/hangtiancheng/lark_cache/pb"
-	"github.com/hangtiancheng/lark_cache/registry"
+	pb "github.com/hangtiancheng/lark-go/lark_cache/pb"
+	"github.com/hangtiancheng/lark-go/lark_cache/registry"
 	client_v3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

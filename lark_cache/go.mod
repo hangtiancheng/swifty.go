@@ -1,4 +1,4 @@
-module github.com/hangtiancheng/lark_cache
+module github.com/hangtiancheng/lark-go/lark_cache
 
 go 1.26.0
 

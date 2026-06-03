@@ -1,4 +1,4 @@
-module github.com/hangtiancheng/lark_orm
+module github.com/hangtiancheng/lark-go/lark_orm
 
 go 1.26.0
 
