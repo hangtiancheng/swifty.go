@@ -1,0 +1,9 @@
+go 1.26.0
+
+use (
+	./lark_cache
+	./lark_demo
+	./lark_http
+	./lark_orm
+	./lark_rpc
+)

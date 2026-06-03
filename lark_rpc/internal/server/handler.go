@@ -1,0 +1,146 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+
+	"github.com/hangtiancheng/lark_rpc/internal/codec"
+	"github.com/hangtiancheng/lark_rpc/internal/protocol"
+	istream "github.com/hangtiancheng/lark_rpc/internal/stream"
+	"github.com/hangtiancheng/lark_rpc/internal/transport"
+)
+
+var serverStreamType = reflect.TypeOf((*istream.ServerStream)(nil)).Elem()
+
+type Handler struct {
+	codec codec.Codec
+}
+
+func NewHandler(s interface{}, opts ...HandleOption) (*Handler, error) {
+	h := &Handler{}
+
+	for _, opt := range opts {
+		if err := opt(h); err != nil {
+			return nil, err
+		}
+	}
+
+	if h.codec == nil {
+		return nil, fmt.Errorf("codec must not be nil")
+	}
+
+	return h, nil
+}
+
+func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server interface{}) {
+	result, streaming, err := h.invoke(
+		context.Background(),
+		conn,
+		msg.Header.RequestID,
+		server,
+		msg.Header.ServiceName,
+		msg.Header.MethodName,
+		msg.Body,
+	)
+
+	if streaming {
+		return
+	}
+
+	if err != nil {
+		h.writeError(conn, msg.Header.RequestID, err.Error())
+		return
+	}
+
+	var body []byte
+	if result != nil {
+		var marshalErr error
+		body, marshalErr = h.codec.Marshal(result)
+		if marshalErr != nil {
+			h.writeError(conn, msg.Header.RequestID, marshalErr.Error())
+			return
+		}
+	}
+
+	resp := &protocol.Message{
+		Header: &protocol.Header{
+			RequestID:   msg.Header.RequestID,
+			Compression: codec.CompressionGzip,
+		},
+		Body: body,
+	}
+
+	_ = conn.Write(resp)
+}
+
+func (h *Handler) writeError(conn *transport.TCPConnection, requestID uint64, errMsg string) {
+	resp := &protocol.Message{
+		Header: &protocol.Header{
+			RequestID:   requestID,
+			Error:       errMsg,
+			Compression: codec.CompressionGzip,
+		},
+	}
+	_ = conn.Write(resp)
+}
+
+func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, requestID uint64, service interface{}, serviceName, methodName string, body []byte) (interface{}, bool, error) {
+	if service == nil {
+		return nil, false, fmt.Errorf("service not found: %s", serviceName)
+	}
+
+	serviceValue := reflect.ValueOf(service)
+	method := serviceValue.MethodByName(methodName)
+	if !method.IsValid() {
+		return nil, false, fmt.Errorf("method not found: %s.%s", serviceName, methodName)
+	}
+
+	methodType := method.Type()
+	numIn := methodType.NumIn()
+	numOut := methodType.NumOut()
+
+	if numIn == 2 && numOut == 1 && methodType.Out(0).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+		reqType := methodType.In(0)
+
+		if reqType.Kind() != reflect.Ptr {
+			return nil, false, fmt.Errorf("unsupported method signature: %s.%s", serviceName, methodName)
+		}
+
+		req := reflect.New(reqType.Elem())
+		if len(body) > 0 {
+			if err := h.codec.Unmarshal(body, req.Interface()); err != nil {
+				return nil, false, err
+			}
+		}
+
+		secondParam := methodType.In(1)
+
+		if secondParam.Implements(serverStreamType) {
+			ss := &serverStream{
+				conn:      conn,
+				requestID: requestID,
+				codec:     h.codec,
+				ctx:       ctx,
+			}
+			results := method.Call([]reflect.Value{req, reflect.ValueOf(ss).Convert(secondParam)})
+			if errVal := results[0].Interface(); errVal != nil {
+				_ = ss.sendError(errVal.(error).Error())
+			} else {
+				_ = ss.end()
+			}
+			return nil, true, nil
+		}
+
+		if secondParam.Kind() == reflect.Ptr {
+			reply := reflect.New(secondParam.Elem())
+			results := method.Call([]reflect.Value{req, reply})
+			if errVal := results[0].Interface(); errVal != nil {
+				return nil, false, errVal.(error)
+			}
+			return reply.Elem().Interface(), false, nil
+		}
+	}
+
+	return nil, false, fmt.Errorf("unsupported method signature: %s.%s", serviceName, methodName)
+}
