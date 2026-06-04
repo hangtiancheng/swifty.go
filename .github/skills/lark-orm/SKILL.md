@@ -55,16 +55,16 @@ empty URI/database or connection failure.
 
 Engine methods:
 
-| Method       | Signature                                                       | Description                                 |
-| ------------ | --------------------------------------------------------------- | ------------------------------------------- |
-| Client       | `() *mongo.Client`                                              | Underlying driver client                    |
-| Database     | `() *mongo.Database`                                            | Active database handle                      |
-| DatabaseName | `() string`                                                     | Database name                               |
-| Collection   | `(name string) *Query`                                          | Start a query on a named collection         |
-| Model        | `(value interface{}) *Query`                                    | Start a query using struct-derived name     |
-| Close        | `(ctx context.Context) error`                                   | Disconnect the client                       |
-| DropDatabase | `(ctx context.Context) error`                                   | Drop the entire database                    |
-| NextSequence | `(ctx context.Context, name string) (int64, error)`             | Atomic auto-increment counter               |
+| Method       | Signature                                                                    | Description                                 |
+| ------------ | ---------------------------------------------------------------------------- | ------------------------------------------- |
+| Client       | `() *mongo.Client`                                                           | Underlying driver client                    |
+| Database     | `() *mongo.Database`                                                         | Active database handle                      |
+| DatabaseName | `() string`                                                                  | Database name                               |
+| Collection   | `(name string) *Query`                                                       | Start a query on a named collection         |
+| Model        | `(value interface{}) *Query`                                                 | Start a query using struct-derived name     |
+| Close        | `(ctx context.Context) error`                                                | Disconnect the client                       |
+| DropDatabase | `(ctx context.Context) error`                                                | Drop the entire database                    |
+| NextSequence | `(ctx context.Context, name string) (int64, error)`                          | Atomic auto-increment counter               |
 | Transaction  | `(ctx context.Context, fn func(sc context.Context, tx *Engine) error) error` | Run fn inside a MongoDB session transaction |
 
 ### Query
@@ -92,17 +92,17 @@ Supported comparison operators in `Where(field, op, value)`:
 
 Execution methods:
 
-| Method         | Signature                                        | Description                                                             |
-| -------------- | ------------------------------------------------ | ----------------------------------------------------------------------- |
-| Insert         | `(ctx, docs...) (InsertResult, error)`           | Insert one or many documents                                            |
-| First          | `(ctx, out) error`                               | Find one document (respects sort, skip, projection)                     |
-| Find           | `(ctx, out) error`                               | Find all matching documents                                             |
-| Update         | `(ctx, update) (int64, error)`                   | Update matching documents; auto-wraps in `$set` if no `$` operator keys |
-| Delete         | `(ctx) (int64, error)`                           | Delete matching documents                                               |
-| Count          | `(ctx) (int64, error)`                           | Count matching documents                                                |
-| Exists         | `(ctx) (bool, error)`                            | True if any document matches                                            |
-| EnsureIndexes  | `(ctx, []mongo.IndexModel) ([]string, error)`    | Create indexes                                                          |
-| DropCollection | `(ctx) error`                                    | Drop the underlying collection                                          |
+| Method         | Signature                                     | Description                                                             |
+| -------------- | --------------------------------------------- | ----------------------------------------------------------------------- |
+| Insert         | `(ctx, docs...) (InsertResult, error)`        | Insert one or many documents                                            |
+| First          | `(ctx, out) error`                            | Find one document (respects sort, skip, projection)                     |
+| Find           | `(ctx, out) error`                            | Find all matching documents                                             |
+| Update         | `(ctx, update) (int64, error)`                | Update matching documents; auto-wraps in `$set` if no `$` operator keys |
+| Delete         | `(ctx) (int64, error)`                        | Delete matching documents                                               |
+| Count          | `(ctx) (int64, error)`                        | Count matching documents                                                |
+| Exists         | `(ctx) (bool, error)`                         | True if any document matches                                            |
+| EnsureIndexes  | `(ctx, []mongo.IndexModel) ([]string, error)` | Create indexes                                                          |
+| DropCollection | `(ctx) error`                                 | Drop the underlying collection                                          |
 
 ### InsertResult
 
@@ -117,14 +117,14 @@ type InsertResult struct {
 
 All aggregation methods respect the current filter chain.
 
-| Method   | Signature                                | Description                       |
-| -------- | ---------------------------------------- | --------------------------------- |
-| Sum      | `(ctx, field) (float64, error)`          | Sum of field values               |
-| Avg      | `(ctx, field) (float64, error)`          | Average of field values           |
-| Min      | `(ctx, field) (float64, error)`          | Minimum field value               |
-| Max      | `(ctx, field) (float64, error)`          | Maximum field value               |
-| Distinct | `(ctx, field) ([]interface{}, error)`    | Distinct field values             |
-| Pluck    | `(ctx, field, out) error`                | Find with single-field projection |
+| Method   | Signature                             | Description                       |
+| -------- | ------------------------------------- | --------------------------------- |
+| Sum      | `(ctx, field) (float64, error)`       | Sum of field values               |
+| Avg      | `(ctx, field) (float64, error)`       | Average of field values           |
+| Min      | `(ctx, field) (float64, error)`       | Minimum field value               |
+| Max      | `(ctx, field) (float64, error)`       | Maximum field value               |
+| Distinct | `(ctx, field) ([]interface{}, error)` | Distinct field values             |
+| Pluck    | `(ctx, field, out) error`             | Find with single-field projection |
 
 Aggregation uses a MongoDB aggregation pipeline:
 `[{$match: filter}, {$group: {_id: null, result: accumulator}}]`.

@@ -58,9 +58,9 @@ func (s *Server) Stop()
 
 Server options:
 
-| Option           | Description            |
-| ---------------- | ---------------------- |
-| `WithCodec(t)`   | Set codec (JSON/Proto) |
+| Option         | Description            |
+| -------------- | ---------------------- |
+| `WithCodec(t)` | Set codec (JSON/Proto) |
 
 `Register` binds a service struct by name. The handler uses reflection to dispatch
 RPCs to exported methods matching one of these signatures:
@@ -88,12 +88,12 @@ func (cc *ClientConn) Close() error
 
 Dial options:
 
-| Option                  | Description                             |
-| ----------------------- | --------------------------------------- |
-| `WithTimeout(d)`        | RPC timeout (default: 5s)               |
-| `WithDialCodec(t)`      | Set codec type (JSON or Protobuf)       |
-| `WithRegistry(reg)`     | Enable registry mode (etcd discovery)   |
-| `WithLoadBalancer(lb)`  | Load balancing strategy (registry mode) |
+| Option                 | Description                             |
+| ---------------------- | --------------------------------------- |
+| `WithTimeout(d)`       | RPC timeout (default: 5s)               |
+| `WithDialCodec(t)`     | Set codec type (JSON or Protobuf)       |
+| `WithRegistry(reg)`    | Enable registry mode (etcd discovery)   |
+| `WithLoadBalancer(lb)` | Load balancing strategy (registry mode) |
 
 When `WithRegistry` is provided, `Dial` ignores the target address and uses the
 registry for service discovery. Otherwise it creates a direct connection pool to
@@ -321,20 +321,20 @@ for {
 
 ## File map
 
-| Directory                | Files                                                                               | Purpose                                                         |
-| ------------------------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `pkg/rpc/`               | `server.go`, `client.go`, `rpc.go`, `stream.go`                                    | Public API: Server, ClientConn, Dial, type aliases              |
-| `pkg/api/`               | `arith.go`                                                                          | Example Arith service (grpc-go style signatures)                |
-| `internal/server/`       | `server.go`, `handler.go`, `options.go`, `stream.go`                                | TCP server, reflection dispatch, server-side streaming          |
-| `internal/client/`       | `client.go`, `invoke.go`, `option.go`, `resolver.go`                                | Client with breaker/limiter/LB, Invoke/InvokeAsync/InvokeStream |
+| Directory                | Files                                                                                    | Purpose                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `pkg/rpc/`               | `server.go`, `client.go`, `rpc.go`, `stream.go`                                          | Public API: Server, ClientConn, Dial, type aliases              |
+| `pkg/api/`               | `arith.go`                                                                               | Example Arith service (grpc-go style signatures)                |
+| `internal/server/`       | `server.go`, `handler.go`, `options.go`, `stream.go`                                     | TCP server, reflection dispatch, server-side streaming          |
+| `internal/client/`       | `client.go`, `invoke.go`, `option.go`, `resolver.go`                                     | Client with breaker/limiter/LB, Invoke/InvokeAsync/InvokeStream |
 | `internal/transport/`    | `tcp_connection.go`, `tcp_connection_pool.go`, `tcp_client.go`, `future.go`, `stream.go` | TCP transport, connection pool, async futures, client streams   |
-| `internal/protocol/`     | `header.go`, `message.go`                                                           | Wire format: header encoding, message framing                   |
-| `internal/codec/`        | `codec.go`, `json.go`, `protobuf.go`, `compress.go`                                 | Codec interface, JSON/Protobuf impls, Gzip compression          |
-| `internal/breaker/`      | `breaker.go`                                                                        | Three-state circuit breaker                                     |
-| `internal/limiter/`      | `token_bucket.go`                                                                   | Token bucket rate limiter                                       |
-| `internal/load_balance/` | `balancer.go`, `round_robin.go`, `random.go`, `weighted_rr.go`                      | Load balancing strategies                                       |
-| `internal/registry/`     | `registry.go`                                                                       | etcd service registry                                           |
-| `internal/stream/`       | `stream.go`                                                                         | ServerStream / ClientStream interfaces                          |
+| `internal/protocol/`     | `header.go`, `message.go`                                                                | Wire format: header encoding, message framing                   |
+| `internal/codec/`        | `codec.go`, `json.go`, `protobuf.go`, `compress.go`                                      | Codec interface, JSON/Protobuf impls, Gzip compression          |
+| `internal/breaker/`      | `breaker.go`                                                                             | Three-state circuit breaker                                     |
+| `internal/limiter/`      | `token_bucket.go`                                                                        | Token bucket rate limiter                                       |
+| `internal/load_balance/` | `balancer.go`, `round_robin.go`, `random.go`, `weighted_rr.go`                           | Load balancing strategies                                       |
+| `internal/registry/`     | `registry.go`                                                                            | etcd service registry                                           |
+| `internal/stream/`       | `stream.go`                                                                              | ServerStream / ClientStream interfaces                          |
 
 ## Dependencies
 

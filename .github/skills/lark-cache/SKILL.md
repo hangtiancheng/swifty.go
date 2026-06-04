@@ -81,15 +81,15 @@ replaced with a log warning.
 
 Group methods:
 
-| Method        | Signature                                  | Description                                        |
-| ------------- | ------------------------------------------ | -------------------------------------------------- |
-| Get           | `(ctx, key string) (ByteView, error)`      | Read-through: local cache, then peer, then Getter  |
-| Set           | `(ctx, key string, value []byte) error`    | Write to local cache; async sync to owning peer    |
-| Delete        | `(ctx, key string) error`                  | Remove from local cache; async sync to owning peer |
-| Clear         | `()`                                       | Remove all entries from local cache                |
-| Close         | `() error`                                 | Close the group and deregister it                  |
-| RegisterPeers | `(PeerPicker)`                             | Attach peer topology (call once; panics on second) |
-| Stats         | `() map[string]interface{}`                | Hit rate, load times, cache size                   |
+| Method        | Signature                               | Description                                        |
+| ------------- | --------------------------------------- | -------------------------------------------------- |
+| Get           | `(ctx, key string) (ByteView, error)`   | Read-through: local cache, then peer, then Getter  |
+| Set           | `(ctx, key string, value []byte) error` | Write to local cache; async sync to owning peer    |
+| Delete        | `(ctx, key string) error`               | Remove from local cache; async sync to owning peer |
+| Clear         | `()`                                    | Remove all entries from local cache                |
+| Close         | `() error`                              | Close the group and deregister it                  |
+| RegisterPeers | `(PeerPicker)`                          | Attach peer topology (call once; panics on second) |
+| Stats         | `() map[string]interface{}`             | Hit rate, load times, cache size                   |
 
 Sentinel errors: `ErrKeyRequired`, `ErrValueRequired`, `ErrGroupClosed`.
 
@@ -125,16 +125,16 @@ func NewCache(opts CacheOptions) *Cache
 
 Cache methods:
 
-| Method            | Signature                                   | Description                              |
-| ----------------- | ------------------------------------------- | ---------------------------------------- |
-| Add               | `(key string, value ByteView)`              | Store key-value pair                     |
-| AddWithExpiration | `(key string, value ByteView, exp time.Time)` | Store with absolute expiration           |
-| Get               | `(ctx, key string) (ByteView, bool)`        | Retrieve value; returns false on miss    |
-| Delete            | `(key string) bool`                         | Remove key; returns false if not found   |
-| Clear             | `()`                                        | Remove all entries, reset counters       |
-| Len               | `() int`                                    | Number of stored entries                 |
-| Close             | `()`                                        | Release resources (safe to call twice)   |
-| Stats             | `() map[string]any`                         | hits, misses, hit_rate, size, closed     |
+| Method            | Signature                                     | Description                            |
+| ----------------- | --------------------------------------------- | -------------------------------------- |
+| Add               | `(key string, value ByteView)`                | Store key-value pair                   |
+| AddWithExpiration | `(key string, value ByteView, exp time.Time)` | Store with absolute expiration         |
+| Get               | `(ctx, key string) (ByteView, bool)`          | Retrieve value; returns false on miss  |
+| Delete            | `(key string) bool`                           | Remove key; returns false if not found |
+| Clear             | `()`                                          | Remove all entries, reset counters     |
+| Len               | `() int`                                      | Number of stored entries               |
+| Close             | `()`                                          | Release resources (safe to call twice) |
+| Stats             | `() map[string]any`                           | hits, misses, hit_rate, size, closed   |
 
 ### Store interface and lruStore
 
@@ -165,6 +165,7 @@ func NewStore(opts StoreOptions) *lruStore
 ```
 
 The `lruStore` is a bucketed two-level LRU cache:
+
 - Entries hash to one of `BucketCount` shards (rounded to power-of-2) via `HashBKRD`
 - Each shard has two levels: L1 (entry point) and L2 (promoted on access)
 - On `Get`, an L1 entry is removed from L1 and promoted to L2
@@ -343,22 +344,22 @@ g.RegisterPeers(picker)
 
 ## File map
 
-| File             | Purpose                                                      |
-| ---------------- | ------------------------------------------------------------ |
-| `group.go`       | Group type, Get/Set/Delete, load pipeline, global registry   |
-| `cache.go`       | Cache wrapper with lazy init and stats                       |
-| `byte_view.go`   | Immutable byte slice value type                              |
-| `store.go`       | Store interface, Value interface, StoreOptions               |
-| `lru.go`         | Bucketed two-level LRU implementation (lruStore)             |
-| `con_hash.go`    | Consistent hash ring with virtual nodes and auto-rebalancing |
-| `config.go`      | ConHashConfig and default values                             |
-| `single_flight.go` | Request deduplication (SingleFlightGroup)                  |
-| `peers.go`       | PeerPicker/Peer interfaces, ClientPicker with etcd discovery |
-| `server.go`      | gRPC server with health check and TLS support                |
-| `client.go`      | gRPC client implementing Peer                                |
-| `register.go`    | etcd service registration with lease keepalive               |
-| `utils.go`       | Address validation helper (ValidPeerAddr)                    |
-| `pb/`            | Protobuf definitions and generated gRPC code                 |
+| File               | Purpose                                                      |
+| ------------------ | ------------------------------------------------------------ |
+| `group.go`         | Group type, Get/Set/Delete, load pipeline, global registry   |
+| `cache.go`         | Cache wrapper with lazy init and stats                       |
+| `byte_view.go`     | Immutable byte slice value type                              |
+| `store.go`         | Store interface, Value interface, StoreOptions               |
+| `lru.go`           | Bucketed two-level LRU implementation (lruStore)             |
+| `con_hash.go`      | Consistent hash ring with virtual nodes and auto-rebalancing |
+| `config.go`        | ConHashConfig and default values                             |
+| `single_flight.go` | Request deduplication (SingleFlightGroup)                    |
+| `peers.go`         | PeerPicker/Peer interfaces, ClientPicker with etcd discovery |
+| `server.go`        | gRPC server with health check and TLS support                |
+| `client.go`        | gRPC client implementing Peer                                |
+| `register.go`      | etcd service registration with lease keepalive               |
+| `utils.go`         | Address validation helper (ValidPeerAddr)                    |
+| `pb/`              | Protobuf definitions and generated gRPC code                 |
 
 ## Dependencies
 

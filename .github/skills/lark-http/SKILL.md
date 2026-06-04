@@ -98,8 +98,8 @@ Middleware control:
 | Pattern                  | Description                              |
 | ------------------------ | ---------------------------------------- |
 | call `next()`            | Advance to the next handler in the chain |
-| don't call `next()`     | Skip remaining handlers (short-circuit)  |
-| `ctx.Throw(status, msg)` | Set error status + body                 |
+| don't call `next()`      | Skip remaining handlers (short-circuit)  |
+| `ctx.Throw(status, msg)` | Set error status + body                  |
 
 Request accessors:
 
@@ -242,18 +242,18 @@ app.Listen(":8080")
 
 ## File map
 
-| File          | Purpose                                              |
-| ------------- | ---------------------------------------------------- |
-| `lark.go`     | Application constructor, ServeHTTP, Listen, Shutdown |
-| `context.go`  | Context type, request accessors, Throw               |
-| `response.go` | Deferred response methods (JSON, String, HTML, etc.) |
+| File          | Purpose                                                |
+| ------------- | ------------------------------------------------------ |
+| `lark.go`     | Application constructor, ServeHTTP, Listen, Shutdown   |
+| `context.go`  | Context type, request accessors, Throw                 |
+| `response.go` | Deferred response methods (JSON, String, HTML, etc.)   |
 | `group.go`    | Router with prefix, middleware, and route registration |
-| `router.go`   | Trie-based router dispatch, compose, 404 handler     |
-| `trie.go`     | Trie node insert/search/travel                       |
-| `sse.go`      | SSEWriter for Server-Sent Events                     |
-| `logger.go`   | Logger middleware                                    |
-| `recovery.go` | Panic recovery middleware                            |
-| `main.go`     | Example / demo entry point                           |
+| `router.go`   | Trie-based router dispatch, compose, 404 handler       |
+| `trie.go`     | Trie node insert/search/travel                         |
+| `sse.go`      | SSEWriter for Server-Sent Events                       |
+| `logger.go`   | Logger middleware                                      |
+| `recovery.go` | Panic recovery middleware                              |
+| `main.go`     | Example / demo entry point                             |
 
 ## Dependencies
 
