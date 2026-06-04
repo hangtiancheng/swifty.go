@@ -18,6 +18,8 @@ Module path: `github.com/hangtiancheng/lark-go/lark_orm`
 
 Source root: `lark_orm/`
 
+All types live in the `lark_orm` package (flat structure, no sub-packages).
+
 ## Architecture overview
 
 ```
@@ -53,17 +55,17 @@ empty URI/database or connection failure.
 
 Engine methods:
 
-| Method       | Signature                       | Description                                 |
-| ------------ | ------------------------------- | ------------------------------------------- |
-| Client       | `() -> *mongo.Client`           | Underlying driver client                    |
-| Database     | `() -> *mongo.Database`         | Active database handle                      |
-| DatabaseName | `() -> string`                  | Database name                               |
-| Collection   | `(name string) -> *Query`       | Start a query on a named collection         |
-| Model        | `(value interface{}) -> *Query` | Start a query using struct-derived name     |
-| Close        | `(ctx) -> error`                | Disconnect the client                       |
-| DropDatabase | `(ctx) -> error`                | Drop the entire database                    |
-| NextSequence | `(ctx, name) -> (int64, error)` | Atomic auto-increment counter               |
-| Transaction  | `(ctx, fn) -> error`            | Run fn inside a MongoDB session transaction |
+| Method       | Signature                                                       | Description                                 |
+| ------------ | --------------------------------------------------------------- | ------------------------------------------- |
+| Client       | `() *mongo.Client`                                              | Underlying driver client                    |
+| Database     | `() *mongo.Database`                                            | Active database handle                      |
+| DatabaseName | `() string`                                                     | Database name                               |
+| Collection   | `(name string) *Query`                                          | Start a query on a named collection         |
+| Model        | `(value interface{}) *Query`                                    | Start a query using struct-derived name     |
+| Close        | `(ctx context.Context) error`                                   | Disconnect the client                       |
+| DropDatabase | `(ctx context.Context) error`                                   | Drop the entire database                    |
+| NextSequence | `(ctx context.Context, name string) (int64, error)`             | Atomic auto-increment counter               |
+| Transaction  | `(ctx context.Context, fn func(sc context.Context, tx *Engine) error) error` | Run fn inside a MongoDB session transaction |
 
 ### Query
 
@@ -92,15 +94,15 @@ Execution methods:
 
 | Method         | Signature                                        | Description                                                             |
 | -------------- | ------------------------------------------------ | ----------------------------------------------------------------------- |
-| Insert         | `(ctx, docs...) -> (InsertResult, error)`        | Insert one or many documents                                            |
-| First          | `(ctx, out) -> error`                            | Find one document (respects sort, skip, projection)                     |
-| Find           | `(ctx, out) -> error`                            | Find all matching documents                                             |
-| Update         | `(ctx, update) -> (int64, error)`                | Update matching documents; auto-wraps in `$set` if no `$` operator keys |
-| Delete         | `(ctx) -> (int64, error)`                        | Delete matching documents                                               |
-| Count          | `(ctx) -> (int64, error)`                        | Count matching documents                                                |
-| Exists         | `(ctx) -> (bool, error)`                         | True if any document matches                                            |
-| EnsureIndexes  | `(ctx, []mongo.IndexModel) -> ([]string, error)` | Create indexes                                                          |
-| DropCollection | `(ctx) -> error`                                 | Drop the underlying collection                                          |
+| Insert         | `(ctx, docs...) (InsertResult, error)`           | Insert one or many documents                                            |
+| First          | `(ctx, out) error`                               | Find one document (respects sort, skip, projection)                     |
+| Find           | `(ctx, out) error`                               | Find all matching documents                                             |
+| Update         | `(ctx, update) (int64, error)`                   | Update matching documents; auto-wraps in `$set` if no `$` operator keys |
+| Delete         | `(ctx) (int64, error)`                           | Delete matching documents                                               |
+| Count          | `(ctx) (int64, error)`                           | Count matching documents                                                |
+| Exists         | `(ctx) (bool, error)`                            | True if any document matches                                            |
+| EnsureIndexes  | `(ctx, []mongo.IndexModel) ([]string, error)`    | Create indexes                                                          |
+| DropCollection | `(ctx) error`                                    | Drop the underlying collection                                          |
 
 ### InsertResult
 
@@ -117,12 +119,12 @@ All aggregation methods respect the current filter chain.
 
 | Method   | Signature                                | Description                       |
 | -------- | ---------------------------------------- | --------------------------------- |
-| Sum      | `(ctx, field) -> (float64, error)`       | Sum of field values               |
-| Avg      | `(ctx, field) -> (float64, error)`       | Average of field values           |
-| Min      | `(ctx, field) -> (float64, error)`       | Minimum field value               |
-| Max      | `(ctx, field) -> (float64, error)`       | Maximum field value               |
-| Distinct | `(ctx, field) -> ([]interface{}, error)` | Distinct field values             |
-| Pluck    | `(ctx, field, out) -> error`             | Find with single-field projection |
+| Sum      | `(ctx, field) (float64, error)`          | Sum of field values               |
+| Avg      | `(ctx, field) (float64, error)`          | Average of field values           |
+| Min      | `(ctx, field) (float64, error)`          | Minimum field value               |
+| Max      | `(ctx, field) (float64, error)`          | Maximum field value               |
+| Distinct | `(ctx, field) ([]interface{}, error)`    | Distinct field values             |
+| Pluck    | `(ctx, field, out) error`                | Find with single-field projection |
 
 Aggregation uses a MongoDB aggregation pipeline:
 `[{$match: filter}, {$group: {_id: null, result: accumulator}}]`.
@@ -182,6 +184,27 @@ nextID, err := engine.NextSequence(ctx, "order_id")
 Uses a `counters` collection with `FindOneAndUpdate` + `$inc` + upsert.
 Each sequence name gets its own counter document.
 
+## Logging
+
+Package-level loggers with colored output and level control.
+
+```go
+var Error  func(...interface{})
+var Errorf func(string, ...interface{})
+var Info   func(...interface{})
+var Infof  func(string, ...interface{})
+
+const (
+    InfoLevel = iota
+    ErrorLevel
+    Disabled
+)
+
+func SetLevel(level int)
+```
+
+`SetLevel` controls which loggers write to stdout vs discard.
+
 ## Typical usage
 
 ```go
@@ -225,8 +248,8 @@ count, _ := engine.Model(&User{}).
 | `query_aggregate.go` | Aggregation: Sum, Avg, Min, Max, Distinct, Pluck                      |
 | `filter.go`          | BSON filter construction from condition chain                         |
 | `naming.go`          | Struct-to-collection-name conversion (snake_case + pluralize)         |
-| `lark_orm.go`        | Package declaration                                                   |
-| `log/`               | Logging utilities                                                     |
+| `log.go`             | Colored loggers with level control (Info, Error, SetLevel)            |
+| `lark_orm.go`        | Package declaration and sentinel errors                               |
 
 ## Dependencies
 

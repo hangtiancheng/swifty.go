@@ -248,7 +248,7 @@ app.Listen(":8080")
 | `context.go`  | Context type, request accessors, Throw               |
 | `response.go` | Deferred response methods (JSON, String, HTML, etc.) |
 | `group.go`    | Router with prefix, middleware, and route registration |
-| `router.go`   | Trie-based router dispatch + compose                 |
+| `router.go`   | Trie-based router dispatch, compose, 404 handler     |
 | `trie.go`     | Trie node insert/search/travel                       |
 | `sse.go`      | SSEWriter for Server-Sent Events                     |
 | `logger.go`   | Logger middleware                                    |

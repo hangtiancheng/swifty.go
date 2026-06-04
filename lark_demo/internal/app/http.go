@@ -185,7 +185,7 @@ func (a *App) createSessionAndSendMessageStream(ctx *lark_http.Context, next fun
 	}
 	a.invalidateSessionCaches(ctx.Request.Context(), username, sessionID)
 	sse := ctx.SSE()
-	sse.Event("session", sessionID)
+	sse.ID(sessionID)
 	stream, err := a.rpc.CompleteStream(ctx.Request.Context(), rpc_client.AIRequest{Username: username, SessionID: sessionID, Question: req.Question, ModelType: req.ModelType})
 	if err != nil {
 		sse.Event("error", err.Error())

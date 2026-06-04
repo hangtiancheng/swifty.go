@@ -129,7 +129,7 @@ func TestLRUCacheExpiration(t *testing.T) {
 	c.Close()
 }
 
-func TestLRU2StoreBasicOperations(t *testing.T) {
+func TestLRUStoreBasicOperations(t *testing.T) {
 	var evicted []string
 	s := NewStore(StoreOptions{
 		BucketCount:     1,
@@ -173,7 +173,7 @@ func TestLRU2StoreBasicOperations(t *testing.T) {
 	}
 }
 
-func TestLRU2StorePromotionAndEviction(t *testing.T) {
+func TestLRUStorePromotionAndEviction(t *testing.T) {
 	s := NewStore(StoreOptions{BucketCount: 1, CapPerBucket: 2, Level2Cap: 2, CleanupInterval: time.Hour})
 	defer s.Close()
 
@@ -199,7 +199,7 @@ func TestLRU2StorePromotionAndEviction(t *testing.T) {
 	}
 }
 
-func TestLRU2StoreExpirationCleanupAndClear(t *testing.T) {
+func TestLRUStoreExpirationCleanupAndClear(t *testing.T) {
 	s := NewStore(StoreOptions{BucketCount: 2, CapPerBucket: 4, Level2Cap: 4, CleanupInterval: 50 * time.Millisecond})
 	defer s.Close()
 
@@ -236,7 +236,7 @@ func TestLRU2StoreExpirationCleanupAndClear(t *testing.T) {
 	s.Close()
 }
 
-func TestLRU2Helpers(t *testing.T) {
+func TestLRUHelpers(t *testing.T) {
 	if MaskOfNextPowOf2(1) != 0 || MaskOfNextPowOf2(2) != 1 || MaskOfNextPowOf2(3) != 3 {
 		t.Fatalf("unexpected masks: 1=%d 2=%d 3=%d", MaskOfNextPowOf2(1), MaskOfNextPowOf2(2), MaskOfNextPowOf2(3))
 	}
@@ -257,7 +257,7 @@ func TestLRU2Helpers(t *testing.T) {
 	}
 }
 
-func TestLRU2StoreNoExpirationPersists(t *testing.T) {
+func TestLRUStoreNoExpirationPersists(t *testing.T) {
 	s := NewStore(StoreOptions{BucketCount: 1, CapPerBucket: 4, Level2Cap: 4, CleanupInterval: 50 * time.Millisecond})
 	defer s.Close()
 
@@ -270,7 +270,7 @@ func TestLRU2StoreNoExpirationPersists(t *testing.T) {
 	}
 }
 
-func TestLRU2StoreConcurrentAccess(t *testing.T) {
+func TestLRUStoreConcurrentAccess(t *testing.T) {
 	s := NewStore(StoreOptions{BucketCount: 8, CapPerBucket: 64, Level2Cap: 64, CleanupInterval: time.Hour})
 	defer s.Close()
 
