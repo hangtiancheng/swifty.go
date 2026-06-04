@@ -1,0 +1,404 @@
+package lark_cache
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"log"
+)
+
+var (
+	groupsMu sync.RWMutex
+	groups   = make(map[string]*Group)
+)
+
+var ErrKeyRequired = errors.New("key is required")
+var ErrValueRequired = errors.New("value is required")
+var ErrGroupClosed = errors.New("cache group is closed")
+
+type peerRequestContextKey struct{}
+
+// Getter loads data for a key.
+type Getter interface {
+	Get(ctx context.Context, key string) ([]byte, error)
+}
+
+// GetterFunc adapts a function to the Getter interface.
+type GetterFunc func(ctx context.Context, key string) ([]byte, error)
+
+// Get implements Getter.
+func (f GetterFunc) Get(ctx context.Context, key string) ([]byte, error) {
+	return f(ctx, key)
+}
+
+// Group is a cache namespace with an associated data loader.
+type Group struct {
+	name       string
+	getter     Getter
+	mainCache  *Cache
+	peersMu    sync.RWMutex
+	peers      PeerPicker
+	loader     *SingleFlightGroup
+	expiration time.Duration
+	closed     int32
+	stats      groupStats
+}
+
+type groupStats struct {
+	loads        int64
+	localHits    int64
+	localMisses  int64
+	peerHits     int64
+	peerMisses   int64
+	loaderHits   int64
+	loaderErrors int64
+	loadDuration int64
+}
+
+// GroupOption configures a Group.
+type GroupOption func(*Group)
+
+// WithExpiration sets the default cache entry TTL. A zero value means no TTL.
+func WithExpiration(d time.Duration) GroupOption {
+	return func(g *Group) {
+		g.expiration = d
+	}
+}
+
+// WithPeers configures distributed peers for the group.
+func WithPeers(peers PeerPicker) GroupOption {
+	return func(g *Group) {
+		g.peers = peers
+	}
+}
+
+// WithCacheOptions replaces the default cache options.
+func WithCacheOptions(opts CacheOptions) GroupOption {
+	return func(g *Group) {
+		g.mainCache = NewCache(opts)
+	}
+}
+
+// NewGroup creates and registers a cache group.
+func NewGroup(name string, cacheBytes int64, getter Getter, opts ...GroupOption) *Group {
+	if getter == nil {
+		panic("nil Getter")
+	}
+
+	cacheOpts := DefaultCacheOptions()
+	cacheOpts.MaxBytes = cacheBytes
+
+	g := &Group{
+		name:      name,
+		getter:    getter,
+		mainCache: NewCache(cacheOpts),
+		loader:    &SingleFlightGroup{},
+	}
+
+	for _, opt := range opts {
+		opt(g)
+	}
+
+	groupsMu.Lock()
+	defer groupsMu.Unlock()
+
+	if _, exists := groups[name]; exists {
+		log.Printf("Group with name %s already exists; replacing it", name)
+	}
+
+	groups[name] = g
+	log.Printf("Created cache group [%s] with cacheBytes=%d, expiration=%v", name, cacheBytes, g.expiration)
+	return g
+}
+
+// GetGroup returns the group registered with name, or nil when it does not exist.
+func GetGroup(name string) *Group {
+	groupsMu.RLock()
+	defer groupsMu.RUnlock()
+	return groups[name]
+}
+
+// Get returns a value from cache or loads it on miss.
+func (g *Group) Get(ctx context.Context, key string) (ByteView, error) {
+	if atomic.LoadInt32(&g.closed) == 1 {
+		return ByteView{}, ErrGroupClosed
+	}
+	if key == "" {
+		return ByteView{}, ErrKeyRequired
+	}
+
+	view, ok := g.mainCache.Get(ctx, key)
+	if ok {
+		atomic.AddInt64(&g.stats.localHits, 1)
+		return view, nil
+	}
+
+	atomic.AddInt64(&g.stats.localMisses, 1)
+	return g.load(ctx, key)
+}
+
+// Set stores a value in the local cache and optionally syncs it to the owning peer.
+func (g *Group) Set(ctx context.Context, key string, value []byte) error {
+	if atomic.LoadInt32(&g.closed) == 1 {
+		return ErrGroupClosed
+	}
+	if key == "" {
+		return ErrKeyRequired
+	}
+	if len(value) == 0 {
+		return ErrValueRequired
+	}
+
+	view := ByteView{b: cloneBytes(value)}
+	if g.expiration > 0 {
+		g.mainCache.AddWithExpiration(key, view, time.Now().Add(g.expiration))
+	} else {
+		g.mainCache.Add(key, view)
+	}
+
+	if !isPeerRequest(ctx) {
+		if peers := g.getPeers(); peers != nil {
+			go g.syncToPeers(ctx, peers, "set", key, value)
+		}
+	}
+
+	return nil
+}
+
+// Delete removes a value from the local cache and optionally syncs the deletion.
+func (g *Group) Delete(ctx context.Context, key string) error {
+	if atomic.LoadInt32(&g.closed) == 1 {
+		return ErrGroupClosed
+	}
+	if key == "" {
+		return ErrKeyRequired
+	}
+
+	g.mainCache.Delete(key)
+
+	if !isPeerRequest(ctx) {
+		if peers := g.getPeers(); peers != nil {
+			go g.syncToPeers(ctx, peers, "delete", key, nil)
+		}
+	}
+
+	return nil
+}
+
+func (g *Group) syncToPeers(ctx context.Context, peers PeerPicker, op string, key string, value []byte) {
+	peer, ok, isSelf := peers.PickPeer(key)
+	if !ok || isSelf {
+		return
+	}
+
+	syncCtx := withPeerRequest(context.Background())
+	var err error
+	switch op {
+	case "set":
+		err = peer.Set(syncCtx, g.name, key, value)
+	case "delete":
+		_, err = peer.Delete(g.name, key)
+	default:
+		err = fmt.Errorf("unsupported peer sync operation %q", op)
+	}
+
+	if err != nil {
+		log.Printf("[LarkCache] failed to sync %s to peer: %v", op, err)
+	}
+}
+
+// Clear removes all local cached values.
+func (g *Group) Clear() {
+	if atomic.LoadInt32(&g.closed) == 1 {
+		return
+	}
+	g.mainCache.Clear()
+	log.Printf("[LarkCache] cleared cache for group [%s]", g.name)
+}
+
+// Close closes the group and removes it from the global registry.
+func (g *Group) Close() error {
+	if !atomic.CompareAndSwapInt32(&g.closed, 0, 1) {
+		return nil
+	}
+
+	if g.mainCache != nil {
+		g.mainCache.Close()
+	}
+
+	groupsMu.Lock()
+	delete(groups, g.name)
+	groupsMu.Unlock()
+
+	log.Printf("[LarkCache] closed cache group [%s]", g.name)
+	return nil
+}
+
+func (g *Group) load(ctx context.Context, key string) (ByteView, error) {
+	startTime := time.Now()
+	viewInterface, err := g.loader.Do(key, func() (interface{}, error) {
+		return g.loadData(ctx, key)
+	})
+
+	loadDuration := time.Since(startTime).Nanoseconds()
+	atomic.AddInt64(&g.stats.loadDuration, loadDuration)
+	atomic.AddInt64(&g.stats.loads, 1)
+
+	if err != nil {
+		atomic.AddInt64(&g.stats.loaderErrors, 1)
+		return ByteView{}, err
+	}
+
+	view := viewInterface.(ByteView)
+	if g.expiration > 0 {
+		g.mainCache.AddWithExpiration(key, view, time.Now().Add(g.expiration))
+	} else {
+		g.mainCache.Add(key, view)
+	}
+	return view, nil
+}
+
+func (g *Group) loadData(ctx context.Context, key string) (ByteView, error) {
+	if peers := g.getPeers(); peers != nil {
+		peer, ok, isSelf := peers.PickPeer(key)
+		if ok && !isSelf {
+			value, err := g.getFromPeer(ctx, peer, key)
+			if err == nil {
+				atomic.AddInt64(&g.stats.peerHits, 1)
+				return value, nil
+			}
+
+			atomic.AddInt64(&g.stats.peerMisses, 1)
+			log.Printf("[LarkCache] failed to get from peer: %v", err)
+		}
+	}
+
+	bytes, err := g.getter.Get(ctx, key)
+	if err != nil {
+		return ByteView{}, fmt.Errorf("failed to get data: %w", err)
+	}
+
+	atomic.AddInt64(&g.stats.loaderHits, 1)
+	return ByteView{b: cloneBytes(bytes)}, nil
+}
+
+func (g *Group) getFromPeer(ctx context.Context, peer Peer, key string) (ByteView, error) {
+	bytes, err := peer.Get(g.name, key)
+	if err != nil {
+		return ByteView{}, fmt.Errorf("failed to get from peer: %w", err)
+	}
+	return ByteView{b: cloneBytes(bytes)}, nil
+}
+
+// RegisterPeers registers a PeerPicker. It may only be called once.
+func (g *Group) RegisterPeers(peers PeerPicker) {
+	g.peersMu.Lock()
+	defer g.peersMu.Unlock()
+	if g.peers != nil {
+		panic("RegisterPeers called more than once")
+	}
+	g.peers = peers
+	log.Printf("[LarkCache] registered peers for group [%s]", g.name)
+}
+
+func (g *Group) getPeers() PeerPicker {
+	g.peersMu.RLock()
+	defer g.peersMu.RUnlock()
+	return g.peers
+}
+
+// Stats returns a snapshot of group and cache statistics.
+func (g *Group) Stats() map[string]interface{} {
+	stats := map[string]interface{}{
+		"name":          g.name,
+		"closed":        atomic.LoadInt32(&g.closed) == 1,
+		"expiration":    g.expiration,
+		"loads":         atomic.LoadInt64(&g.stats.loads),
+		"local_hits":    atomic.LoadInt64(&g.stats.localHits),
+		"local_misses":  atomic.LoadInt64(&g.stats.localMisses),
+		"peer_hits":     atomic.LoadInt64(&g.stats.peerHits),
+		"peer_misses":   atomic.LoadInt64(&g.stats.peerMisses),
+		"loader_hits":   atomic.LoadInt64(&g.stats.loaderHits),
+		"loader_errors": atomic.LoadInt64(&g.stats.loaderErrors),
+	}
+
+	totalGets := stats["local_hits"].(int64) + stats["local_misses"].(int64)
+	if totalGets > 0 {
+		stats["hit_rate"] = float64(stats["local_hits"].(int64)) / float64(totalGets)
+	}
+
+	totalLoads := stats["loads"].(int64)
+	if totalLoads > 0 {
+		stats["avg_load_time_ms"] = float64(atomic.LoadInt64(&g.stats.loadDuration)) / float64(totalLoads) / float64(time.Millisecond)
+	}
+
+	if g.mainCache != nil {
+		cacheStats := g.mainCache.Stats()
+		for k, v := range cacheStats {
+			stats["cache_"+k] = v
+		}
+	}
+
+	return stats
+}
+
+// ListGroups returns all registered group names.
+func ListGroups() []string {
+	groupsMu.RLock()
+	defer groupsMu.RUnlock()
+
+	names := make([]string, 0, len(groups))
+	for name := range groups {
+		names = append(names, name)
+	}
+	return names
+}
+
+// DestroyGroup closes and removes a named group.
+func DestroyGroup(name string) bool {
+	groupsMu.Lock()
+	g, exists := groups[name]
+	if exists {
+		delete(groups, name)
+	}
+	groupsMu.Unlock()
+
+	if !exists {
+		return false
+	}
+	_ = g.Close()
+	log.Printf("[LarkCache] destroyed cache group [%s]", name)
+	return true
+}
+
+// DestroyAllGroups closes and removes every registered group.
+func DestroyAllGroups() {
+	groupsMu.Lock()
+	toClose := make([]*Group, 0, len(groups))
+	for _, g := range groups {
+		toClose = append(toClose, g)
+	}
+	groups = make(map[string]*Group)
+	groupsMu.Unlock()
+
+	for _, g := range toClose {
+		_ = g.Close()
+		log.Printf("[LarkCache] destroyed cache group [%s]", g.name)
+	}
+}
+
+func withPeerRequest(ctx context.Context) context.Context {
+	return context.WithValue(ctx, peerRequestContextKey{}, true)
+}
+
+func isPeerRequest(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	value, ok := ctx.Value(peerRequestContextKey{}).(bool)
+	return ok && value
+}

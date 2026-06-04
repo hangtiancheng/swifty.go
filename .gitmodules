@@ -1,0 +1,12 @@
+[submodule "ai-agent"]
+	path = ai-agent
+	url = git@github.com:hangtiancheng/ai-agent.git
+[submodule "koa"]
+	path = koa
+	url = git@github.com:koajs/koa.git
+[submodule "knex"]
+	path = knex
+	url = git@github.com:knex/knex.git
+[submodule "trpc"]
+	path = trpc
+	url = git@github.com:trpc/trpc.git

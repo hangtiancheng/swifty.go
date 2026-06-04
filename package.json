@@ -1,0 +1,29 @@
+{
+  "name": "lark-go",
+  "version": "0.0.3",
+  "description": "lark-go monorepo tooling",
+  "type": "module",
+  "author": "github.com/hangtiancheng",
+  "license": "MIT",
+  "keywords": [
+    "go",
+    "cache",
+    "http",
+    "orm",
+    "rpc",
+    "demo"
+  ],
+  "scripts": {
+    "tag": "node tag.js",
+    "deps": "node main.js deps",
+    "coverage": "node main.js coverage",
+    "coverage:standalone": "node main.js coverage:standalone",
+    "coverage:mongo": "node main.js coverage:mongo",
+    "build": "node main.js build",
+    "test": "node main.js test",
+    "clean": "node main.js clean",
+    "rm:ds_store": "node scripts/rm_ds_store.js",
+    "rename": "node scripts/rename.js",
+    "add:license": "node scripts/add_licenses.js"
+  }
+}
