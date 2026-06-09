@@ -1,0 +1,66 @@
+<div>
+  {{forOf messageList as msg idx}}
+  <div ldk="msg-{{=idx}}">
+    {{if msg.send_id !== currentUserId && msg.type === 0}}
+    <div class="chat chat-start">
+      <div class="chat-image avatar">
+        <div class="w-10 rounded-full"><img src="{{=msg.send_avatar}}" /></div>
+      </div>
+      <div class="chat-header text-gray-500 text-xs">
+        {{=msg.send_name}} <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+      </div>
+      <div class="chat-bubble bg-white text-gray-700 shadow-sm border border-green-100">
+        {{=msg.content}}
+      </div>
+    </div>
+    {{/if}} {{if msg.send_id !== currentUserId && msg.type === 2}}
+    <div class="chat chat-start">
+      <div class="chat-image avatar">
+        <div class="w-10 rounded-full"><img src="{{=msg.send_avatar}}" /></div>
+      </div>
+      <div class="chat-header text-gray-500 text-xs">
+        {{=msg.send_name}} <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+      </div>
+      <div class="chat-bubble bg-white text-gray-700 shadow-sm border border-green-100">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium">{{=msg.file_name}}</span>
+          <span class="text-xs text-gray-400">{{=msg.file_size}}</span>
+        </div>
+        <button
+          class="btn btn-xs bg-green-100 hover:bg-green-200 text-green-700 border-green-200 mt-2"
+          @click="downloadFile({name: '{{=msg.file_name}}'})"
+        >
+          Download
+        </button>
+      </div>
+    </div>
+    {{/if}} {{if msg.send_id === currentUserId && msg.type === 0}}
+    <div class="chat chat-end">
+      <div class="chat-image avatar">
+        <div class="w-10 rounded-full"><img src="{{=currentUserAvatar}}" /></div>
+      </div>
+      <div class="chat-header text-gray-500 text-xs">
+        {{=currentUserName}} <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+      </div>
+      <div class="chat-bubble bg-green-100 text-green-900 shadow-sm">{{=msg.content}}</div>
+    </div>
+    {{/if}} {{if msg.send_id === currentUserId && msg.type === 2}}
+    <div class="chat chat-end">
+      <div class="chat-image avatar">
+        <div class="w-10 rounded-full"><img src="{{=currentUserAvatar}}" /></div>
+      </div>
+      <div class="chat-header text-gray-500 text-xs">
+        {{=currentUserName}} <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+      </div>
+      <div class="chat-bubble bg-green-100 text-green-900 shadow-sm">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium">{{=msg.file_name}}</span>
+          <span class="text-xs text-green-600">{{=msg.file_size}}</span>
+        </div>
+        <span class="text-xs text-green-500 mt-1">Sent</span>
+      </div>
+    </div>
+    {{/if}}
+  </div>
+  {{/forOf}}
+</div>

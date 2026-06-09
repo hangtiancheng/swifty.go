@@ -1,0 +1,19 @@
+{
+  "app": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "mongo": {
+    "uri": "mongodb://localhost:27017",
+    "database": "lark_chat"
+  },
+  "cache": {
+    "maxBytes": 67108864,
+    "expiration": 300,
+    "dashboardAddr": ":9090"
+  },
+  "static": {
+    "avatarPath": "./static/avatars",
+    "filePath": "./static/files"
+  }
+}

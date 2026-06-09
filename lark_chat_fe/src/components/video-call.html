@@ -1,0 +1,67 @@
+<div>
+  {{if visible}}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-[700px] p-6 border border-green-100">
+      <h2 class="text-lg font-semibold text-green-800 text-center mb-4">Video Call</h2>
+      <div class="flex gap-4 justify-center mb-4">
+        <div class="relative w-[300px] h-[225px] bg-gray-900 rounded-lg overflow-hidden">
+          <video
+            id="local-video"
+            autoplay
+            playsinline
+            muted
+            class="w-full h-full object-cover"
+          ></video>
+          <span
+            class="absolute bottom-2 left-2 text-xs text-white/80 bg-black/40 px-2 py-0.5 rounded"
+            >You</span
+          >
+        </div>
+        <div class="relative w-[300px] h-[225px] bg-gray-900 rounded-lg overflow-hidden">
+          <video id="remote-video" autoplay playsinline class="w-full h-full object-cover"></video>
+          <span
+            class="absolute bottom-2 left-2 text-xs text-white/80 bg-black/40 px-2 py-0.5 rounded"
+            >Remote</span
+          >
+        </div>
+      </div>
+
+      {{if incomingCall}}
+      <p class="text-center text-sm text-green-700 mb-3">Incoming call...</p>
+      {{/if}}
+
+      <div class="flex justify-center gap-3">
+        {{if !inCall && !incomingCall}}
+        <button
+          class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+          @click="startCall()"
+        >
+          Start Call
+        </button>
+        {{/if}} {{if incomingCall}}
+        <button
+          class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+          @click="acceptCall()"
+        >
+          Accept
+        </button>
+        <button
+          class="btn btn-sm bg-red-500 hover:bg-red-600 text-white border-none"
+          @click="rejectCall()"
+        >
+          Reject
+        </button>
+        {{/if}} {{if inCall}}
+        <button
+          class="btn btn-sm bg-red-500 hover:bg-red-600 text-white border-none"
+          @click="hangUp()"
+        >
+          Hang Up
+        </button>
+        {{/if}}
+        <button class="btn btn-sm btn-ghost text-gray-500" @click="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+  {{/if}}
+</div>

@@ -1,0 +1,94 @@
+<div
+  class="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+>
+  <div
+    class="bg-white rounded-2xl shadow-lg w-[1000px] h-[700px] flex flex-col overflow-hidden border border-green-100"
+  >
+    <div
+      class="h-14 bg-green-100/50 flex items-center justify-between px-6 border-b border-green-100"
+    >
+      <div class="flex items-center gap-3">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-5 h-5 text-green-700"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path
+            d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"
+          />
+        </svg>
+        <span class="text-lg font-semibold text-green-800">Cache Dashboard</span>
+      </div>
+      <div class="flex items-center gap-3">
+        {{if status === 'connected'}}
+        <span class="badge badge-sm badge-success">Connected</span>
+        {{else if status === 'connecting'}}
+        <span class="badge badge-sm badge-warning">Connecting</span>
+        {{else}}
+        <span class="badge badge-sm badge-error">Disconnected</span>
+        {{/if}}
+        <span class="text-xs text-gray-500">{{=totalEntries}} entries</span>
+      </div>
+    </div>
+
+    {{if status !== 'connected'}}
+    <div class="flex-1 flex items-center justify-center">
+      <div class="text-center">
+        <p class="text-gray-400 mb-4">WebSocket not connected</p>
+        <button
+          class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+          @click="reconnect()"
+        >
+          Connect
+        </button>
+      </div>
+    </div>
+    {{/if}} {{if status === 'connected'}}
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div
+        class="h-10 flex items-center px-4 border-b border-green-100 bg-green-50/30 text-xs font-medium text-green-700 gap-2 shrink-0"
+      >
+        <div class="w-16 text-center">Group</div>
+        <div class="flex-1">Key</div>
+        <div class="w-16 text-right">Size</div>
+        <div class="w-14 text-center">Level</div>
+        <div class="w-40 text-center">Expires</div>
+        <div class="w-16 text-center">Action</div>
+      </div>
+
+      <div id="vs-container" class="flex-1 overflow-y-auto" @scroll="onScroll()">
+        <div style="height:{{=topPad}}px"></div>
+        {{forOf visibleRows as row idx}}
+        <div
+          class="h-9 flex items-center px-4 text-sm gap-2 border-b border-gray-50 hover:bg-green-50/50"
+        >
+          <div class="w-16 text-center">
+            <span class="badge badge-xs badge-outline text-xs">{{=row.group}}</span>
+          </div>
+          <div class="flex-1 truncate font-mono text-xs" title="{{=row.key}}">{{=row.key}}</div>
+          <div class="w-16 text-right text-xs text-gray-500">{{=row.sizeStr}}</div>
+          <div class="w-14 text-center">
+            {{if row.level === 1}}
+            <span class="badge badge-xs badge-success">hot</span>
+            {{else}}
+            <span class="badge badge-xs badge-ghost">cold</span>
+            {{/if}}
+          </div>
+          <div class="w-40 text-center text-xs text-gray-500">{{=row.expireStr}}</div>
+          <div class="w-16 text-center">
+            <button
+              class="btn btn-xs btn-error btn-outline"
+              @click="deleteEntry({group: '{{=row.group}}', key: '{{=row.key}}'})"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+        {{/forOf}}
+        <div style="height:{{=bottomPad}}px"></div>
+      </div>
+    </div>
+    {{/if}}
+  </div>
+</div>

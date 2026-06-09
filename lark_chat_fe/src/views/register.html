@@ -1,0 +1,59 @@
+<div
+  class="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+>
+  <div class="bg-white rounded-2xl shadow-lg w-full max-w-md p-8 border border-green-100">
+    <h2 class="text-2xl font-semibold text-center mb-8 text-green-800">Register</h2>
+    <fieldset class="fieldset space-y-4">
+      <label class="label text-green-700 text-sm">Nickname</label>
+      <input
+        type="text"
+        class="input input-bordered w-full focus:border-green-400"
+        placeholder="3-10 characters"
+        value="{{=nickname}}"
+        @input="onNickInput()"
+      />
+
+      <label class="label text-green-700 text-sm">Phone</label>
+      <input
+        type="text"
+        class="input input-bordered w-full focus:border-green-400"
+        placeholder="Enter your phone number"
+        value="{{=telephone}}"
+        @input="onTelInput()"
+      />
+
+      <label class="label text-green-700 text-sm">Password</label>
+      <input
+        type="password"
+        class="input input-bordered w-full focus:border-green-400"
+        placeholder="Enter your password"
+        value="{{=password}}"
+        @input="onPwdInput()"
+      />
+
+      <label class="label text-green-700 text-sm">Confirm Password</label>
+      <input
+        type="password"
+        class="input input-bordered w-full focus:border-green-400"
+        placeholder="Re-enter your password"
+        value="{{=confirmPassword}}"
+        @input="onConfirmPwdInput()"
+      />
+    </fieldset>
+
+    <button
+      class="btn bg-green-600 hover:bg-green-700 text-white border-none w-full mt-8"
+      @click="handleRegister()"
+    >
+      Register
+    </button>
+
+    <div class="flex justify-end mt-5">
+      <a
+        class="text-sm text-green-600 hover:text-green-800 cursor-pointer hover:underline"
+        @click="goLogin()"
+        >Sign In</a
+      >
+    </div>
+  </div>
+</div>

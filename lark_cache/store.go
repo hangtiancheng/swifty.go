@@ -15,6 +15,7 @@ type Store interface {
 	Delete(key string) bool
 	Clear()
 	Len() int
+	Walk(fn func(Entry) bool)
 	Close()
 }
 

@@ -21,12 +21,13 @@ type Cache struct {
 
 // CacheOptions configures the underlying cache store.
 type CacheOptions struct {
-	MaxBytes     int64
-	BucketCount  uint16
-	CapPerBucket uint16
-	Level2Cap    uint16
-	CleanupTime  time.Duration
-	OnEvicted    func(key string, value Value)
+	MaxBytes        int64
+	BucketCount     uint16
+	CapPerBucket    uint16
+	Level2Cap       uint16
+	CleanupTime     time.Duration
+	OnEvicted     func(key string, value Value)
+	DashboardAddr string
 }
 
 // DefaultCacheOptions returns the default cache settings.
@@ -182,6 +183,28 @@ func (c *Cache) Close() {
 	}
 	atomic.StoreInt32(&c.initialized, 0)
 	log.Printf("Cache closed, hits: %d, misses: %d", atomic.LoadInt64(&c.hits), atomic.LoadInt64(&c.misses))
+}
+
+// DashboardEnabled reports whether the dashboard is enabled for this cache.
+func (c *Cache) DashboardEnabled() bool {
+	return c.opts.DashboardAddr != ""
+}
+
+// Entries returns all live cache entries.
+func (c *Cache) Entries() []Entry {
+	if atomic.LoadInt32(&c.closed) == 1 || atomic.LoadInt32(&c.initialized) == 0 {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	var entries []Entry
+	c.store.Walk(func(e Entry) bool {
+		entries = append(entries, e)
+		return true
+	})
+	return entries
 }
 
 // Stats returns a cache statistics snapshot.

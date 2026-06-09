@@ -9,6 +9,13 @@ import (
 
 const maxExpireAt = math.MaxInt64
 
+type Entry struct {
+	Key      string
+	Size     int
+	ExpireAt int64
+	Level    int
+}
+
 type lruStore struct {
 	locks       []sync.Mutex
 	caches      [][2]*cache
@@ -165,6 +172,28 @@ func (s *lruStore) Len() int {
 	}
 
 	return count
+}
+
+func (s *lruStore) Walk(fn func(Entry) bool) {
+	for i := range s.caches {
+		s.locks[i].Lock()
+
+		seen := make(map[string]struct{})
+
+		s.caches[i][1].walk(func(key string, value Value, expireAt int64) bool {
+			seen[key] = struct{}{}
+			return fn(Entry{Key: key, Size: value.Len(), ExpireAt: expireAt, Level: 1})
+		})
+
+		s.caches[i][0].walk(func(key string, value Value, expireAt int64) bool {
+			if _, ok := seen[key]; ok {
+				return true
+			}
+			return fn(Entry{Key: key, Size: value.Len(), ExpireAt: expireAt, Level: 0})
+		})
+
+		s.locks[i].Unlock()
+	}
 }
 
 func (s *lruStore) Close() {

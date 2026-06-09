@@ -1,0 +1,388 @@
+<div
+  class="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+>
+  <div
+    class="bg-white rounded-2xl shadow-lg w-[1000px] h-[600px] flex overflow-hidden border border-green-100"
+  >
+    <div v-lark="components/nav-bar"></div>
+    <div class="w-[220px] border-r border-green-100">
+      <div v-lark="components/session-sidebar"></div>
+    </div>
+    <div class="flex-1 flex flex-col">
+      <div
+        class="h-14 border-b border-green-100 flex items-center px-4 justify-between bg-green-50/30"
+      >
+        <div class="flex items-center gap-3">
+          {{if contactAvatar}}
+          <div class="avatar">
+            <div class="w-10 rounded-full"><img src="{{=contactAvatar}}" /></div>
+          </div>
+          {{/if}}
+          <h2 class="text-base font-semibold text-green-800">{{=contactName}}</h2>
+        </div>
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-sm btn-square text-green-600">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="w-5 h-5"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <circle cx="12" cy="5" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="12" cy="19" r="2" />
+            </svg>
+          </div>
+          <ul
+            tabindex="0"
+            class="dropdown-content menu bg-white rounded-lg w-44 p-2 shadow-lg border border-green-100 z-10"
+          >
+            {{if isUserContact}}
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="showUserInfoModal()"
+                >User Info</a
+              >
+            </li>
+            {{/if}} {{if isGroupContact}}
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="showGroupInfoModal()"
+                >Group Info</a
+              >
+            </li>
+            {{/if}} {{if isGroupContact && isGroupOwner}}
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="showEditGroupModal()"
+                >Edit Group</a
+              >
+            </li>
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="showRemoveMembersModal()"
+                >Remove Members</a
+              >
+            </li>
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="showJoinRequestsModal()"
+                >Join Requests</a
+              >
+            </li>
+            {{/if}}
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="deleteSession()"
+                >Delete Session</a
+              >
+            </li>
+            {{if isUserContact}}
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="deleteContact()"
+                >Remove Contact</a
+              >
+            </li>
+            <li>
+              <a class="text-sm text-red-500 hover:bg-red-50" @click="blackContact()"
+                >Block Contact</a
+              >
+            </li>
+            {{/if}} {{if isGroupContact && isGroupOwner}}
+            <li>
+              <a class="text-sm text-red-500 hover:bg-red-50" @click="dismissGroup()"
+                >Disband Group</a
+              >
+            </li>
+            {{/if}} {{if isGroupContact && !isGroupOwner}}
+            <li>
+              <a class="text-sm text-gray-700 hover:bg-green-50" @click="leaveGroup()"
+                >Leave Group</a
+              >
+            </li>
+            {{/if}}
+          </ul>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 bg-green-50/20" id="chat-messages">
+        <div v-lark="components/message-bubble"></div>
+      </div>
+
+      <div
+        class="h-8 bg-green-100/40 flex items-center px-2 gap-1 border-t border-green-100 justify-between"
+      >
+        <div class="flex items-center gap-1">
+          <label
+            class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50 cursor-pointer"
+          >
+            <input type="file" class="hidden" @change="onFileSelect()" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+              />
+            </svg>
+          </label>
+        </div>
+        <div class="tooltip tooltip-left" data-tip="Video Call">
+          <button
+            class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50"
+            @click="openVideoCall()"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polygon points="23 7 16 12 23 17 23 7" />
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div v-lark="components/video-call"></div>
+
+      <div class="h-[180px] border-t border-green-100 flex">
+        <textarea
+          class="flex-1 resize-none p-3 outline-none text-sm bg-white placeholder-green-300"
+          placeholder="Type a message..."
+          maxlength="500"
+          @input="onMsgInput()"
+        >
+{{=chatMessage}}</textarea
+        >
+        <div class="w-20 flex flex-col-reverse">
+          <button
+            class="btn bg-green-600 hover:bg-green-700 text-white border-none rounded-none h-10 text-sm"
+            @click="sendMessage()"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Info Modal -->
+    <dialog id="user-info-modal" class="modal">
+      <div class="modal-box border border-green-100 w-96">
+        <h3 class="text-base font-semibold text-green-800 mb-4">User Profile</h3>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">ID</span><span class="text-gray-700">{{=contactId}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Name</span
+            ><span class="text-gray-700">{{=contactName}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Gender</span
+            ><span class="text-gray-700">{{=contactGenderText}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Phone</span
+            ><span class="text-gray-700">{{=contactPhone}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Email</span
+            ><span class="text-gray-700">{{=contactEmail}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Birthday</span
+            ><span class="text-gray-700">{{=contactBirthday}}</span>
+          </div>
+          <div class="py-1">
+            <span class="text-gray-500">Signature</span>
+            <p class="text-gray-700 mt-1">{{=contactSignature}}</p>
+          </div>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm btn-ghost" @click="closeUserInfoModal()">Close</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- Group Info Modal -->
+    <dialog id="group-info-modal" class="modal">
+      <div class="modal-box border border-green-100 w-96">
+        <h3 class="text-base font-semibold text-green-800 mb-4">Group Info</h3>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">ID</span><span class="text-gray-700">{{=contactId}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Name</span
+            ><span class="text-gray-700">{{=contactName}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Members</span
+            ><span class="text-gray-700">{{=groupMemberCnt}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Owner</span
+            ><span class="text-gray-700">{{=groupOwnerId}}</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-green-50">
+            <span class="text-gray-500">Join Mode</span
+            ><span class="text-gray-700">{{=groupAddModeText}}</span>
+          </div>
+          <div class="py-1">
+            <span class="text-gray-500">Notice</span>
+            <p class="text-gray-700 mt-1">{{=groupNotice}}</p>
+          </div>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm btn-ghost" @click="closeGroupInfoModal()">Close</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- Edit Group Modal -->
+    <dialog id="edit-group-modal" class="modal">
+      <div class="modal-box border border-green-100 w-96">
+        <h3 class="text-base font-semibold text-green-800 mb-4">Edit Group</h3>
+        <fieldset class="fieldset space-y-3">
+          <label class="label text-green-700 text-sm">Group Name</label>
+          <input
+            type="text"
+            class="input input-bordered input-sm w-full"
+            placeholder="3-10 characters"
+            @input="onEditGroupName()"
+          />
+          <label class="label text-green-700 text-sm">Notice</label>
+          <textarea
+            class="textarea textarea-bordered textarea-sm w-full"
+            rows="3"
+            placeholder="Optional"
+            maxlength="500"
+            @input="onEditGroupNotice()"
+          ></textarea>
+          <label class="label text-green-700 text-sm">Join Mode</label>
+          <div class="flex gap-4">
+            <label class="label cursor-pointer gap-2"
+              ><input
+                type="radio"
+                name="addMode"
+                class="radio radio-sm radio-success"
+                value="0"
+                @change="onEditGroupAddMode()"
+              /><span class="text-sm">Direct Join</span></label
+            >
+            <label class="label cursor-pointer gap-2"
+              ><input
+                type="radio"
+                name="addMode"
+                class="radio radio-sm radio-success"
+                value="1"
+                @change="onEditGroupAddMode()"
+              /><span class="text-sm">Owner Approval</span></label
+            >
+          </div>
+          <label class="label text-green-700 text-sm">Avatar</label>
+          <input
+            type="file"
+            class="file-input file-input-bordered file-input-sm w-full"
+            accept="image/*"
+            @change="onGroupAvatarSelect()"
+          />
+        </fieldset>
+        <div class="modal-action">
+          <button
+            class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+            @click="saveGroupInfo()"
+          >
+            Save
+          </button>
+          <button class="btn btn-sm btn-ghost" @click="closeEditGroupModal()">Cancel</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- Remove Members Modal -->
+    <dialog id="remove-members-modal" class="modal">
+      <div class="modal-box border border-green-100 w-96">
+        <h3 class="text-base font-semibold text-green-800 mb-4">Remove Group Members</h3>
+        {{if memberList.length === 0}}
+        <p class="text-sm text-gray-400 text-center py-4">No members found</p>
+        {{/if}}
+        <div class="space-y-1 max-h-60 overflow-y-auto">
+          {{forOf memberList as m idx}}
+          <label
+            class="flex items-center justify-between py-2 px-2 border-b border-green-50 hover:bg-green-50/50 cursor-pointer"
+          >
+            <div class="flex items-center gap-2">
+              <div class="avatar">
+                <div class="w-8 rounded-full"><img src="{{=m.avatar}}" /></div>
+              </div>
+              <span class="text-sm text-gray-700">{{=m.nickname}}</span>
+            </div>
+            <input
+              type="checkbox"
+              class="checkbox checkbox-sm checkbox-success"
+              value="{{=m.user_id}}"
+              @change="toggleMember({id: '{{=m.user_id}}'})"
+            />
+          </label>
+          {{/forOf}}
+        </div>
+        <div class="modal-action">
+          <button
+            class="btn btn-sm bg-red-500 hover:bg-red-600 text-white border-none"
+            @click="removeSelectedMembers()"
+          >
+            Remove Selected
+          </button>
+          <button class="btn btn-sm btn-ghost" @click="closeRemoveMembersModal()">Cancel</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- Join Requests Modal -->
+    <dialog id="join-requests-modal" class="modal">
+      <div class="modal-box border border-green-100 w-96">
+        <h3 class="text-base font-semibold text-green-800 mb-4">Group Join Requests</h3>
+        {{if joinRequestList.length === 0}}
+        <p class="text-sm text-gray-400 text-center py-4">No pending requests</p>
+        {{/if}}
+        <div class="space-y-2 max-h-60 overflow-y-auto">
+          {{forOf joinRequestList as req idx}}
+          <div class="flex items-center justify-between py-2 border-b border-green-50">
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-gray-700">{{=req.contact_name}}</span>
+              {{if req.message}}
+              <span class="text-xs text-gray-400">({{=req.message}})</span>
+              {{/if}}
+            </div>
+            <div class="flex gap-1">
+              <button
+                class="btn btn-xs bg-green-600 hover:bg-green-700 text-white border-none"
+                @click="approveJoinRequest({id: '{{=req.apply_id}}'})"
+              >
+                Approve
+              </button>
+              <button
+                class="btn btn-xs btn-ghost text-gray-500"
+                @click="rejectJoinRequest({id: '{{=req.apply_id}}'})"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+          {{/forOf}}
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm btn-ghost" @click="closeJoinRequestsModal()">Close</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+  </div>
+</div>

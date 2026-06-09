@@ -112,6 +112,11 @@ func NewGroup(name string, cacheBytes int64, getter Getter, opts ...GroupOption)
 
 	groups[name] = g
 	log.Printf("Created cache group [%s] with cacheBytes=%d, expiration=%v", name, cacheBytes, g.expiration)
+
+	if addr := g.mainCache.opts.DashboardAddr; addr != "" {
+		StartDashboard(addr)
+	}
+
 	return g
 }
 
@@ -344,6 +349,31 @@ func (g *Group) Stats() map[string]interface{} {
 	}
 
 	return stats
+}
+
+// DashboardEnabled reports whether the dashboard is enabled for this group.
+func (g *Group) DashboardEnabled() bool {
+	return g.mainCache != nil && g.mainCache.DashboardEnabled()
+}
+
+// Entries returns all live entries in the group's local cache.
+func (g *Group) Entries() []Entry {
+	if atomic.LoadInt32(&g.closed) == 1 || g.mainCache == nil {
+		return nil
+	}
+	return g.mainCache.Entries()
+}
+
+// GetAllGroups returns a snapshot of all registered groups.
+func GetAllGroups() map[string]*Group {
+	groupsMu.RLock()
+	defer groupsMu.RUnlock()
+
+	result := make(map[string]*Group, len(groups))
+	for name, g := range groups {
+		result[name] = g
+	}
+	return result
 }
 
 // ListGroups returns all registered group names.

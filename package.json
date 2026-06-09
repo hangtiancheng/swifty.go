@@ -25,5 +25,10 @@
     "rm:ds_store": "node scripts/rm_ds_store.js",
     "rename": "node scripts/rename.js",
     "add:license": "node scripts/add_licenses.js"
+  },
+  "devDependencies": {
+    "@lark.js/mvc": "^0.0.5",
+    "@tailwindcss/vite": "^4.3.0",
+    "tailwindcss": "^4.3.0"
   }
 }

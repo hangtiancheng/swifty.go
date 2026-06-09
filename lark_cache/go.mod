@@ -3,6 +3,7 @@ module github.com/hangtiancheng/lark-go/lark_cache
 go 1.26.0
 
 require (
+	github.com/hangtiancheng/lark-go/lark_http v0.0.0
 	google.golang.org/grpc v1.71.1
 	google.golang.org/protobuf v1.36.11
 )

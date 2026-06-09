@@ -1,0 +1,95 @@
+<div
+  class="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+>
+  <div
+    class="bg-white rounded-2xl shadow-lg w-[1000px] h-[600px] flex overflow-hidden border border-green-100"
+  >
+    <div v-lark="components/nav-bar"></div>
+    <div class="w-[220px] border-r border-green-100">
+      <div v-lark="components/contact-sidebar"></div>
+    </div>
+    <div class="flex-1 flex flex-col items-center justify-center p-8 relative">
+      <h2 class="text-xl font-semibold mb-6 text-green-800">My Profile</h2>
+      <div class="space-y-2 text-sm text-gray-600">
+        <p>User ID: {{=userInfo.uuid}}</p>
+        <p>Nickname: {{=userInfo.nickname}}</p>
+        <p>Phone: {{=userInfo.telephone}}</p>
+        <p>Email: {{=userInfo.email}}</p>
+        <p>Gender: {{if userInfo.gender === 0}}Male{{else}}Female{{/if}}</p>
+        <p>Birthday: {{=userInfo.birthday}}</p>
+        <p>Signature: {{=userInfo.signature}}</p>
+        <p>Joined: {{=userInfo.created_at}}</p>
+        <div class="flex items-center gap-2">
+          <span>Avatar:</span>
+          {{if userInfo.avatar}}
+          <div class="avatar">
+            <div class="w-10 rounded-full ring ring-green-200 ring-offset-1">
+              <img src="{{=userInfo.avatar}}" />
+            </div>
+          </div>
+          {{/if}}
+        </div>
+      </div>
+      <button
+        class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none absolute bottom-6 right-6"
+        @click="showEditModal()"
+      >
+        Edit
+      </button>
+
+      <dialog id="edit-modal" class="modal">
+        <div class="modal-box border border-green-100">
+          <h3 class="text-lg font-semibold mb-4 text-green-800">Edit Profile</h3>
+          <fieldset class="fieldset space-y-3">
+            <label class="label text-green-700 text-sm">Nickname</label>
+            <input
+              type="text"
+              class="input input-bordered w-full input-sm focus:border-green-400"
+              placeholder="Optional, 3-10 characters"
+              @input="onEditNick()"
+            />
+            <label class="label text-green-700 text-sm">Email</label>
+            <input
+              type="text"
+              class="input input-bordered w-full input-sm focus:border-green-400"
+              placeholder="Optional"
+              @input="onEditEmail()"
+            />
+            <label class="label text-green-700 text-sm">Birthday</label>
+            <input
+              type="text"
+              class="input input-bordered w-full input-sm focus:border-green-400"
+              placeholder="Optional, e.g. 2024.1.1"
+              @input="onEditBirthday()"
+            />
+            <label class="label text-green-700 text-sm">Signature</label>
+            <input
+              type="text"
+              class="input input-bordered w-full input-sm focus:border-green-400"
+              placeholder="Optional"
+              @input="onEditSig()"
+            />
+            <label class="label text-green-700 text-sm">Avatar</label>
+            <input
+              type="file"
+              class="file-input file-input-bordered file-input-sm w-full"
+              @change="onAvatarSelect()"
+            />
+          </fieldset>
+          <div class="modal-action">
+            <button
+              class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+              @click="saveProfile()"
+            >
+              Save
+            </button>
+            <button class="btn btn-sm btn-ghost text-gray-500" @click="closeEditModal()">
+              Cancel
+            </button>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+      </dialog>
+    </div>
+  </div>
+</div>

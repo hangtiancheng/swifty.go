@@ -1,0 +1,197 @@
+<div class="flex flex-col h-full w-full">
+  <div class="p-2 flex gap-1">
+    <input
+      type="text"
+      class="input input-bordered input-sm flex-1 focus:border-green-400"
+      placeholder="Search contacts"
+    />
+    <div class="dropdown dropdown-end">
+      <div
+        tabindex="0"
+        role="button"
+        class="btn btn-sm btn-square bg-green-100 hover:bg-green-200 text-green-700 border-green-200"
+      >
+        +
+      </div>
+      <ul
+        tabindex="0"
+        class="dropdown-content menu bg-white rounded-lg w-40 p-2 shadow-lg border border-green-100 z-10"
+      >
+        <li>
+          <a class="text-sm text-gray-700 hover:bg-green-50" @click="showApplyModal()"
+            >Add Contact / Group</a
+          >
+        </li>
+        <li>
+          <a class="text-sm text-gray-700 hover:bg-green-50" @click="showCreateGroupModal()"
+            >Create Group</a
+          >
+        </li>
+        <li>
+          <a class="text-sm text-gray-700 hover:bg-green-50" @click="showNewContactModal()"
+            >Friend Requests</a
+          >
+        </li>
+      </ul>
+    </div>
+  </div>
+  <div class="overflow-y-auto flex-1">
+    <div class="collapse collapse-arrow bg-green-50/50 rounded-none border-b border-green-100">
+      <input type="checkbox" @change="toggleFriends()" />
+      <div class="collapse-title text-sm font-medium text-green-800">Friends</div>
+      <div class="collapse-content p-0">
+        {{forOf friendList as user idx}}
+        <div
+          class="flex items-center justify-between px-3 py-2 hover:bg-green-50 cursor-pointer transition-colors group"
+        >
+          <span
+            class="text-sm truncate text-gray-700 flex-1"
+            @click="chatUser({id: '{{=user.user_id}}'})"
+            >{{=user.nickname}}</span
+          >
+          <button
+            class="btn btn-ghost btn-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
+            @click="unblockUser({id: '{{=user.user_id}}'})"
+          >
+            Unblock
+          </button>
+        </div>
+        {{/forOf}}
+      </div>
+    </div>
+    <div class="collapse collapse-arrow bg-green-50/50 rounded-none border-b border-green-100">
+      <input type="checkbox" @change="toggleMyGroups()" />
+      <div class="collapse-title text-sm font-medium text-green-800">My Groups</div>
+      <div class="collapse-content p-0">
+        {{forOf myGroupList as group idx}}
+        <div
+          class="flex items-center gap-2 px-3 py-2 hover:bg-green-50 cursor-pointer transition-colors"
+          @click="chatGroup({id: '{{=group.group_id}}'})"
+        >
+          <span class="text-sm truncate text-gray-700">{{=group.name}}</span>
+        </div>
+        {{/forOf}}
+      </div>
+    </div>
+    <div class="collapse collapse-arrow bg-green-50/50 rounded-none border-b border-green-100">
+      <input type="checkbox" @change="toggleJoinedGroups()" />
+      <div class="collapse-title text-sm font-medium text-green-800">Joined Groups</div>
+      <div class="collapse-content p-0">
+        {{forOf joinedGroupList as group idx}}
+        <div
+          class="flex items-center gap-2 px-3 py-2 hover:bg-green-50 cursor-pointer transition-colors"
+          @click="chatGroup({id: '{{=group.group_id}}'})"
+        >
+          <span class="text-sm truncate text-gray-700">{{=group.name}}</span>
+        </div>
+        {{/forOf}}
+      </div>
+    </div>
+  </div>
+
+  <!-- Apply Contact / Group Modal -->
+  <dialog id="apply-modal" class="modal">
+    <div class="modal-box border border-green-100 w-80">
+      <h3 class="text-base font-semibold text-green-800 mb-4">Add Contact / Group</h3>
+      <fieldset class="fieldset space-y-3">
+        <label class="label text-green-700 text-sm">User / Group ID</label>
+        <input
+          type="text"
+          class="input input-bordered input-sm w-full"
+          placeholder="Enter ID"
+          @input="onApplyIdInput()"
+        />
+        <label class="label text-green-700 text-sm">Message</label>
+        <textarea
+          class="textarea textarea-bordered textarea-sm w-full"
+          rows="2"
+          placeholder="Optional"
+          maxlength="100"
+          @input="onApplyMsgInput()"
+        ></textarea>
+      </fieldset>
+      <div class="modal-action">
+        <button
+          class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+          @click="submitApply()"
+        >
+          Submit
+        </button>
+        <button class="btn btn-sm btn-ghost" @click="closeApplyModal()">Cancel</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- Create Group Modal -->
+  <dialog id="create-group-modal" class="modal">
+    <div class="modal-box border border-green-100 w-80">
+      <h3 class="text-base font-semibold text-green-800 mb-4">Create Group</h3>
+      <fieldset class="fieldset space-y-3">
+        <label class="label text-green-700 text-sm">Group Name</label>
+        <input
+          type="text"
+          class="input input-bordered input-sm w-full"
+          placeholder="Required"
+          @input="onGroupNameInput()"
+        />
+      </fieldset>
+      <div class="modal-action">
+        <button
+          class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+          @click="submitCreateGroup()"
+        >
+          Create
+        </button>
+        <button class="btn btn-sm btn-ghost" @click="closeCreateGroupModal()">Cancel</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- Friend Requests Modal -->
+  <dialog id="friend-requests-modal" class="modal">
+    <div class="modal-box border border-green-100 w-96">
+      <h3 class="text-base font-semibold text-green-800 mb-4">Friend Requests</h3>
+      {{if requestList.length === 0}}
+      <p class="text-sm text-gray-400 text-center py-4">No pending requests</p>
+      {{/if}}
+      <div class="space-y-2 max-h-60 overflow-y-auto">
+        {{forOf requestList as req idx}}
+        <div class="flex items-center justify-between py-2 border-b border-green-50">
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-700">{{=req.contact_name}}</span>
+            {{if req.message}}
+            <span class="text-xs text-gray-400">({{=req.message}})</span>
+            {{/if}}
+          </div>
+          <div class="flex gap-1">
+            <button
+              class="btn btn-xs bg-green-600 hover:bg-green-700 text-white border-none"
+              @click="approveRequest({id: '{{=req.apply_id}}'})"
+            >
+              Approve
+            </button>
+            <button
+              class="btn btn-xs btn-ghost text-gray-500"
+              @click="refuseRequest({id: '{{=req.apply_id}}'})"
+            >
+              Refuse
+            </button>
+            <button
+              class="btn btn-xs btn-ghost text-red-400"
+              @click="blockRequest({id: '{{=req.apply_id}}'})"
+            >
+              Block
+            </button>
+          </div>
+        </div>
+        {{/forOf}}
+      </div>
+      <div class="modal-action">
+        <button class="btn btn-sm btn-ghost" @click="closeRequestsModal()">Close</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+</div>

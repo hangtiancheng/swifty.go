@@ -2,6 +2,7 @@ package lark_http
 
 import (
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 )
 
@@ -77,4 +78,8 @@ func (ctx *Context) PostForm(key string) string {
 func (ctx *Context) BindJSON(out interface{}) error {
 	defer ctx.Request.Body.Close()
 	return json.NewDecoder(ctx.Request.Body).Decode(out)
+}
+
+func (ctx *Context) FormFile(key string) (multipart.File, *multipart.FileHeader, error) {
+	return ctx.Request.FormFile(key)
 }
