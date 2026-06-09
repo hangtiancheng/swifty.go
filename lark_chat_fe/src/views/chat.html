@@ -1,11 +1,11 @@
 <div
-  class="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+  class="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
 >
   <div
-    class="bg-white rounded-2xl shadow-lg w-[1000px] h-[600px] flex overflow-hidden border border-green-100"
+    class="bg-white rounded-2xl shadow-lg w-250 h-150 flex overflow-hidden border border-green-100"
   >
     <div v-lark="components/nav-bar"></div>
-    <div class="w-[220px] border-r border-green-100">
+    <div class="w-55 border-r border-green-100">
       <div v-lark="components/session-sidebar"></div>
     </div>
     <div class="flex-1 flex flex-col">
@@ -22,6 +22,7 @@
         </div>
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="btn btn-ghost btn-sm btn-square text-green-600">
+            <!-- TODO Move to ./svg -->
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="w-5 h-5"
@@ -111,6 +112,7 @@
             class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50 cursor-pointer"
           >
             <input type="file" class="hidden" @change="onFileSelect()" />
+            <!-- TODO Move to ./svg -->
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="w-4 h-4"
@@ -130,6 +132,7 @@
             class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50"
             @click="openVideoCall()"
           >
+            <!-- TODO Move to ./svg -->
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="w-4 h-4"
@@ -147,7 +150,7 @@
 
       <div v-lark="components/video-call"></div>
 
-      <div class="h-[180px] border-t border-green-100 flex">
+      <div class="h-45 border-t border-green-100 flex">
         <textarea
           class="flex-1 resize-none p-3 outline-none text-sm bg-white placeholder-green-300"
           placeholder="Type a message..."

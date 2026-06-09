@@ -12,9 +12,7 @@ export default defineView({
   srv: null as InstanceType<typeof AppService> | null,
 
   init() {
-    this.updater
-      .set({ nickname: "", telephone: "", password: "", confirmPassword: "" })
-      .digest();
+    this.updater.set({ nickname: "", telephone: "", password: "", confirmPassword: "" }).digest();
     this.srv = new AppService();
     this.capture("srv", this.srv);
   },

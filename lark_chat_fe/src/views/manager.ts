@@ -12,9 +12,7 @@ export default defineView({
   selectedGroupIds: [] as string[],
 
   init() {
-    this.updater
-      .set({ currentPanel: "none", userList: [], groupList: [] })
-      .digest();
+    this.updater.set({ currentPanel: "none", userList: [], groupList: [] }).digest();
     this.srv = new AppService();
     this.capture("srv", this.srv);
     this.selectedUserIds = [];
@@ -27,11 +25,7 @@ export default defineView({
     this.selectedGroupIds = [];
     this.updater.set({ currentPanel: panel });
 
-    if (
-      panel === "disable-user" ||
-      panel === "delete-user" ||
-      panel === "set-admin"
-    ) {
+    if (panel === "disable-user" || panel === "delete-user" || panel === "set-admin") {
       this.loadUserList();
     } else if (panel === "disable-group" || panel === "delete-group") {
       this.loadGroupList();
@@ -63,10 +57,7 @@ export default defineView({
     const uuid = (e.params as Record<string, string>).uuid;
     const checked = (e.eventTarget as HTMLInputElement).checked;
     if (checked) this.selectedUserIds.push(uuid);
-    else
-      this.selectedUserIds = this.selectedUserIds.filter(
-        (id: string) => id !== uuid,
-      );
+    else this.selectedUserIds = this.selectedUserIds.filter((id: string) => id !== uuid);
   },
 
   "toggleAllUsers<change>"(e: Record<string, unknown>) {
@@ -79,10 +70,7 @@ export default defineView({
     const uuid = (e.params as Record<string, string>).uuid;
     const checked = (e.eventTarget as HTMLInputElement).checked;
     if (checked) this.selectedGroupIds.push(uuid);
-    else
-      this.selectedGroupIds = this.selectedGroupIds.filter(
-        (id: string) => id !== uuid,
-      );
+    else this.selectedGroupIds = this.selectedGroupIds.filter((id: string) => id !== uuid);
   },
 
   "toggleAllGroups<change>"(e: Record<string, unknown>) {
@@ -96,13 +84,10 @@ export default defineView({
       showToast("No users selected", "warning");
       return;
     }
-    this.srv!.save(
-      { name: "ableUsers", data: { uuid_list: this.selectedUserIds } },
-      () => {
-        showToast("Users enabled", "success");
-        this.loadUserList();
-      },
-    );
+    this.srv!.save({ name: "ableUsers", data: { uuid_list: this.selectedUserIds } }, () => {
+      showToast("Users enabled", "success");
+      this.loadUserList();
+    });
   },
 
   "disableSelectedUsers<click>"() {
@@ -110,13 +95,10 @@ export default defineView({
       showToast("No users selected", "warning");
       return;
     }
-    this.srv!.save(
-      { name: "disableUsers", data: { uuid_list: this.selectedUserIds } },
-      () => {
-        showToast("Users disabled", "success");
-        this.loadUserList();
-      },
-    );
+    this.srv!.save({ name: "disableUsers", data: { uuid_list: this.selectedUserIds } }, () => {
+      showToast("Users disabled", "success");
+      this.loadUserList();
+    });
   },
 
   "deleteSelectedUsers<click>"() {
@@ -124,13 +106,10 @@ export default defineView({
       showToast("No users selected", "warning");
       return;
     }
-    this.srv!.save(
-      { name: "deleteUsers", data: { uuid_list: this.selectedUserIds } },
-      () => {
-        showToast("Users deleted", "success");
-        this.loadUserList();
-      },
-    );
+    this.srv!.save({ name: "deleteUsers", data: { uuid_list: this.selectedUserIds } }, () => {
+      showToast("Users deleted", "success");
+      this.loadUserList();
+    });
   },
 
   "setAdminSelected<click>"(e: Record<string, unknown>) {
@@ -190,13 +169,10 @@ export default defineView({
       showToast("No groups selected", "warning");
       return;
     }
-    this.srv!.save(
-      { name: "deleteGroups", data: { uuid_list: this.selectedGroupIds } },
-      () => {
-        showToast("Groups deleted", "success");
-        this.loadGroupList();
-      },
-    );
+    this.srv!.save({ name: "deleteGroups", data: { uuid_list: this.selectedGroupIds } }, () => {
+      showToast("Groups deleted", "success");
+      this.loadGroupList();
+    });
   },
 
   "backToChat<click>"() {

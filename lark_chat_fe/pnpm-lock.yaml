@@ -4,13 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@lark.js/mvc@0.0.5': 88b1995f130e4722592df10206df0789d8bb677e204da729053419890381219a
+
 importers:
 
   .:
     dependencies:
       '@lark.js/mvc':
         specifier: ^0.0.5
-        version: 0.0.5(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0))
+        version: 0.0.5(patch_hash=88b1995f130e4722592df10206df0789d8bb677e204da729053419890381219a)(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0))
       daisyui:
         specifier: ^5.5.23
         version: 5.5.23
@@ -1109,7 +1112,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lark.js/mvc@0.0.5(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0))':
+  '@lark.js/mvc@0.0.5(patch_hash=88b1995f130e4722592df10206df0789d8bb677e204da729053419890381219a)(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0))':
     dependencies:
       '@babel/parser': 7.29.7
       '@babel/types': 7.29.7

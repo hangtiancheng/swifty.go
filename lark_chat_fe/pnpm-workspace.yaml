@@ -1,0 +1,2 @@
+patchedDependencies:
+  "@lark.js/mvc@0.0.5": patches/@lark.js__mvc@0.0.5.patch

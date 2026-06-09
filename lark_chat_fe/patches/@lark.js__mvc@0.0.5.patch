@@ -1,0 +1,12 @@
+diff --git a/dist/index.js b/dist/index.js
+index 495c7fad3033191efbab69c17ff3dce4e4792d33..ad71fe380e051e4f7b5e38908ffef4d27c726038 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -3515,6 +3515,7 @@ function serviceSend(service, attrs, done, flag, save) {
+     const payloadInfo = service.type.get(attrObj, save);
+     const payloadEntity = payloadInfo.entity;
+     const cacheKey = payloadEntity.cacheInfo?.key || "";
++    doneArr[requestCount + 1] = payloadEntity;
+     const complete = remoteComplete.bind(null, requestCount++);
+     if (cacheKey && pendingCacheKeys[cacheKey]) {
+       pendingCacheKeys[cacheKey].push(complete);

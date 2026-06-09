@@ -50,9 +50,7 @@ export default defineView({
     this.srv!.all(
       { name: "loadMyJoinedGroup", data: { owner_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
-        this.updater
-          .set({ joinedGroupList: payload.get("data") || [] })
-          .digest();
+        this.updater.set({ joinedGroupList: payload.get("data") || [] }).digest();
       },
     );
   },
@@ -69,10 +67,7 @@ export default defineView({
         if (payload.get("code") === 200 && payload.get("data") === true) {
           Router.to("/chat", { id: contactId });
         } else {
-          showToast(
-            (payload.get("message") as string) || "Cannot open session",
-            "warning",
-          );
+          showToast((payload.get("message") as string) || "Cannot open session", "warning");
         }
       },
     );
@@ -90,10 +85,7 @@ export default defineView({
         if (payload.get("code") === 200 && payload.get("data") === true) {
           Router.to("/chat", { id: contactId });
         } else {
-          showToast(
-            (payload.get("message") as string) || "Cannot open session",
-            "warning",
-          );
+          showToast((payload.get("message") as string) || "Cannot open session", "warning");
         }
       },
     );
@@ -135,9 +127,7 @@ export default defineView({
               (_e2: unknown[], p2: { get: (k: string) => unknown }) => {
                 if (p2.get("code") === 200) {
                   showToast("Joined group", "success");
-                  (
-                    document.getElementById("apply-modal") as HTMLDialogElement
-                  )?.close();
+                  (document.getElementById("apply-modal") as HTMLDialogElement)?.close();
                 } else showToast(p2.get("message") as string, "error");
               },
             );
@@ -155,9 +145,7 @@ export default defineView({
               (_e2: unknown[], p2: { get: (k: string) => unknown }) => {
                 if (p2.get("code") === 200) {
                   showToast("Application sent", "success");
-                  (
-                    document.getElementById("apply-modal") as HTMLDialogElement
-                  )?.close();
+                  (document.getElementById("apply-modal") as HTMLDialogElement)?.close();
                 } else showToast(p2.get("message") as string, "error");
               },
             );
@@ -178,9 +166,7 @@ export default defineView({
         (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
           if (payload.get("code") === 200) {
             showToast("Application sent", "success");
-            (
-              document.getElementById("apply-modal") as HTMLDialogElement
-            )?.close();
+            (document.getElementById("apply-modal") as HTMLDialogElement)?.close();
           } else showToast(payload.get("message") as string, "error");
         },
       );
@@ -190,14 +176,10 @@ export default defineView({
   // -- Create Group --
   "showCreateGroupModal<click>"() {
     this.groupName = "";
-    (
-      document.getElementById("create-group-modal") as HTMLDialogElement
-    )?.showModal();
+    (document.getElementById("create-group-modal") as HTMLDialogElement)?.showModal();
   },
   "closeCreateGroupModal<click>"() {
-    (
-      document.getElementById("create-group-modal") as HTMLDialogElement
-    )?.close();
+    (document.getElementById("create-group-modal") as HTMLDialogElement)?.close();
   },
   "onGroupNameInput<input>"(e: Record<string, unknown>) {
     this.groupName = (e.eventTarget as HTMLInputElement).value;
@@ -216,9 +198,7 @@ export default defineView({
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
           showToast("Group created", "success");
-          (
-            document.getElementById("create-group-modal") as HTMLDialogElement
-          )?.close();
+          (document.getElementById("create-group-modal") as HTMLDialogElement)?.close();
         } else showToast(payload.get("message") as string, "error");
       },
     );
@@ -236,16 +216,12 @@ export default defineView({
           return;
         }
         this.updater.set({ requestList: list }).digest();
-        (
-          document.getElementById("friend-requests-modal") as HTMLDialogElement
-        )?.showModal();
+        (document.getElementById("friend-requests-modal") as HTMLDialogElement)?.showModal();
       },
     );
   },
   "closeRequestsModal<click>"() {
-    (
-      document.getElementById("friend-requests-modal") as HTMLDialogElement
-    )?.close();
+    (document.getElementById("friend-requests-modal") as HTMLDialogElement)?.close();
   },
   "approveRequest<click>"(e: Record<string, unknown>) {
     const applyId = (e.params as Record<string, string>).id;
@@ -304,19 +280,16 @@ export default defineView({
         if (payload.get("code") === 200) {
           showToast("Contact unblocked", "success");
         } else {
-          showToast(
-            (payload.get("message") as string) || "Failed to unblock",
-            "error",
-          );
+          showToast((payload.get("message") as string) || "Failed to unblock", "error");
         }
       },
     );
   },
 
   removeRequest(applyId: string) {
-    const list = (
-      this.updater.get("requestList") as Array<Record<string, string>>
-    ).filter((r) => r.apply_id !== applyId);
+    const list = (this.updater.get("requestList") as Array<Record<string, string>>).filter(
+      (r) => r.apply_id !== applyId,
+    );
     this.updater.set({ requestList: list }).digest();
   },
 });
