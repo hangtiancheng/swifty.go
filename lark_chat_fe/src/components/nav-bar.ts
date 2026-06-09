@@ -7,11 +7,11 @@ import useWsStore from "@/store/ws";
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
+  srv: null as InstanceType<typeof AppService> | null,
 
   init() {
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
 
     const auth = useAuthStore();
     this.updater
@@ -37,7 +37,7 @@ export default defineView({
 
   "logout<click>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save({ name: "wsLogout", data: { owner_id: uid } }, () => {
+    this.srv!.save({ name: "wsLogout", data: { owner_id: uid } }, () => {
       useWsStore().disconnect();
       useAuthStore().clearUserInfo();
       Router.to("/login");

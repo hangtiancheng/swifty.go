@@ -324,7 +324,7 @@ func (p *ClientPicker) Close() error
 ```
 
 `NewClientPicker` connects to etcd using `DefaultRegisterConfig.Endpoints`
-(`localhost:2379` by default), performs a one-shot `Get` of `/services/<svc>/`
+(`localhost:2379` by default), performs a one-shot `Get` of `/services/<srv>/`
 with a 3-second timeout to seed the peer list, and starts a background watcher
 on the same prefix. Put events spawn a new `Client`; delete events close and
 remove it. Self-addressed entries are filtered out.

@@ -269,7 +269,7 @@ const AppService = Service.extend(
       });
   },
   30, // cacheMax
-  5,  // cacheBuffer
+  5, // cacheBuffer
 );
 
 export default AppService;
@@ -292,14 +292,22 @@ AppService.add([
   { name: "wsLogout", url: BASE_URL + "/user/wsLogout" },
 
   // -- 联系人 --
-  { name: "getContactInfo", url: BASE_URL + "/contact/getContactInfo", cache: 15_000 },
+  {
+    name: "getContactInfo",
+    url: BASE_URL + "/contact/getContactInfo",
+    cache: 15_000,
+  },
   { name: "getUserList", url: BASE_URL + "/contact/getUserList" },
   { name: "applyContact", url: BASE_URL + "/contact/applyContact" },
   { name: "passContactApply", url: BASE_URL + "/contact/passContactApply" },
   { name: "refuseContactApply", url: BASE_URL + "/contact/refuseContactApply" },
   { name: "getNewContactList", url: BASE_URL + "/contact/getNewContactList" },
   { name: "getAddGroupList", url: BASE_URL + "/contact/getAddGroupList" },
-  { name: "deleteContact", url: BASE_URL + "/contact/deleteContact", cleanKeys: "getUserList" },
+  {
+    name: "deleteContact",
+    url: BASE_URL + "/contact/deleteContact",
+    cleanKeys: "getUserList",
+  },
   { name: "blackContact", url: BASE_URL + "/contact/blackContact" },
   { name: "blackApply", url: BASE_URL + "/contact/blackApply" },
   { name: "cancelBlackContact", url: BASE_URL + "/contact/cancelBlackContact" },
@@ -308,13 +316,26 @@ AppService.add([
   // -- 会话 --
   { name: "openSession", url: BASE_URL + "/session/openSession" },
   { name: "getUserSessionList", url: BASE_URL + "/session/getUserSessionList" },
-  { name: "getGroupSessionList", url: BASE_URL + "/session/getGroupSessionList" },
-  { name: "deleteSession", url: BASE_URL + "/session/deleteSession", cleanKeys: "getUserSessionList,getGroupSessionList" },
-  { name: "checkOpenSessionAllowed", url: BASE_URL + "/session/checkOpenSessionAllowed" },
+  {
+    name: "getGroupSessionList",
+    url: BASE_URL + "/session/getGroupSessionList",
+  },
+  {
+    name: "deleteSession",
+    url: BASE_URL + "/session/deleteSession",
+    cleanKeys: "getUserSessionList,getGroupSessionList",
+  },
+  {
+    name: "checkOpenSessionAllowed",
+    url: BASE_URL + "/session/checkOpenSessionAllowed",
+  },
 
   // -- 消息 --
   { name: "getMessageList", url: BASE_URL + "/message/getMessageList" },
-  { name: "getGroupMessageList", url: BASE_URL + "/message/getGroupMessageList" },
+  {
+    name: "getGroupMessageList",
+    url: BASE_URL + "/message/getGroupMessageList",
+  },
   { name: "uploadFile", url: BASE_URL + "/message/uploadFile" },
   { name: "uploadAvatar", url: BASE_URL + "/message/uploadAvatar" },
 
@@ -336,12 +357,12 @@ AppService.add([
 ```ts
 init() {
   const service = new AppService();
-  this.capture("svc", service, true);
-  this.svc = service;
+  this.capture("srv", service, true);
+  this.srv = service;
 },
 
 loadSessions() {
-  this.svc.all(
+  this.srv.all(
     { name: "getUserSessionList", data: { owner_id: this.userId } },
     (errors, payload) => {
       if (!errors[0]) {
@@ -356,7 +377,7 @@ loadSessions() {
 
 ```ts
 sendLogin(telephone: string, password: string) {
-  this.svc.save(
+  this.srv.save(
     { name: "login", data: { telephone, password } },
     (errors, payload) => {
       if (!errors[0] && payload.get("code") === 200) {
@@ -510,7 +531,7 @@ sendLogin(telephone: string, password: string) {
   if (!file) return;
   const formData = new FormData();
   formData.append("file", file);
-  this.svc.save(
+  this.srv.save(
     { name: "uploadFile", data: formData },
     (errors, payload) => {
       if (!errors[0]) {

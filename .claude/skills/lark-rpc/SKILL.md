@@ -569,7 +569,7 @@ for {
 
 ## Method signature cheat sheet
 
-`Register(name, svc)` reflects on every exported method of `svc`. Three shapes
+`Register(name, srv)` reflects on every exported method of `srv`. Three shapes
 are recognised; everything else is rejected at call time.
 
 | Shape                                             | Style     | Notes                                                           |

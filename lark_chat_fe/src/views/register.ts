@@ -9,12 +9,14 @@ import { showToast } from "@/utils/toast";
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
+  srv: null as InstanceType<typeof AppService> | null,
 
   init() {
-    this.updater.set({ nickname: "", telephone: "", password: "", confirmPassword: "" }).digest();
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
+    this.updater
+      .set({ nickname: "", telephone: "", password: "", confirmPassword: "" })
+      .digest();
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
   },
 
   "onNickInput<input>"(e: Record<string, unknown>) {
@@ -27,7 +29,9 @@ export default defineView({
     this.updater.set({ password: (e.eventTarget as HTMLInputElement).value });
   },
   "onConfirmPwdInput<input>"(e: Record<string, unknown>) {
-    this.updater.set({ confirmPassword: (e.eventTarget as HTMLInputElement).value });
+    this.updater.set({
+      confirmPassword: (e.eventTarget as HTMLInputElement).value,
+    });
   },
 
   "handleRegister<click>"() {
@@ -51,12 +55,12 @@ export default defineView({
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { confirmPassword: _, ...payload } = d;
-    this.svc!.save(
+    this.srv!.save(
       { name: "register", data: payload },
       (_errors: unknown[], rsp: { get: (k: string) => unknown }) => {
-        const code = rsp.get("code");
-        const data = rsp.get("data") as Record<string, unknown> | null;
-        const msg = rsp.get("message") as string;
+        const code = rsp?.get("code");
+        const data = rsp?.get("data") as Record<string, unknown> | null;
+        const msg = rsp?.get("message") as string;
         if (code === 200) {
           showToast(msg, "success");
           useAuthStore().setUserInfo(data as never);

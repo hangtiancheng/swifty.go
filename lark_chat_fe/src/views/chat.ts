@@ -19,14 +19,14 @@ function getFileSize(size: number): string {
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
+  srv: null as InstanceType<typeof AppService> | null,
   editGroupData: { name: "", notice: "", add_mode: -1, avatar: "" },
   groupAvatarFile: null as File | null,
   selectedMembers: [] as string[],
 
   init() {
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
 
     this.observeLocation(["id"], true);
 
@@ -90,7 +90,7 @@ export default defineView({
   },
 
   loadChat(contactId: string) {
-    this.svc!.all(
+    this.srv!.all(
       {
         name: "getContactInfo",
         data: { user_id: useAuthStore().userInfo.uuid, contact_id: contactId },
@@ -111,7 +111,11 @@ export default defineView({
             isUserContact: isUser,
             isGroupContact: !isUser,
             isGroupOwner: info.contact_owner_id === auth.userInfo.uuid,
-            contactGenderText: isUser ? (info.contact_gender === 0 ? "Male" : "Female") : "",
+            contactGenderText: isUser
+              ? info.contact_gender === 0
+                ? "Male"
+                : "Female"
+              : "",
             contactPhone: info.contact_phone || "",
             contactEmail: info.contact_email || "",
             contactBirthday: info.contact_birthday || "",
@@ -134,7 +138,7 @@ export default defineView({
 
   loadSession(contactId: string) {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
+    this.srv!.save(
       { name: "openSession", data: { send_id: uid, receive_id: contactId } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         const sessionId = payload.get("data") as string;
@@ -148,9 +152,11 @@ export default defineView({
     const uid = useAuthStore().userInfo.uuid;
     const isUser = contactId.startsWith("U");
     const endpointName = isUser ? "getMessageList" : "getGroupMessageList";
-    const reqData = isUser ? { send_id: uid, receive_id: contactId } : { group_id: contactId };
+    const reqData = isUser
+      ? { send_id: uid, receive_id: contactId }
+      : { group_id: contactId };
 
-    this.svc!.save(
+    this.srv!.save(
       { name: endpointName, data: reqData },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         const list = (payload.get("data") as Message[] | null) || [];
@@ -169,7 +175,10 @@ export default defineView({
     const chat = useChatStore();
 
     if (message.type === 3) {
-      const avData = JSON.parse(message.av_data || "{}") as Record<string, unknown>;
+      const avData = JSON.parse(message.av_data || "{}") as Record<
+        string,
+        unknown
+      >;
       const vcFrames = Frame.getAll();
       for (const [, f] of vcFrames) {
         if (f.invoke) {
@@ -181,8 +190,10 @@ export default defineView({
     }
 
     const isRelevant =
-      (message.receive_id.startsWith("G") && message.receive_id === chat.contactInfo?.contact_id) ||
-      (message.receive_id.startsWith("U") && message.receive_id === auth.userInfo.uuid) ||
+      (message.receive_id.startsWith("G") &&
+        message.receive_id === chat.contactInfo?.contact_id) ||
+      (message.receive_id.startsWith("U") &&
+        message.receive_id === auth.userInfo.uuid) ||
       message.send_id === auth.userInfo.uuid;
 
     if (isRelevant) {
@@ -208,7 +219,9 @@ export default defineView({
   },
 
   "onMsgInput<input>"(e: Record<string, unknown>) {
-    this.updater.set({ chatMessage: (e.eventTarget as HTMLTextAreaElement).value });
+    this.updater.set({
+      chatMessage: (e.eventTarget as HTMLTextAreaElement).value,
+    });
   },
 
   "sendMessage<click>"() {
@@ -239,7 +252,7 @@ export default defineView({
     if (!file) return;
     const formData = new FormData();
     formData.append("file", file);
-    this.svc!.save({ name: "uploadFile", data: formData }, () => {
+    this.srv!.save({ name: "uploadFile", data: formData }, () => {
       showToast("File uploaded successfully", "success");
       const auth = useAuthStore();
       const chat = useChatStore();
@@ -264,8 +277,11 @@ export default defineView({
   "deleteSession<click>"() {
     const uid = useAuthStore().userInfo.uuid;
     const chat = useChatStore();
-    this.svc!.save(
-      { name: "deleteSession", data: { owner_id: uid, session_id: chat.sessionId } },
+    this.srv!.save(
+      {
+        name: "deleteSession",
+        data: { owner_id: uid, session_id: chat.sessionId },
+      },
       () => {
         Router.to("/chat/sessions");
       },
@@ -275,8 +291,11 @@ export default defineView({
   "deleteContact<click>"() {
     const uid = useAuthStore().userInfo.uuid;
     const chat = useChatStore();
-    this.svc!.save(
-      { name: "deleteContact", data: { user_id: uid, contact_id: chat.contactInfo!.contact_id } },
+    this.srv!.save(
+      {
+        name: "deleteContact",
+        data: { user_id: uid, contact_id: chat.contactInfo!.contact_id },
+      },
       () => {
         showToast("Contact removed", "success");
         Router.to("/chat/sessions");
@@ -287,8 +306,11 @@ export default defineView({
   "blackContact<click>"() {
     const uid = useAuthStore().userInfo.uuid;
     const chat = useChatStore();
-    this.svc!.save(
-      { name: "blackContact", data: { user_id: uid, contact_id: chat.contactInfo!.contact_id } },
+    this.srv!.save(
+      {
+        name: "blackContact",
+        data: { user_id: uid, contact_id: chat.contactInfo!.contact_id },
+      },
       () => {
         showToast("Contact blocked", "success");
         Router.to("/chat/sessions");
@@ -298,8 +320,11 @@ export default defineView({
 
   "dismissGroup<click>"() {
     const chat = useChatStore();
-    this.svc!.save(
-      { name: "dismissGroup", data: { group_id: chat.contactInfo!.contact_id } },
+    this.srv!.save(
+      {
+        name: "dismissGroup",
+        data: { group_id: chat.contactInfo!.contact_id },
+      },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
           showToast("Group disbanded", "success");
@@ -312,8 +337,11 @@ export default defineView({
   "leaveGroup<click>"() {
     const uid = useAuthStore().userInfo.uuid;
     const chat = useChatStore();
-    this.svc!.save(
-      { name: "leaveGroup", data: { user_id: uid, group_id: chat.contactInfo!.contact_id } },
+    this.srv!.save(
+      {
+        name: "leaveGroup",
+        data: { user_id: uid, group_id: chat.contactInfo!.contact_id },
+      },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
           showToast("Left group", "success");
@@ -325,7 +353,9 @@ export default defineView({
 
   // -- User Info Modal --
   "showUserInfoModal<click>"() {
-    (document.getElementById("user-info-modal") as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById("user-info-modal") as HTMLDialogElement
+    )?.showModal();
   },
   "closeUserInfoModal<click>"() {
     (document.getElementById("user-info-modal") as HTMLDialogElement)?.close();
@@ -333,7 +363,9 @@ export default defineView({
 
   // -- Group Info Modal --
   "showGroupInfoModal<click>"() {
-    (document.getElementById("group-info-modal") as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById("group-info-modal") as HTMLDialogElement
+    )?.showModal();
   },
   "closeGroupInfoModal<click>"() {
     (document.getElementById("group-info-modal") as HTMLDialogElement)?.close();
@@ -343,7 +375,9 @@ export default defineView({
   "showEditGroupModal<click>"() {
     this.editGroupData = { name: "", notice: "", add_mode: -1, avatar: "" };
     this.groupAvatarFile = null;
-    (document.getElementById("edit-group-modal") as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById("edit-group-modal") as HTMLDialogElement
+    )?.showModal();
   },
   "onEditGroupName<input>"(e: Record<string, unknown>) {
     this.editGroupData.name = (e.eventTarget as HTMLInputElement).value;
@@ -352,10 +386,13 @@ export default defineView({
     this.editGroupData.notice = (e.eventTarget as HTMLTextAreaElement).value;
   },
   "onEditGroupAddMode<change>"(e: Record<string, unknown>) {
-    this.editGroupData.add_mode = Number((e.eventTarget as HTMLInputElement).value);
+    this.editGroupData.add_mode = Number(
+      (e.eventTarget as HTMLInputElement).value,
+    );
   },
   "onGroupAvatarSelect<change>"(e: Record<string, unknown>) {
-    this.groupAvatarFile = (e.eventTarget as HTMLInputElement).files?.[0] ?? null;
+    this.groupAvatarFile =
+      (e.eventTarget as HTMLInputElement).files?.[0] ?? null;
   },
   "saveGroupInfo<click>"() {
     const d = this.editGroupData;
@@ -370,22 +407,26 @@ export default defineView({
     if (this.groupAvatarFile) {
       const formData = new FormData();
       formData.append("file", this.groupAvatarFile);
-      this.svc!.save({ name: "uploadAvatar", data: formData }, () => {});
+      this.srv!.save({ name: "uploadAvatar", data: formData }, () => {});
       d.avatar = "/static/avatars/" + this.groupAvatarFile.name;
     }
     const chat = useChatStore();
-    const data: Record<string, unknown> = { uuid: chat.contactInfo!.contact_id };
+    const data: Record<string, unknown> = {
+      uuid: chat.contactInfo!.contact_id,
+    };
     if (d.name) data.name = d.name;
     if (d.notice) data.notice = d.notice;
     if (d.add_mode !== -1) data.add_mode = d.add_mode;
     if (d.avatar) data.avatar = d.avatar;
 
-    this.svc!.save(
+    this.srv!.save(
       { name: "updateGroupInfo", data },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
           showToast("Group updated", "success");
-          (document.getElementById("edit-group-modal") as HTMLDialogElement)?.close();
+          (
+            document.getElementById("edit-group-modal") as HTMLDialogElement
+          )?.close();
           this.loadChat(chat.contactInfo!.contact_id);
         } else {
           showToast(payload.get("message") as string, "error");
@@ -401,15 +442,21 @@ export default defineView({
   "showRemoveMembersModal<click>"() {
     const chat = useChatStore();
     this.selectedMembers = [];
-    this.svc!.save(
-      { name: "getGroupMemberList", data: { group_id: chat.contactInfo!.contact_id } },
+    this.srv!.save(
+      {
+        name: "getGroupMemberList",
+        data: { group_id: chat.contactInfo!.contact_id },
+      },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
-        const list = (payload.get("data") as Array<Record<string, string>> | null) || [];
+        const list =
+          (payload.get("data") as Array<Record<string, string>> | null) || [];
         list.forEach((m) => {
           m.avatar = resolveAvatar(m.avatar);
         });
         this.updater.set({ memberList: list }).digest();
-        (document.getElementById("remove-members-modal") as HTMLDialogElement)?.showModal();
+        (
+          document.getElementById("remove-members-modal") as HTMLDialogElement
+        )?.showModal();
       },
     );
   },
@@ -425,10 +472,13 @@ export default defineView({
       return;
     }
     const chat = useChatStore();
-    this.svc!.save(
+    this.srv!.save(
       {
         name: "removeGroupMembers",
-        data: { group_id: chat.contactInfo!.contact_id, member_ids: this.selectedMembers },
+        data: {
+          group_id: chat.contactInfo!.contact_id,
+          member_ids: this.selectedMembers,
+        },
       },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
@@ -445,28 +495,33 @@ export default defineView({
     );
   },
   "closeRemoveMembersModal<click>"() {
-    (document.getElementById("remove-members-modal") as HTMLDialogElement)?.close();
+    (
+      document.getElementById("remove-members-modal") as HTMLDialogElement
+    )?.close();
   },
 
   // -- Join Requests Modal --
   "showJoinRequestsModal<click>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
+    this.srv!.save(
       { name: "getAddGroupList", data: { user_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
-        const list = (payload.get("data") as Array<Record<string, string>> | null) || [];
+        const list =
+          (payload.get("data") as Array<Record<string, string>> | null) || [];
         if (list.length === 0) {
           showToast("No pending join requests", "info");
           return;
         }
         this.updater.set({ joinRequestList: list }).digest();
-        (document.getElementById("join-requests-modal") as HTMLDialogElement)?.showModal();
+        (
+          document.getElementById("join-requests-modal") as HTMLDialogElement
+        )?.showModal();
       },
     );
   },
   "approveJoinRequest<click>"(e: Record<string, unknown>) {
     const applyId = (e.params as Record<string, string>).id;
-    this.svc!.save(
+    this.srv!.save(
       { name: "passContactApply", data: { apply_id: applyId } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
@@ -483,7 +538,7 @@ export default defineView({
   },
   "rejectJoinRequest<click>"(e: Record<string, unknown>) {
     const applyId = (e.params as Record<string, string>).id;
-    this.svc!.save(
+    this.srv!.save(
       { name: "refuseContactApply", data: { apply_id: applyId } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
@@ -499,6 +554,8 @@ export default defineView({
     );
   },
   "closeJoinRequestsModal<click>"() {
-    (document.getElementById("join-requests-modal") as HTMLDialogElement)?.close();
+    (
+      document.getElementById("join-requests-modal") as HTMLDialogElement
+    )?.close();
   },
 });

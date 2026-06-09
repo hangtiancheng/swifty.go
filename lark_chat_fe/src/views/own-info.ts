@@ -8,14 +8,26 @@ import { showToast } from "@/utils/toast";
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
-  editData: { nickname: "", email: "", birthday: "", signature: "", avatar: "" },
+  srv: null as InstanceType<typeof AppService> | null,
+  editData: {
+    nickname: "",
+    email: "",
+    birthday: "",
+    signature: "",
+    avatar: "",
+  },
   avatarFile: null as File | null,
 
   init() {
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
-    this.editData = { nickname: "", email: "", birthday: "", signature: "", avatar: "" };
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
+    this.editData = {
+      nickname: "",
+      email: "",
+      birthday: "",
+      signature: "",
+      avatar: "",
+    };
     this.avatarFile = null;
 
     const auth = useAuthStore();
@@ -48,7 +60,13 @@ export default defineView({
 
   "saveProfile<click>"() {
     const d = this.editData;
-    if (!d.nickname && !d.email && !d.birthday && !d.signature && !this.avatarFile) {
+    if (
+      !d.nickname &&
+      !d.email &&
+      !d.birthday &&
+      !d.signature &&
+      !this.avatarFile
+    ) {
       showToast("Please modify at least one field", "warning");
       return;
     }
@@ -64,12 +82,12 @@ export default defineView({
     if (this.avatarFile) {
       const formData = new FormData();
       formData.append("file", this.avatarFile);
-      this.svc!.save({ name: "uploadAvatar", data: formData }, () => {});
+      this.srv!.save({ name: "uploadAvatar", data: formData }, () => {});
       d.avatar = "/static/avatars/" + this.avatarFile.name;
     }
 
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
+    this.srv!.save(
       { name: "updateUserInfo", data: { uuid: uid, ...d } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         const code = payload.get("code");
@@ -94,7 +112,13 @@ export default defineView({
 
   closeEditModal() {
     (document.getElementById("edit-modal") as HTMLDialogElement)?.close();
-    this.editData = { nickname: "", email: "", birthday: "", signature: "", avatar: "" };
+    this.editData = {
+      nickname: "",
+      email: "",
+      birthday: "",
+      signature: "",
+      avatar: "",
+    };
     this.avatarFile = null;
   },
 });

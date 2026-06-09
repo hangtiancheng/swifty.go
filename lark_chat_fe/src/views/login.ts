@@ -9,12 +9,12 @@ import { showToast } from "@/utils/toast";
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
+  srv: null as InstanceType<typeof AppService> | null,
 
   init() {
     this.updater.set({ telephone: "", password: "" }).digest();
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
   },
 
   "onTelInput<input>"(e: Record<string, unknown>) {
@@ -37,7 +37,7 @@ export default defineView({
       return;
     }
 
-    this.svc!.save(
+    this.srv!.save(
       { name: "login", data: { telephone: tel, password: pwd } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         const code = payload.get("code");

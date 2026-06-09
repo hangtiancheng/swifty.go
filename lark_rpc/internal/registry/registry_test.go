@@ -8,18 +8,18 @@ import (
 func TestCopyInstances(t *testing.T) {
 	r := &Registry{
 		services: map[string]map[string]Instance{
-			"svc": {
+			"srv": {
 				"a": {Addr: "a"},
 				"b": {Addr: "b"},
 			},
 		},
 	}
-	got := r.copyInstances("svc")
+	got := r.copyInstances("srv")
 	if len(got) != 2 {
 		t.Fatalf("instances len = %d, want 2", len(got))
 	}
 	got[0].Addr = "changed"
-	again := r.copyInstances("svc")
+	again := r.copyInstances("srv")
 	if again[0].Addr == "changed" || again[1].Addr == "changed" {
 		t.Fatal("copyInstances should not expose internal storage")
 	}
@@ -28,15 +28,15 @@ func TestCopyInstances(t *testing.T) {
 func TestDiscoverReturnsCachedCopy(t *testing.T) {
 	r := &Registry{
 		services: map[string]map[string]Instance{
-			"svc": {"a": {Addr: "a"}},
+			"srv": {"a": {Addr: "a"}},
 		},
 	}
-	got, err := r.Discover("svc")
+	got, err := r.Discover("srv")
 	if err != nil {
 		t.Fatalf("Discover returned error: %v", err)
 	}
 	got[0].Addr = "changed"
-	again, err := r.Discover("svc")
+	again, err := r.Discover("srv")
 	if err != nil {
 		t.Fatalf("Discover returned error: %v", err)
 	}

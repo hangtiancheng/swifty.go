@@ -42,7 +42,7 @@ func TestInvokeAsyncWithoutRegistryReturnsError(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	if _, err := c.InvokeAsync(context.Background(), "svc", "Method", &registry.Instance{}); err == nil {
+	if _, err := c.InvokeAsync(context.Background(), "srv", "Method", &registry.Instance{}); err == nil {
 		t.Fatal("expected missing registry error")
 	}
 }

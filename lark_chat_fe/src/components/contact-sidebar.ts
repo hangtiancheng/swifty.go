@@ -7,22 +7,27 @@ import { showToast } from "@/utils/toast";
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
+  srv: null as InstanceType<typeof AppService> | null,
   applyId: "",
   applyMsg: "",
   groupName: "",
 
   init() {
     this.updater
-      .set({ friendList: [], myGroupList: [], joinedGroupList: [], requestList: [] })
+      .set({
+        friendList: [],
+        myGroupList: [],
+        joinedGroupList: [],
+        requestList: [],
+      })
       .digest();
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
   },
 
   "toggleFriends<change>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.all(
+    this.srv!.all(
       { name: "getUserList", data: { owner_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         this.updater.set({ friendList: payload.get("data") || [] }).digest();
@@ -32,7 +37,7 @@ export default defineView({
 
   "toggleMyGroups<change>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.all(
+    this.srv!.all(
       { name: "loadMyGroup", data: { owner_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         this.updater.set({ myGroupList: payload.get("data") || [] }).digest();
@@ -42,10 +47,12 @@ export default defineView({
 
   "toggleJoinedGroups<change>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.all(
+    this.srv!.all(
       { name: "loadMyJoinedGroup", data: { owner_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
-        this.updater.set({ joinedGroupList: payload.get("data") || [] }).digest();
+        this.updater
+          .set({ joinedGroupList: payload.get("data") || [] })
+          .digest();
       },
     );
   },
@@ -53,13 +60,19 @@ export default defineView({
   "chatUser<click>"(e: Record<string, unknown>) {
     const contactId = (e.params as Record<string, string>).id;
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
-      { name: "checkOpenSessionAllowed", data: { send_id: uid, receive_id: contactId } },
+    this.srv!.save(
+      {
+        name: "checkOpenSessionAllowed",
+        data: { send_id: uid, receive_id: contactId },
+      },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200 && payload.get("data") === true) {
           Router.to("/chat", { id: contactId });
         } else {
-          showToast((payload.get("message") as string) || "Cannot open session", "warning");
+          showToast(
+            (payload.get("message") as string) || "Cannot open session",
+            "warning",
+          );
         }
       },
     );
@@ -68,13 +81,19 @@ export default defineView({
   "chatGroup<click>"(e: Record<string, unknown>) {
     const contactId = (e.params as Record<string, string>).id;
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
-      { name: "checkOpenSessionAllowed", data: { send_id: uid, receive_id: contactId } },
+    this.srv!.save(
+      {
+        name: "checkOpenSessionAllowed",
+        data: { send_id: uid, receive_id: contactId },
+      },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200 && payload.get("data") === true) {
           Router.to("/chat", { id: contactId });
         } else {
-          showToast((payload.get("message") as string) || "Cannot open session", "warning");
+          showToast(
+            (payload.get("message") as string) || "Cannot open session",
+            "warning",
+          );
         }
       },
     );
@@ -104,21 +123,26 @@ export default defineView({
     const isGroup = this.applyId.startsWith("G");
 
     if (isGroup) {
-      this.svc!.save(
+      this.srv!.save(
         { name: "checkGroupAddMode", data: { group_id: this.applyId } },
         (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
           if (payload.get("code") === 200 && payload.get("data") === 0) {
-            this.svc!.save(
-              { name: "enterGroupDirectly", data: { user_id: uid, group_id: this.applyId } },
+            this.srv!.save(
+              {
+                name: "enterGroupDirectly",
+                data: { user_id: uid, group_id: this.applyId },
+              },
               (_e2: unknown[], p2: { get: (k: string) => unknown }) => {
                 if (p2.get("code") === 200) {
                   showToast("Joined group", "success");
-                  (document.getElementById("apply-modal") as HTMLDialogElement)?.close();
+                  (
+                    document.getElementById("apply-modal") as HTMLDialogElement
+                  )?.close();
                 } else showToast(p2.get("message") as string, "error");
               },
             );
           } else {
-            this.svc!.save(
+            this.srv!.save(
               {
                 name: "applyContact",
                 data: {
@@ -131,7 +155,9 @@ export default defineView({
               (_e2: unknown[], p2: { get: (k: string) => unknown }) => {
                 if (p2.get("code") === 200) {
                   showToast("Application sent", "success");
-                  (document.getElementById("apply-modal") as HTMLDialogElement)?.close();
+                  (
+                    document.getElementById("apply-modal") as HTMLDialogElement
+                  )?.close();
                 } else showToast(p2.get("message") as string, "error");
               },
             );
@@ -139,15 +165,22 @@ export default defineView({
         },
       );
     } else {
-      this.svc!.save(
+      this.srv!.save(
         {
           name: "applyContact",
-          data: { user_id: uid, contact_id: this.applyId, contact_type: 0, message: this.applyMsg },
+          data: {
+            user_id: uid,
+            contact_id: this.applyId,
+            contact_type: 0,
+            message: this.applyMsg,
+          },
         },
         (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
           if (payload.get("code") === 200) {
             showToast("Application sent", "success");
-            (document.getElementById("apply-modal") as HTMLDialogElement)?.close();
+            (
+              document.getElementById("apply-modal") as HTMLDialogElement
+            )?.close();
           } else showToast(payload.get("message") as string, "error");
         },
       );
@@ -157,10 +190,14 @@ export default defineView({
   // -- Create Group --
   "showCreateGroupModal<click>"() {
     this.groupName = "";
-    (document.getElementById("create-group-modal") as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById("create-group-modal") as HTMLDialogElement
+    )?.showModal();
   },
   "closeCreateGroupModal<click>"() {
-    (document.getElementById("create-group-modal") as HTMLDialogElement)?.close();
+    (
+      document.getElementById("create-group-modal") as HTMLDialogElement
+    )?.close();
   },
   "onGroupNameInput<input>"(e: Record<string, unknown>) {
     this.groupName = (e.eventTarget as HTMLInputElement).value;
@@ -171,12 +208,17 @@ export default defineView({
       return;
     }
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
-      { name: "createGroup", data: { name: this.groupName, owner_id: uid, avatar: "" } },
+    this.srv!.save(
+      {
+        name: "createGroup",
+        data: { name: this.groupName, owner_id: uid, avatar: "" },
+      },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
           showToast("Group created", "success");
-          (document.getElementById("create-group-modal") as HTMLDialogElement)?.close();
+          (
+            document.getElementById("create-group-modal") as HTMLDialogElement
+          )?.close();
         } else showToast(payload.get("message") as string, "error");
       },
     );
@@ -185,7 +227,7 @@ export default defineView({
   // -- Friend Requests --
   "showNewContactModal<click>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
+    this.srv!.save(
       { name: "getNewContactList", data: { user_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         const list = (payload.get("data") as unknown[] | null) || [];
@@ -194,16 +236,20 @@ export default defineView({
           return;
         }
         this.updater.set({ requestList: list }).digest();
-        (document.getElementById("friend-requests-modal") as HTMLDialogElement)?.showModal();
+        (
+          document.getElementById("friend-requests-modal") as HTMLDialogElement
+        )?.showModal();
       },
     );
   },
   "closeRequestsModal<click>"() {
-    (document.getElementById("friend-requests-modal") as HTMLDialogElement)?.close();
+    (
+      document.getElementById("friend-requests-modal") as HTMLDialogElement
+    )?.close();
   },
   "approveRequest<click>"(e: Record<string, unknown>) {
     const applyId = (e.params as Record<string, string>).id;
-    this.svc!.save(
+    this.srv!.save(
       { name: "passContactApply", data: { apply_id: applyId } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
@@ -218,7 +264,7 @@ export default defineView({
 
   "refuseRequest<click>"(e: Record<string, unknown>) {
     const applyId = (e.params as Record<string, string>).id;
-    this.svc!.save(
+    this.srv!.save(
       { name: "refuseContactApply", data: { apply_id: applyId } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
@@ -233,7 +279,7 @@ export default defineView({
 
   "blockRequest<click>"(e: Record<string, unknown>) {
     const applyId = (e.params as Record<string, string>).id;
-    this.svc!.save(
+    this.srv!.save(
       { name: "blackApply", data: { apply_id: applyId } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
@@ -249,22 +295,28 @@ export default defineView({
   "unblockUser<click>"(e: Record<string, unknown>) {
     const contactId = (e.params as Record<string, string>).id;
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
-      { name: "cancelBlackContact", data: { user_id: uid, contact_id: contactId } },
+    this.srv!.save(
+      {
+        name: "cancelBlackContact",
+        data: { user_id: uid, contact_id: contactId },
+      },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
           showToast("Contact unblocked", "success");
         } else {
-          showToast((payload.get("message") as string) || "Failed to unblock", "error");
+          showToast(
+            (payload.get("message") as string) || "Failed to unblock",
+            "error",
+          );
         }
       },
     );
   },
 
   removeRequest(applyId: string) {
-    const list = (this.updater.get("requestList") as Array<Record<string, string>>).filter(
-      (r) => r.apply_id !== applyId,
-    );
+    const list = (
+      this.updater.get("requestList") as Array<Record<string, string>>
+    ).filter((r) => r.apply_id !== applyId);
     this.updater.set({ requestList: list }).digest();
   },
 });

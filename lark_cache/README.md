@@ -372,13 +372,13 @@ Server.Start
   -> net.Listen
   -> goroutine: Register(svcName, addr, stopCh)
        -> etcd Grant 10s 租约
-       -> Put /services/<svc>/<addr> 带租约
+       -> Put /services/<srv>/<addr> 带租约
        -> KeepAlive 持续续约
   -> grpcServer.Serve
 
 ClientPicker
-  -> 启动时 Get /services/<svc>/ (prefix) 拉取现存节点 -> NewClient + 加入 ring
-  -> 后台 Watch /services/<svc>/
+  -> 启动时 Get /services/<srv>/ (prefix) 拉取现存节点 -> NewClient + 加入 ring
+  -> 后台 Watch /services/<srv>/
        -> PUT  -> NewClient + 加入 ring
        -> DEL  -> client.Close + 从 ring 移除
 ```

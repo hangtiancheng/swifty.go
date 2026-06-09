@@ -7,14 +7,16 @@ import { showToast } from "@/utils/toast";
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
+  srv: null as InstanceType<typeof AppService> | null,
   selectedUserIds: [] as string[],
   selectedGroupIds: [] as string[],
 
   init() {
-    this.updater.set({ currentPanel: "none", userList: [], groupList: [] }).digest();
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
+    this.updater
+      .set({ currentPanel: "none", userList: [], groupList: [] })
+      .digest();
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
     this.selectedUserIds = [];
     this.selectedGroupIds = [];
   },
@@ -25,7 +27,11 @@ export default defineView({
     this.selectedGroupIds = [];
     this.updater.set({ currentPanel: panel });
 
-    if (panel === "disable-user" || panel === "delete-user" || panel === "set-admin") {
+    if (
+      panel === "disable-user" ||
+      panel === "delete-user" ||
+      panel === "set-admin"
+    ) {
       this.loadUserList();
     } else if (panel === "disable-group" || panel === "delete-group") {
       this.loadGroupList();
@@ -36,7 +42,7 @@ export default defineView({
 
   loadUserList() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.save(
+    this.srv!.save(
       { name: "getUserInfoList", data: { owner_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         this.updater.set({ userList: payload.get("data") || [] }).digest();
@@ -45,7 +51,7 @@ export default defineView({
   },
 
   loadGroupList() {
-    this.svc!.save(
+    this.srv!.save(
       { name: "getGroupInfoList", data: {} },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         this.updater.set({ groupList: payload.get("data") || [] }).digest();
@@ -57,7 +63,10 @@ export default defineView({
     const uuid = (e.params as Record<string, string>).uuid;
     const checked = (e.eventTarget as HTMLInputElement).checked;
     if (checked) this.selectedUserIds.push(uuid);
-    else this.selectedUserIds = this.selectedUserIds.filter((id: string) => id !== uuid);
+    else
+      this.selectedUserIds = this.selectedUserIds.filter(
+        (id: string) => id !== uuid,
+      );
   },
 
   "toggleAllUsers<change>"(e: Record<string, unknown>) {
@@ -70,7 +79,10 @@ export default defineView({
     const uuid = (e.params as Record<string, string>).uuid;
     const checked = (e.eventTarget as HTMLInputElement).checked;
     if (checked) this.selectedGroupIds.push(uuid);
-    else this.selectedGroupIds = this.selectedGroupIds.filter((id: string) => id !== uuid);
+    else
+      this.selectedGroupIds = this.selectedGroupIds.filter(
+        (id: string) => id !== uuid,
+      );
   },
 
   "toggleAllGroups<change>"(e: Record<string, unknown>) {
@@ -84,10 +96,13 @@ export default defineView({
       showToast("No users selected", "warning");
       return;
     }
-    this.svc!.save({ name: "ableUsers", data: { uuid_list: this.selectedUserIds } }, () => {
-      showToast("Users enabled", "success");
-      this.loadUserList();
-    });
+    this.srv!.save(
+      { name: "ableUsers", data: { uuid_list: this.selectedUserIds } },
+      () => {
+        showToast("Users enabled", "success");
+        this.loadUserList();
+      },
+    );
   },
 
   "disableSelectedUsers<click>"() {
@@ -95,10 +110,13 @@ export default defineView({
       showToast("No users selected", "warning");
       return;
     }
-    this.svc!.save({ name: "disableUsers", data: { uuid_list: this.selectedUserIds } }, () => {
-      showToast("Users disabled", "success");
-      this.loadUserList();
-    });
+    this.srv!.save(
+      { name: "disableUsers", data: { uuid_list: this.selectedUserIds } },
+      () => {
+        showToast("Users disabled", "success");
+        this.loadUserList();
+      },
+    );
   },
 
   "deleteSelectedUsers<click>"() {
@@ -106,10 +124,13 @@ export default defineView({
       showToast("No users selected", "warning");
       return;
     }
-    this.svc!.save({ name: "deleteUsers", data: { uuid_list: this.selectedUserIds } }, () => {
-      showToast("Users deleted", "success");
-      this.loadUserList();
-    });
+    this.srv!.save(
+      { name: "deleteUsers", data: { uuid_list: this.selectedUserIds } },
+      () => {
+        showToast("Users deleted", "success");
+        this.loadUserList();
+      },
+    );
   },
 
   "setAdminSelected<click>"(e: Record<string, unknown>) {
@@ -118,8 +139,11 @@ export default defineView({
       return;
     }
     const isAdmin = Number((e.params as Record<string, string>).val);
-    this.svc!.save(
-      { name: "setAdmin", data: { uuid_list: this.selectedUserIds, is_admin: isAdmin } },
+    this.srv!.save(
+      {
+        name: "setAdmin",
+        data: { uuid_list: this.selectedUserIds, is_admin: isAdmin },
+      },
       () => {
         showToast(isAdmin ? "Admin granted" : "Admin revoked", "success");
         this.loadUserList();
@@ -132,8 +156,11 @@ export default defineView({
       showToast("No groups selected", "warning");
       return;
     }
-    this.svc!.save(
-      { name: "setGroupsStatus", data: { uuid_list: this.selectedGroupIds, status: 0 } },
+    this.srv!.save(
+      {
+        name: "setGroupsStatus",
+        data: { uuid_list: this.selectedGroupIds, status: 0 },
+      },
       () => {
         showToast("Groups enabled", "success");
         this.loadGroupList();
@@ -146,8 +173,11 @@ export default defineView({
       showToast("No groups selected", "warning");
       return;
     }
-    this.svc!.save(
-      { name: "setGroupsStatus", data: { uuid_list: this.selectedGroupIds, status: 1 } },
+    this.srv!.save(
+      {
+        name: "setGroupsStatus",
+        data: { uuid_list: this.selectedGroupIds, status: 1 },
+      },
       () => {
         showToast("Groups disabled", "success");
         this.loadGroupList();
@@ -160,10 +190,13 @@ export default defineView({
       showToast("No groups selected", "warning");
       return;
     }
-    this.svc!.save({ name: "deleteGroups", data: { uuid_list: this.selectedGroupIds } }, () => {
-      showToast("Groups deleted", "success");
-      this.loadGroupList();
-    });
+    this.srv!.save(
+      { name: "deleteGroups", data: { uuid_list: this.selectedGroupIds } },
+      () => {
+        showToast("Groups deleted", "success");
+        this.loadGroupList();
+      },
+    );
   },
 
   "backToChat<click>"() {

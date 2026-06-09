@@ -9,17 +9,17 @@ import type { SessionItem } from "@/types";
 
 export default defineView({
   template,
-  svc: null as InstanceType<typeof AppService> | null,
+  srv: null as InstanceType<typeof AppService> | null,
 
   init() {
     this.updater.set({ userSessions: [], groupSessions: [] }).digest();
-    this.svc = new AppService();
-    this.capture("svc", this.svc);
+    this.srv = new AppService();
+    this.capture("srv", this.srv);
   },
 
   "toggleUsers<change>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.all(
+    this.srv!.all(
       { name: "getUserSessionList", data: { owner_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         const list = (payload.get("data") as SessionItem[] | null) || [];
@@ -34,7 +34,7 @@ export default defineView({
 
   "toggleGroups<change>"() {
     const uid = useAuthStore().userInfo.uuid;
-    this.svc!.all(
+    this.srv!.all(
       { name: "getGroupSessionList", data: { owner_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         const list = (payload.get("data") as SessionItem[] | null) || [];
