@@ -35,55 +35,65 @@ type dashboardCommand struct {
 
 var dashboardOnce sync.Once
 
+// DashboardHandler returns a handler that can be mounted on any lark_http application
+// to serve the dashboard WebSocket endpoint.
+func DashboardHandler() func(ctx *lark_http.Context, next func()) {
+	return func(ctx *lark_http.Context, next func()) {
+		ws, err := ctx.Upgrade(&lark_http.UpgradeOptions{
+			ReadBufferSize:  4096,
+			WriteBufferSize: 4096,
+		})
+		if err != nil {
+			log.Printf("[Dashboard] upgrade failed: %v", err)
+			return
+		}
+
+		serveDashboardConn(ws)
+	}
+}
+
+func serveDashboardConn(ws *lark_http.WSConn) {
+	stopHeartbeat := ws.Heartbeat(30 * time.Second)
+
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		defer ws.Close()
+		defer stopHeartbeat()
+
+		if err := ws.WriteJSON(buildSnapshot()); err != nil {
+			return
+		}
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := ws.WriteJSON(buildSnapshot()); err != nil {
+					return
+				}
+			case <-ws.Closed():
+				return
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			var cmd dashboardCommand
+			if err := ws.ReadJSON(&cmd); err != nil {
+				break
+			}
+			handleCommand(cmd)
+		}
+	}()
+}
+
 // StartDashboard starts the dashboard HTTP server on addr.
 // It is safe to call multiple times; only the first call takes effect.
 func StartDashboard(addr string) {
 	dashboardOnce.Do(func() {
 		app := lark_http.New()
-
-		app.Get("/dashboard/ws", func(ctx *lark_http.Context, next func()) {
-			ws, err := ctx.Upgrade(nil)
-			if err != nil {
-				log.Printf("[Dashboard] upgrade failed: %v", err)
-				return
-			}
-			defer ws.Close()
-
-			stopHeartbeat := ws.Heartbeat(30 * time.Second)
-			defer stopHeartbeat()
-
-			pushDone := make(chan struct{})
-			go func() {
-				defer close(pushDone)
-				ticker := time.NewTicker(2 * time.Second)
-				defer ticker.Stop()
-
-				if err := ws.WriteJSON(buildSnapshot()); err != nil {
-					return
-				}
-
-				for {
-					select {
-					case <-ticker.C:
-						if err := ws.WriteJSON(buildSnapshot()); err != nil {
-							return
-						}
-					case <-ws.Closed():
-						return
-					}
-				}
-			}()
-
-			for {
-				var cmd dashboardCommand
-				if err := ws.ReadJSON(&cmd); err != nil {
-					break
-				}
-				handleCommand(cmd)
-			}
-
-			<-pushDone
-		})
+		app.Get("/dashboard/ws", DashboardHandler())
 
 		go func() {
 			log.Printf("[Dashboard] listening on %s", addr)

@@ -2,10 +2,11 @@ import { defineView } from "@lark.js/mvc";
 import template from "./dashboard.html";
 import useDashboardStore from "@/store/dashboard";
 import type { EntrySnapshot } from "@/store/dashboard";
+import { WS_URL } from "@/config";
 
 const ROW_HEIGHT = 36;
-const OVERSCAN = 5;
-const WS_URL = "ws://localhost:9090/dashboard/ws";
+const OVER_SCAN = 5;
+const DASHBOARD_WS = WS_URL + "/dashboard/ws";
 
 interface FlatRow {
   group: string;
@@ -60,7 +61,7 @@ export default defineView({
 
   init() {
     const store = useDashboardStore();
-    store.connect(WS_URL);
+    store.connect(DASHBOARD_WS);
 
     this.pollTimer = window.setInterval(() => {
       const s = useDashboardStore();
@@ -79,8 +80,8 @@ export default defineView({
   syncView(status: string) {
     const containerHeight = 700 - 56 - 40;
     const totalRows = this.allRows.length;
-    const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + OVERSCAN * 2;
-    const startIdx = Math.max(0, Math.floor(this.scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + OVER_SCAN * 2;
+    const startIdx = Math.max(0, Math.floor(this.scrollTop / ROW_HEIGHT) - OVER_SCAN);
     const endIdx = Math.min(totalRows, startIdx + visibleCount);
 
     this.updater
@@ -107,6 +108,6 @@ export default defineView({
   },
 
   "reconnect<click>"() {
-    useDashboardStore().connect(WS_URL);
+    useDashboardStore().connect(DASHBOARD_WS);
   },
 });

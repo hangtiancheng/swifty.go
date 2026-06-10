@@ -23,14 +23,21 @@ export interface DashboardState {
 }
 
 const useDashboardStore = defineStore("dashboard", (s) => {
-  const store = s as unknown as DashboardState;
+  const store = s as unknown as DashboardState & {
+    _retryTimer: number;
+    _intentionalClose: boolean;
+  };
   return {
     groups: [] as GroupSnapshot[],
     status: "disconnected",
     ws: null as WebSocket | null,
+    _retryTimer: 0,
+    _intentionalClose: false,
 
     connect(url: string) {
+      store._intentionalClose = false;
       if (store.ws) store.ws.close();
+      if (store._retryTimer) clearTimeout(store._retryTimer);
       store.status = "connecting";
 
       const ws = new WebSocket(url);
@@ -46,6 +53,9 @@ const useDashboardStore = defineStore("dashboard", (s) => {
       ws.onclose = () => {
         store.status = "disconnected";
         store.ws = null;
+        if (!store._intentionalClose) {
+          store._retryTimer = window.setTimeout(() => store.connect(url), 3000);
+        }
       };
       ws.onerror = () => {
         store.status = "disconnected";
@@ -54,6 +64,8 @@ const useDashboardStore = defineStore("dashboard", (s) => {
     },
 
     disconnect() {
+      store._intentionalClose = true;
+      if (store._retryTimer) clearTimeout(store._retryTimer);
       if (store.ws) store.ws.close();
       store.ws = null;
       store.status = "disconnected";

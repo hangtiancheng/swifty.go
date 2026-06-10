@@ -22,17 +22,7 @@
         </div>
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="btn btn-ghost btn-sm btn-square text-green-600">
-            <!-- TODO Move to ./svg -->
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-5 h-5"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <circle cx="12" cy="5" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="12" cy="19" r="2" />
-            </svg>
+            <span class="text-lg leading-none">⋮</span>
           </div>
           <ul
             tabindex="0"
@@ -112,19 +102,7 @@
             class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50 cursor-pointer"
           >
             <input type="file" class="hidden" @change="onFileSelect()" />
-            <!-- TODO Move to ./svg -->
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-              />
-            </svg>
+            <span class="text-sm">📎</span>
           </label>
         </div>
         <div class="tooltip tooltip-left" data-tip="Video Call">
@@ -132,18 +110,7 @@
             class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50"
             @click="openVideoCall()"
           >
-            <!-- TODO Move to ./svg -->
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polygon points="23 7 16 12 23 17 23 7" />
-              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-            </svg>
+            <span class="text-sm">📹</span>
           </button>
         </div>
       </div>

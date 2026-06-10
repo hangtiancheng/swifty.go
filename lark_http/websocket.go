@@ -25,10 +25,9 @@ const (
 )
 
 const (
-	wsGUID         = "258EAFA5-E914-47DA-95CA-5BBF24F4B947"
-	maxFrameSize   = 65536
-	closeNormal    = 1000
-	closeGoingAway = 1001
+	wsGUID       = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+	maxFrameSize = 65536
+	closeNormal  = 1000
 )
 
 var (
@@ -46,13 +45,16 @@ type UpgradeOptions struct {
 type WSConn struct {
 	conn    net.Conn
 	br      *bufio.Reader
-	bw      *bufio.Writer
 	writeMu sync.Mutex
 	readMu  sync.Mutex
 	closed  chan struct{}
 	once    sync.Once
-	onClose func(code int, text string)
-	onError func(err error)
+
+	onMessage func(messageType int, data []byte)
+	onClose   func(code int, text string)
+	onError   func(err error)
+	onPing    func(data []byte)
+	onPong    func(data []byte)
 }
 
 func (ctx *Context) Upgrade(opts *UpgradeOptions) (*WSConn, error) {
@@ -83,60 +85,112 @@ func (ctx *Context) Upgrade(opts *UpgradeOptions) (*WSConn, error) {
 		subprotocol = negotiateSubprotocol(clientProtos, opts.Subprotocols)
 	}
 
-	acceptKey := computeAcceptKey(key)
-
-	hijacker, ok := ctx.Writer.(http.Hijacker)
-	if !ok {
-		ctx.Throw(http.StatusInternalServerError, "hijack not supported")
-		return nil, errors.New("websocket: hijack not supported")
-	}
-
-	conn, rwBuf, err := hijacker.Hijack()
+	conn, brw, err := http.NewResponseController(ctx.Writer).Hijack()
 	if err != nil {
-		return nil, err
+		ctx.Throw(http.StatusInternalServerError, "hijack not supported")
+		return nil, errors.New("websocket: hijack failed: " + err.Error())
 	}
-
 	ctx.flushed = true
 
-	var resp strings.Builder
-	resp.WriteString("HTTP/1.1 101 Switching Protocols\r\n")
-	resp.WriteString("Upgrade: websocket\r\n")
-	resp.WriteString("Connection: Upgrade\r\n")
-	resp.WriteString("Sec-WebSocket-Accept: " + acceptKey + "\r\n")
-	if subprotocol != "" {
-		resp.WriteString("Sec-WebSocket-Protocol: " + subprotocol + "\r\n")
-	}
-	resp.WriteString("\r\n")
+	_ = conn.SetDeadline(time.Time{})
 
-	if _, err := rwBuf.WriteString(resp.String()); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	if err := rwBuf.Flush(); err != nil {
-		conn.Close()
-		return nil, err
-	}
-
+	var br *bufio.Reader
 	readBufSize := 4096
-	writeBufSize := 4096
-	if opts != nil {
-		if opts.ReadBufferSize > 0 {
-			readBufSize = opts.ReadBufferSize
-		}
-		if opts.WriteBufferSize > 0 {
-			writeBufSize = opts.WriteBufferSize
-		}
+	if opts != nil && opts.ReadBufferSize > 0 {
+		readBufSize = opts.ReadBufferSize
+	}
+	if brw.Reader.Buffered() > 0 {
+		br = brw.Reader
+	} else if brw.Reader.Size() >= readBufSize {
+		br = brw.Reader
+	} else {
+		br = bufio.NewReaderSize(conn, readBufSize)
+	}
+
+	acceptKey := computeAcceptKey(key)
+	p := make([]byte, 0, 256)
+	p = append(p, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "...)
+	p = append(p, acceptKey...)
+	p = append(p, "\r\n"...)
+	if subprotocol != "" {
+		p = append(p, "Sec-WebSocket-Protocol: "...)
+		p = append(p, subprotocol...)
+		p = append(p, "\r\n"...)
+	}
+	p = append(p, "\r\n"...)
+
+	if _, err := conn.Write(p); err != nil {
+		conn.Close()
+		return nil, errors.New("websocket: write handshake failed: " + err.Error())
 	}
 
 	ws := &WSConn{
 		conn:   conn,
-		br:     bufio.NewReaderSize(conn, readBufSize),
-		bw:     bufio.NewWriterSize(conn, writeBufSize),
+		br:     br,
 		closed: make(chan struct{}),
 	}
-
 	return ws, nil
 }
+
+// --- event handlers (Node.js ws style) ---
+
+func (ws *WSConn) OnMessage(fn func(messageType int, data []byte)) {
+	ws.onMessage = fn
+}
+
+func (ws *WSConn) OnClose(fn func(code int, text string)) {
+	ws.onClose = fn
+}
+
+func (ws *WSConn) OnError(fn func(err error)) {
+	ws.onError = fn
+}
+
+func (ws *WSConn) OnPing(fn func(data []byte)) {
+	ws.onPing = fn
+}
+
+func (ws *WSConn) OnPong(fn func(data []byte)) {
+	ws.onPong = fn
+}
+
+// Listen runs a blocking read loop, dispatching to registered event handlers.
+// It handles ping/pong automatically and calls OnMessage/OnClose/OnError.
+func (ws *WSConn) Listen() {
+	for {
+		opcode, payload, err := ws.readFrame()
+		if err != nil {
+			ws.handleError(err)
+			return
+		}
+
+		switch opcode {
+		case PingMessage:
+			if ws.onPing != nil {
+				ws.onPing(payload)
+			}
+			_ = ws.writeFrame(PongMessage, payload)
+		case PongMessage:
+			if ws.onPong != nil {
+				ws.onPong(payload)
+			}
+		case CloseMessage:
+			code, text := parseClosePayload(payload)
+			_ = ws.writeCloseFrame(code)
+			ws.once.Do(func() { close(ws.closed) })
+			if ws.onClose != nil {
+				ws.onClose(code, text)
+			}
+			return
+		case TextMessage, BinaryMessage:
+			if ws.onMessage != nil {
+				ws.onMessage(opcode, payload)
+			}
+		}
+	}
+}
+
+// --- read/write API ---
 
 func (ws *WSConn) ReadMessage() (messageType int, data []byte, err error) {
 	ws.readMu.Lock()
@@ -171,7 +225,7 @@ func (ws *WSConn) ReadMessage() (messageType int, data []byte, err error) {
 	}
 }
 
-func (ws *WSConn) ReadJSON(v interface{}) error {
+func (ws *WSConn) ReadJSON(v any) error {
 	_, data, err := ws.ReadMessage()
 	if err != nil {
 		return err
@@ -185,12 +239,16 @@ func (ws *WSConn) WriteMessage(messageType int, data []byte) error {
 	return ws.writeFrame(messageType, data)
 }
 
-func (ws *WSConn) WriteJSON(v interface{}) error {
+func (ws *WSConn) WriteJSON(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	return ws.WriteMessage(TextMessage, data)
+}
+
+func (ws *WSConn) Send(text string) error {
+	return ws.WriteMessage(TextMessage, []byte(text))
 }
 
 func (ws *WSConn) WriteText(text string) error {
@@ -225,14 +283,6 @@ func (ws *WSConn) CloseWithMessage(code int, text string) error {
 
 func (ws *WSConn) Closed() <-chan struct{} {
 	return ws.closed
-}
-
-func (ws *WSConn) OnClose(fn func(code int, text string)) {
-	ws.onClose = fn
-}
-
-func (ws *WSConn) OnError(fn func(err error)) {
-	ws.onError = fn
 }
 
 func (ws *WSConn) SetReadDeadline(t time.Time) error {
@@ -275,7 +325,7 @@ func (ws *WSConn) NetConn() net.Conn {
 	return ws.conn
 }
 
-// --- frame I/O ---
+// --- frame I/O (write directly to conn, read via bufio.Reader) ---
 
 func (ws *WSConn) readFrame() (opcode int, payload []byte, err error) {
 	header := make([]byte, 2)
@@ -283,7 +333,6 @@ func (ws *WSConn) readFrame() (opcode int, payload []byte, err error) {
 		return 0, nil, err
 	}
 
-	// fin := header[0]&0x80 != 0
 	opcode = int(header[0] & 0x0F)
 	masked := header[1]&0x80 != 0
 	length := uint64(header[1] & 0x7F)
@@ -329,8 +378,8 @@ func (ws *WSConn) readFrame() (opcode int, payload []byte, err error) {
 }
 
 func (ws *WSConn) writeFrame(opcode int, payload []byte) error {
-	var header []byte
 	length := len(payload)
+	var header []byte
 
 	switch {
 	case length <= 125:
@@ -347,15 +396,17 @@ func (ws *WSConn) writeFrame(opcode int, payload []byte) error {
 		binary.BigEndian.PutUint64(header[2:], uint64(length))
 	}
 
-	if _, err := ws.bw.Write(header); err != nil {
-		return err
-	}
+	var buf []byte
 	if len(payload) > 0 {
-		if _, err := ws.bw.Write(payload); err != nil {
-			return err
-		}
+		buf = make([]byte, len(header)+len(payload))
+		copy(buf, header)
+		copy(buf[len(header):], payload)
+	} else {
+		buf = header
 	}
-	return ws.bw.Flush()
+
+	_, err := ws.conn.Write(buf)
+	return err
 }
 
 func (ws *WSConn) writeCloseFrame(code int) error {

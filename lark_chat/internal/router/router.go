@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/hangtiancheng/lark-go/lark_cache"
 	"github.com/hangtiancheng/lark-go/lark_http"
 	"lark_chat/internal/config"
 	"lark_chat/internal/handler"
@@ -74,6 +75,7 @@ func Setup() *lark_http.Application {
 	chatroom.Post("/get-online-users", handler.GetOnlineUsers)
 
 	app.Get("/wss", handler.WsLogin)
+	app.Get("/dashboard/ws", lark_cache.DashboardHandler())
 
 	return app
 }

@@ -1,4 +1,4 @@
-import { Framework, Router, registerViewClass, View } from "@lark.js/mvc";
+import { Framework, Router, registerViewClass } from "@lark.js/mvc";
 import type { FrameworkConfig } from "@lark.js/mvc";
 import "./styles.css";
 import "@/service/endpoints";
@@ -22,21 +22,21 @@ import ContactSidebarView from "@/components/contact-sidebar";
 import MessageBubbleView from "@/components/message-bubble";
 import VideoCallView from "@/components/video-call";
 
-registerViewClass("login", LoginView as typeof View);
-registerViewClass("register", RegisterView as typeof View);
-registerViewClass("session-list", SessionListView as typeof View);
-registerViewClass("contact-list", ContactListView as typeof View);
-registerViewClass("chat", ChatView as typeof View);
-registerViewClass("own-info", OwnInfoView as typeof View);
-registerViewClass("manager", ManagerView as typeof View);
-registerViewClass("dashboard", DashboardView as typeof View);
-registerViewClass("not-found", NotFoundView as typeof View);
+registerViewClass("login", LoginView);
+registerViewClass("register", RegisterView);
+registerViewClass("session-list", SessionListView);
+registerViewClass("contact-list", ContactListView);
+registerViewClass("chat", ChatView);
+registerViewClass("own-info", OwnInfoView);
+registerViewClass("manager", ManagerView);
+registerViewClass("dashboard", DashboardView);
+registerViewClass("not-found", NotFoundView);
 
-registerViewClass("components/nav-bar", NavBarView as typeof View);
-registerViewClass("components/session-sidebar", SessionSidebarView as typeof View);
-registerViewClass("components/contact-sidebar", ContactSidebarView as typeof View);
-registerViewClass("components/message-bubble", MessageBubbleView as typeof View);
-registerViewClass("components/video-call", VideoCallView as typeof View);
+registerViewClass("components/nav-bar", NavBarView);
+registerViewClass("components/session-sidebar", SessionSidebarView);
+registerViewClass("components/contact-sidebar", ContactSidebarView);
+registerViewClass("components/message-bubble", MessageBubbleView);
+registerViewClass("components/video-call", VideoCallView);
 
 Router.beforeEach(async (to) => {
   const auth = useAuthStore();
