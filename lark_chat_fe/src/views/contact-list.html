@@ -1,15 +1,19 @@
 <div
-  class="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+  class="flex min-h-screen items-center justify-center bg-linear-to-br from-green-50 to-emerald-50 p-4"
 >
   <div
-    class="bg-white rounded-2xl shadow-lg w-250 h-150 flex overflow-hidden border border-green-100"
+    class="flex h-150 w-250 overflow-hidden rounded-2xl border border-green-100 bg-white shadow-lg"
   >
     <div v-lark="components/nav-bar"></div>
     <div class="w-55 border-r border-green-100">
       <div v-lark="components/contact-sidebar"></div>
     </div>
-    <div class="flex-1 flex flex-col items-center justify-center text-green-300">
-      <span class="w-16 h-16 mb-4 [&>svg]:w-full [&>svg]:h-full">{{!icons.user}}</span>
+    <div
+      class="flex flex-1 flex-col items-center justify-center text-green-300"
+    >
+      <span class="mb-4 h-16 w-16 [&>svg]:h-full [&>svg]:w-full"
+        >{{!icons.user}}</span
+      >
       <p class="text-green-400">Select a contact to start chatting</p>
     </div>
   </div>

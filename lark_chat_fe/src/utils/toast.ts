@@ -7,8 +7,13 @@ const ALERT_CLASS: Record<ToastType, string> = {
   error: "bg-red-50 text-red-700 border border-red-200",
 };
 
-export function showToast(message: string, type: ToastType = "info", duration = 3000) {
-  const container = document.getElementById("toast-container") ?? createContainer();
+export function showToast(
+  message: string,
+  type: ToastType = "info",
+  duration = 3000,
+) {
+  const container =
+    document.getElementById("toast-container") ?? createContainer();
   const el = document.createElement("div");
   el.className = `rounded-lg px-4 py-3 text-sm shadow-md ${ALERT_CLASS[type]}`;
   el.textContent = message;

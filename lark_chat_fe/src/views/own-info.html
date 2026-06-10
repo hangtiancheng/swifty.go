@@ -1,15 +1,15 @@
 <div
-  class="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+  class="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 p-4"
 >
   <div
-    class="bg-white rounded-2xl shadow-lg w-[1000px] h-[600px] flex overflow-hidden border border-green-100"
+    class="flex h-[600px] w-[1000px] overflow-hidden rounded-2xl border border-green-100 bg-white shadow-lg"
   >
     <div v-lark="components/nav-bar"></div>
     <div class="w-[220px] border-r border-green-100">
       <div v-lark="components/contact-sidebar"></div>
     </div>
-    <div class="flex-1 flex flex-col items-center justify-center p-8 relative">
-      <h2 class="text-xl font-semibold mb-6 text-green-800">My Profile</h2>
+    <div class="relative flex flex-1 flex-col items-center justify-center p-8">
+      <h2 class="mb-6 text-xl font-semibold text-green-800">My Profile</h2>
       <div class="space-y-2 text-sm text-gray-600">
         <p>User ID: {{=userInfo.uuid}}</p>
         <p>Nickname: {{=userInfo.nickname}}</p>
@@ -31,7 +31,7 @@
         </div>
       </div>
       <button
-        class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none absolute bottom-6 right-6"
+        class="btn btn-sm absolute right-6 bottom-6 border-none bg-green-600 text-white hover:bg-green-700"
         @click="showEditModal()"
       >
         Edit
@@ -39,37 +39,39 @@
 
       <dialog id="edit-modal" class="modal">
         <div class="modal-box border border-green-100">
-          <h3 class="text-lg font-semibold mb-4 text-green-800">Edit Profile</h3>
+          <h3 class="mb-4 text-lg font-semibold text-green-800">
+            Edit Profile
+          </h3>
           <fieldset class="fieldset space-y-3">
-            <label class="label text-green-700 text-sm">Nickname</label>
+            <label class="label text-sm text-green-700">Nickname</label>
             <input
               type="text"
-              class="input input-bordered w-full input-sm focus:border-green-400"
+              class="input input-bordered input-sm w-full focus:border-green-400"
               placeholder="Optional, 3-10 characters"
               @input="onEditNick()"
             />
-            <label class="label text-green-700 text-sm">Email</label>
+            <label class="label text-sm text-green-700">Email</label>
             <input
               type="text"
-              class="input input-bordered w-full input-sm focus:border-green-400"
+              class="input input-bordered input-sm w-full focus:border-green-400"
               placeholder="Optional"
               @input="onEditEmail()"
             />
-            <label class="label text-green-700 text-sm">Birthday</label>
+            <label class="label text-sm text-green-700">Birthday</label>
             <input
               type="text"
-              class="input input-bordered w-full input-sm focus:border-green-400"
+              class="input input-bordered input-sm w-full focus:border-green-400"
               placeholder="Optional, e.g. 2024.1.1"
               @input="onEditBirthday()"
             />
-            <label class="label text-green-700 text-sm">Signature</label>
+            <label class="label text-sm text-green-700">Signature</label>
             <input
               type="text"
-              class="input input-bordered w-full input-sm focus:border-green-400"
+              class="input input-bordered input-sm w-full focus:border-green-400"
               placeholder="Optional"
               @input="onEditSig()"
             />
-            <label class="label text-green-700 text-sm">Avatar</label>
+            <label class="label text-sm text-green-700">Avatar</label>
             <input
               type="file"
               class="file-input file-input-bordered file-input-sm w-full"
@@ -78,17 +80,22 @@
           </fieldset>
           <div class="modal-action">
             <button
-              class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+              class="btn btn-sm border-none bg-green-600 text-white hover:bg-green-700"
               @click="saveProfile()"
             >
               Save
             </button>
-            <button class="btn btn-sm btn-ghost text-gray-500" @click="closeEditModal()">
+            <button
+              class="btn btn-sm btn-ghost text-gray-500"
+              @click="closeEditModal()"
+            >
               Cancel
             </button>
           </div>
         </div>
-        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+        <form method="dialog" class="modal-backdrop">
+          <button>close</button>
+        </form>
       </dialog>
     </div>
   </div>

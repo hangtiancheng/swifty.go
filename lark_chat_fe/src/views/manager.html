@@ -1,14 +1,16 @@
 <div
-  class="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+  class="flex min-h-screen items-center justify-center bg-linear-to-br from-green-50 to-emerald-50 p-4"
 >
   <div
-    class="bg-white rounded-2xl shadow-lg w-250 h-150 flex flex-col overflow-hidden border border-green-100"
+    class="flex h-150 w-250 flex-col overflow-hidden rounded-2xl border border-green-100 bg-white shadow-lg"
   >
     <div
-      class="h-14 bg-green-100/50 flex items-center justify-between px-6 border-b border-green-100"
+      class="flex h-14 items-center justify-between border-b border-green-100 bg-green-100/50 px-6"
     >
       <div class="flex items-center gap-3">
-        <span class="w-6 h-6 text-green-700 [&>svg]:w-full [&>svg]:h-full">{{!icons.shield}}</span>
+        <span class="h-6 w-6 text-green-700 [&>svg]:h-full [&>svg]:w-full"
+          >{{!icons.shield}}</span
+        >
         <span class="text-lg font-semibold text-green-800">Admin Panel</span>
       </div>
       <button
@@ -24,34 +26,36 @@
           <li class="menu-title text-green-600">Users</li>
           <li>
             <a
-              class="hover:bg-green-100/50 text-gray-700"
+              class="text-gray-700 hover:bg-green-100/50"
               @click="showPanel({panel: 'disable-user'})"
               >Enable / Disable</a
             >
           </li>
           <li>
             <a
-              class="hover:bg-green-100/50 text-gray-700"
+              class="text-gray-700 hover:bg-green-100/50"
               @click="showPanel({panel: 'delete-user'})"
               >Delete</a
             >
           </li>
           <li>
-            <a class="hover:bg-green-100/50 text-gray-700" @click="showPanel({panel: 'set-admin'})"
+            <a
+              class="text-gray-700 hover:bg-green-100/50"
+              @click="showPanel({panel: 'set-admin'})"
               >Set as Admin</a
             >
           </li>
           <li class="menu-title text-green-600">Groups</li>
           <li>
             <a
-              class="hover:bg-green-100/50 text-gray-700"
+              class="text-gray-700 hover:bg-green-100/50"
               @click="showPanel({panel: 'disable-group'})"
               >Enable / Disable</a
             >
           </li>
           <li>
             <a
-              class="hover:bg-green-100/50 text-gray-700"
+              class="text-gray-700 hover:bg-green-100/50"
               @click="showPanel({panel: 'delete-group'})"
               >Delete / Disband</a
             >
@@ -60,14 +64,14 @@
       </div>
       <div class="flex-1 overflow-y-auto">
         {{if currentPanel === 'none'}}
-        <div class="flex items-center justify-center h-full">
+        <div class="flex h-full items-center justify-center">
           <p class="text-green-400">Select an option from the left menu</p>
         </div>
-        {{/if}} {{if currentPanel === 'disable-user' || currentPanel === 'delete-user' ||
-        currentPanel === 'set-admin'}}
+        {{/if}} {{if currentPanel === 'disable-user' || currentPanel ===
+        'delete-user' || currentPanel === 'set-admin'}}
         <div class="p-4">
           <div class="overflow-x-auto">
-            <table class="table table-sm">
+            <table class="table-sm table">
               <thead>
                 <tr class="text-green-700">
                   <th>
@@ -99,48 +103,54 @@
                   <td>{{=user.nickname}}</td>
                   <td>{{=user.telephone}}</td>
                   <td>
-                    {{if user.is_admin === 1}}<span class="badge badge-sm badge-success">Yes</span
+                    {{if user.is_admin === 1}}<span
+                      class="badge badge-sm badge-success"
+                      >Yes</span
                     >{{else}}<span class="badge badge-sm">No</span>{{/if}}
                   </td>
                   <td>
-                    {{if user.status === 1}}<span class="badge badge-sm badge-error">Disabled</span
-                    >{{else}}<span class="badge badge-sm badge-success">Active</span>{{/if}}
+                    {{if user.status === 1}}<span
+                      class="badge badge-sm badge-error"
+                      >Disabled</span
+                    >{{else}}<span class="badge badge-sm badge-success"
+                      >Active</span
+                    >{{/if}}
                   </td>
                 </tr>
                 {{/forOf}}
               </tbody>
             </table>
           </div>
-          <div class="flex justify-end gap-2 mt-4">
+          <div class="mt-4 flex justify-end gap-2">
             {{if currentPanel === 'disable-user'}}
             <button
-              class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+              class="btn btn-sm border-none bg-green-600 text-white hover:bg-green-700"
               @click="enableSelectedUsers()"
             >
               Enable
             </button>
             <button
-              class="btn btn-sm bg-red-500 hover:bg-red-600 text-white border-none"
+              class="btn btn-sm border-none bg-red-500 text-white hover:bg-red-600"
               @click="disableSelectedUsers()"
             >
               Disable
             </button>
             {{/if}} {{if currentPanel === 'delete-user'}}
             <button
-              class="btn btn-sm bg-red-500 hover:bg-red-600 text-white border-none"
+              class="btn btn-sm border-none bg-red-500 text-white hover:bg-red-600"
               @click="deleteSelectedUsers()"
             >
               Delete
             </button>
             {{/if}} {{if currentPanel === 'set-admin'}}
             <button
-              class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+              class="btn btn-sm border-none bg-green-600 text-white hover:bg-green-700"
               @click="setAdminSelected({val: '1'})"
             >
               Grant Admin
             </button>
             <button
-              class="btn btn-sm bg-gray-500 hover:bg-gray-600 text-white border-none"
+              class="btn btn-sm border-none bg-gray-500 text-white hover:bg-gray-600"
               @click="setAdminSelected({val: '0'})"
             >
               Revoke Admin
@@ -148,10 +158,11 @@
             {{/if}}
           </div>
         </div>
-        {{/if}} {{if currentPanel === 'disable-group' || currentPanel === 'delete-group'}}
+        {{/if}} {{if currentPanel === 'disable-group' || currentPanel ===
+        'delete-group'}}
         <div class="p-4">
           <div class="overflow-x-auto">
-            <table class="table table-sm">
+            <table class="table-sm table">
               <thead>
                 <tr class="text-green-700">
                   <th>
@@ -161,7 +172,7 @@
                       @change="toggleAllGroups()"
                     />
                   </th>
-                  <th>UUID</th>
+                  <th>Group ID</th>
                   <th>Name</th>
                   <th>Owner</th>
                   <th>Status</th>
@@ -174,39 +185,43 @@
                     <input
                       type="checkbox"
                       class="checkbox checkbox-xs"
-                      value="{{=group.uuid}}"
-                      @change="toggleGroup({uuid: '{{=group.uuid}}'})"
+                      value="{{=group.group_id}}"
+                      @change="toggleGroup({uuid: '{{=group.group_id}}'})"
                     />
                   </td>
-                  <td class="text-xs">{{=group.uuid}}</td>
+                  <td class="text-xs">{{=group.group_id}}</td>
                   <td>{{=group.name}}</td>
                   <td class="text-xs">{{=group.owner_id}}</td>
                   <td>
-                    {{if group.status === 1}}<span class="badge badge-sm badge-error">Disabled</span
-                    >{{else}}<span class="badge badge-sm badge-success">Active</span>{{/if}}
+                    {{if group.status === 1}}<span
+                      class="badge badge-sm badge-error"
+                      >Disabled</span
+                    >{{else}}<span class="badge badge-sm badge-success"
+                      >Active</span
+                    >{{/if}}
                   </td>
                 </tr>
                 {{/forOf}}
               </tbody>
             </table>
           </div>
-          <div class="flex justify-end gap-2 mt-4">
+          <div class="mt-4 flex justify-end gap-2">
             {{if currentPanel === 'disable-group'}}
             <button
-              class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+              class="btn btn-sm border-none bg-green-600 text-white hover:bg-green-700"
               @click="enableSelectedGroups()"
             >
               Enable
             </button>
             <button
-              class="btn btn-sm bg-red-500 hover:bg-red-600 text-white border-none"
+              class="btn btn-sm border-none bg-red-500 text-white hover:bg-red-600"
               @click="disableSelectedGroups()"
             >
               Disable
             </button>
             {{/if}} {{if currentPanel === 'delete-group'}}
             <button
-              class="btn btn-sm bg-red-500 hover:bg-red-600 text-white border-none"
+              class="btn btn-sm border-none bg-red-500 text-white hover:bg-red-600"
               @click="deleteSelectedGroups()"
             >
               Delete

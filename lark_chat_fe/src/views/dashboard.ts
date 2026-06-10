@@ -35,7 +35,9 @@ function formatExpire(nanos: number): string {
   return new Date(ms).toLocaleTimeString();
 }
 
-function flatten(groups: { name: string; entries: EntrySnapshot[] }[]): FlatRow[] {
+function flatten(
+  groups: { name: string; entries: EntrySnapshot[] }[],
+): FlatRow[] {
   const rows: FlatRow[] = [];
   for (const g of groups) {
     if (!g.entries) continue;
@@ -82,8 +84,12 @@ export default defineView({
   syncView(status: string) {
     const containerHeight = 700 - 56 - 40;
     const totalRows = this.allRows.length;
-    const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + OVER_SCAN * 2;
-    const startIdx = Math.max(0, Math.floor(this.scrollTop / ROW_HEIGHT) - OVER_SCAN);
+    const visibleCount =
+      Math.ceil(containerHeight / ROW_HEIGHT) + OVER_SCAN * 2;
+    const startIdx = Math.max(
+      0,
+      Math.floor(this.scrollTop / ROW_HEIGHT) - OVER_SCAN,
+    );
     const endIdx = Math.min(totalRows, startIdx + visibleCount);
 
     this.updater

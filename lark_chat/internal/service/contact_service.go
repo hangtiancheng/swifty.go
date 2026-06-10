@@ -86,7 +86,7 @@ func LoadMyJoinedGroup(ctx context.Context, ownerId string) (string, []GroupList
 			var group model.GroupInfo
 			if err := dao.ActiveQuery(&group).Where("uuid", c.ContactId).First(ctx, &group); err == nil {
 				list = append(list, GroupListItem{
-					Uuid: group.Uuid, Name: group.Name, MemberCnt: group.MemberCnt,
+					GroupId: group.Uuid, Name: group.Name, MemberCnt: group.MemberCnt,
 					OwnerId: group.OwnerId, Avatar: group.Avatar,
 				})
 			}

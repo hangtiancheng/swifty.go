@@ -17,33 +17,65 @@ AppService.add([
   { name: "setAdmin", url: BASE_URL + "/user/set-admin" },
 
   // Contact
-  { name: "getContactInfo", url: BASE_URL + "/contact/get-contact-info", cache: 15_000 },
+  {
+    name: "getContactInfo",
+    url: BASE_URL + "/contact/get-contact-info",
+    cache: 15_000,
+  },
   { name: "getUserList", url: BASE_URL + "/contact/get-user-list" },
   { name: "applyContact", url: BASE_URL + "/contact/apply-contact" },
   { name: "passContactApply", url: BASE_URL + "/contact/pass-contact-apply" },
-  { name: "getNewContactList", url: BASE_URL + "/contact/get-new-contact-list" },
-  { name: "refuseContactApply", url: BASE_URL + "/contact/refuse-contact-apply" },
+  {
+    name: "getNewContactList",
+    url: BASE_URL + "/contact/get-new-contact-list",
+  },
+  {
+    name: "refuseContactApply",
+    url: BASE_URL + "/contact/refuse-contact-apply",
+  },
   { name: "blackApply", url: BASE_URL + "/contact/black-apply" },
   { name: "getAddGroupList", url: BASE_URL + "/contact/get-add-group-list" },
-  { name: "deleteContact", url: BASE_URL + "/contact/delete-contact", cleanKeys: "getUserList" },
+  {
+    name: "deleteContact",
+    url: BASE_URL + "/contact/delete-contact",
+    cleanKeys: "getUserList",
+  },
   { name: "blackContact", url: BASE_URL + "/contact/black-contact" },
-  { name: "cancelBlackContact", url: BASE_URL + "/contact/cancel-black-contact" },
-  { name: "loadMyJoinedGroup", url: BASE_URL + "/contact/load-my-joined-group" },
+  {
+    name: "cancelBlackContact",
+    url: BASE_URL + "/contact/cancel-black-contact",
+  },
+  {
+    name: "loadMyJoinedGroup",
+    url: BASE_URL + "/contact/load-my-joined-group",
+  },
 
   // Session
   { name: "openSession", url: BASE_URL + "/session/open-session" },
-  { name: "getUserSessionList", url: BASE_URL + "/session/get-user-session-list" },
-  { name: "getGroupSessionList", url: BASE_URL + "/session/get-group-session-list" },
+  {
+    name: "getUserSessionList",
+    url: BASE_URL + "/session/get-user-session-list",
+  },
+  {
+    name: "getGroupSessionList",
+    url: BASE_URL + "/session/get-group-session-list",
+  },
   {
     name: "deleteSession",
     url: BASE_URL + "/session/delete-session",
     cleanKeys: "getUserSessionList,getGroupSessionList",
   },
-  { name: "checkOpenSessionAllowed", url: BASE_URL + "/session/check-open-session-allowed" },
+  {
+    name: "checkOpenSessionAllowed",
+    url: BASE_URL + "/session/check-open-session-allowed",
+  },
 
   // Message
   { name: "getMessageList", url: BASE_URL + "/message/get-message-list" },
-  { name: "getGroupMessageList", url: BASE_URL + "/message/get-group-message-list" },
+  {
+    name: "getGroupMessageList",
+    url: BASE_URL + "/message/get-group-message-list",
+  },
   { name: "uploadFile", url: BASE_URL + "/message/upload-file" },
   { name: "uploadAvatar", url: BASE_URL + "/message/upload-avatar" },
 
@@ -51,7 +83,10 @@ AppService.add([
   { name: "createGroup", url: BASE_URL + "/group/create-group" },
   { name: "loadMyGroup", url: BASE_URL + "/group/load-my-group" },
   { name: "getGroupInfo", url: BASE_URL + "/group/get-group-info" },
-  { name: "getGroupMemberList", url: BASE_URL + "/group/get-group-member-list" },
+  {
+    name: "getGroupMemberList",
+    url: BASE_URL + "/group/get-group-member-list",
+  },
   { name: "updateGroupInfo", url: BASE_URL + "/group/update-group-info" },
   { name: "removeGroupMembers", url: BASE_URL + "/group/remove-group-members" },
   { name: "leaveGroup", url: BASE_URL + "/group/leave-group" },

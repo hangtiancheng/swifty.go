@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "format": "oxfmt --write ./",
+    "format": "prettier -w ./",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -22,7 +22,8 @@
     "@types/node": "^24.13.1",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
-    "oxfmt": "^0.53.0",
+    "prettier": "^3.8.3",
+    "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.60.1",

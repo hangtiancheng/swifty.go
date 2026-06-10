@@ -60,7 +60,13 @@ export default defineView({
 
   "saveProfile<click>"() {
     const d = this.editData;
-    if (!d.nickname && !d.email && !d.birthday && !d.signature && !this.avatarFile) {
+    if (
+      !d.nickname &&
+      !d.email &&
+      !d.birthday &&
+      !d.signature &&
+      !this.avatarFile
+    ) {
       showToast("Please modify at least one field", "warning");
       return;
     }

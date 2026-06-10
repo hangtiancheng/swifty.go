@@ -27,7 +27,7 @@ type GroupInfoResponse struct {
 }
 
 type GroupListItem struct {
-	Uuid      string `json:"uuid"`
+	GroupId   string `json:"group_id"`
 	Name      string `json:"name"`
 	MemberCnt int    `json:"member_cnt"`
 	OwnerId   string `json:"owner_id"`
@@ -87,7 +87,7 @@ func LoadMyGroup(ctx context.Context, ownerId string) (string, []GroupListItem, 
 	var list []GroupListItem
 	for _, g := range groups {
 		list = append(list, GroupListItem{
-			Uuid: g.Uuid, Name: g.Name, MemberCnt: g.MemberCnt, OwnerId: g.OwnerId, Avatar: g.Avatar,
+			GroupId: g.Uuid, Name: g.Name, MemberCnt: g.MemberCnt, OwnerId: g.OwnerId, Avatar: g.Avatar,
 		})
 	}
 	return "success", list, 0
@@ -236,7 +236,7 @@ func GetGroupInfoList(ctx context.Context) (string, []GroupListItem, int) {
 	var list []GroupListItem
 	for _, g := range groups {
 		list = append(list, GroupListItem{
-			Uuid: g.Uuid, Name: g.Name, MemberCnt: g.MemberCnt, OwnerId: g.OwnerId, Avatar: g.Avatar,
+			GroupId: g.Uuid, Name: g.Name, MemberCnt: g.MemberCnt, OwnerId: g.OwnerId, Avatar: g.Avatar,
 		})
 	}
 	return "success", list, 0

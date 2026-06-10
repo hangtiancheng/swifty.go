@@ -6,12 +6,12 @@
       <div class="chat-image avatar">
         <div class="w-10 rounded-full"><img src="{{=msg.send_avatar}}" /></div>
       </div>
-      <div class="chat-header text-gray-500 text-xs">
+      <div class="chat-header text-xs text-gray-500">
         {{=msg.send_name}}
-        <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+        <time class="ml-1 opacity-60">{{=msg.created_at}}</time>
       </div>
       <div
-        class="chat-bubble bg-white text-gray-700 shadow-sm border border-green-100"
+        class="chat-bubble border border-green-100 bg-white text-gray-700 shadow-sm"
       >
         {{=msg.content}}
       </div>
@@ -21,19 +21,19 @@
       <div class="chat-image avatar">
         <div class="w-10 rounded-full"><img src="{{=msg.send_avatar}}" /></div>
       </div>
-      <div class="chat-header text-gray-500 text-xs">
+      <div class="chat-header text-xs text-gray-500">
         {{=msg.send_name}}
-        <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+        <time class="ml-1 opacity-60">{{=msg.created_at}}</time>
       </div>
       <div
-        class="chat-bubble bg-white text-gray-700 shadow-sm border border-green-100"
+        class="chat-bubble border border-green-100 bg-white text-gray-700 shadow-sm"
       >
         <div class="flex items-center gap-2">
           <span class="text-sm font-medium">{{=msg.file_name}}</span>
           <span class="text-xs text-gray-400">{{=msg.file_size}}</span>
         </div>
         <button
-          class="btn btn-xs bg-green-100 hover:bg-green-200 text-green-700 border-green-200 mt-2"
+          class="btn btn-xs mt-2 border-green-200 bg-green-100 text-green-700 hover:bg-green-200"
           @click="downloadFile({url: '{{=msg.url}}', name: '{{=msg.file_name}}'})"
         >
           Download
@@ -47,9 +47,9 @@
           <img src="{{=currentUserAvatar}}" />
         </div>
       </div>
-      <div class="chat-header text-gray-500 text-xs">
+      <div class="chat-header text-xs text-gray-500">
         {{=currentUserName}}
-        <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+        <time class="ml-1 opacity-60">{{=msg.created_at}}</time>
       </div>
       <div class="chat-bubble bg-green-100 text-green-900 shadow-sm">
         {{=msg.content}}
@@ -62,16 +62,16 @@
           <img src="{{=currentUserAvatar}}" />
         </div>
       </div>
-      <div class="chat-header text-gray-500 text-xs">
+      <div class="chat-header text-xs text-gray-500">
         {{=currentUserName}}
-        <time class="opacity-60 ml-1">{{=msg.created_at}}</time>
+        <time class="ml-1 opacity-60">{{=msg.created_at}}</time>
       </div>
       <div class="chat-bubble bg-green-100 text-green-900 shadow-sm">
         <div class="flex items-center gap-2">
           <span class="text-sm font-medium">{{=msg.file_name}}</span>
           <span class="text-xs text-green-600">{{=msg.file_size}}</span>
         </div>
-        <span class="text-xs text-green-500 mt-1">Sent</span>
+        <span class="mt-1 text-xs text-green-500">Sent</span>
       </div>
     </div>
     {{/if}}

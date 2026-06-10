@@ -1,17 +1,19 @@
 <div
-  class="min-h-screen bg-linear-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4"
+  class="flex min-h-screen items-center justify-center bg-linear-to-br from-green-50 to-emerald-50 p-4"
 >
   <div
-    class="bg-white rounded-2xl shadow-lg w-250 h-175 flex flex-col overflow-hidden border border-green-100"
+    class="flex h-175 w-250 flex-col overflow-hidden rounded-2xl border border-green-100 bg-white shadow-lg"
   >
     <div
-      class="h-14 bg-green-100/50 flex items-center justify-between px-6 border-b border-green-100"
+      class="flex h-14 items-center justify-between border-b border-green-100 bg-green-100/50 px-6"
     >
       <div class="flex items-center gap-3">
-        <span class="w-5 h-5 text-green-700 [&>svg]:w-full [&>svg]:h-full"
+        <span class="h-5 w-5 text-green-700 [&>svg]:h-full [&>svg]:w-full"
           >{{!icons.chartBar}}</span
         >
-        <span class="text-lg font-semibold text-green-800">Cache Dashboard</span>
+        <span class="text-lg font-semibold text-green-800"
+          >Cache Dashboard</span
+        >
       </div>
       <div class="flex items-center gap-3">
         {{if status === 'connected'}}
@@ -26,11 +28,11 @@
     </div>
 
     {{if status !== 'connected'}}
-    <div class="flex-1 flex items-center justify-center">
+    <div class="flex flex-1 items-center justify-center">
       <div class="text-center">
-        <p class="text-gray-400 mb-4">WebSocket not connected</p>
+        <p class="mb-4 text-gray-400">WebSocket not connected</p>
         <button
-          class="btn btn-sm bg-green-600 hover:bg-green-700 text-white border-none"
+          class="btn btn-sm border-none bg-green-600 text-white hover:bg-green-700"
           @click="reconnect()"
         >
           Connect
@@ -38,9 +40,9 @@
       </div>
     </div>
     {{/if}} {{if status === 'connected'}}
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex flex-1 flex-col overflow-hidden">
       <div
-        class="h-10 flex items-center px-4 border-b border-green-100 bg-green-50/30 text-xs font-medium text-green-700 gap-2 shrink-0"
+        class="flex h-10 shrink-0 items-center gap-2 border-b border-green-100 bg-green-50/30 px-4 text-xs font-medium text-green-700"
       >
         <div class="w-16 text-center">Group</div>
         <div class="flex-1">Key</div>
@@ -50,17 +52,27 @@
         <div class="w-16 text-center">Action</div>
       </div>
 
-      <div id="vs-container" class="flex-1 overflow-y-auto" @scroll="onScroll()">
+      <div
+        id="vs-container"
+        class="flex-1 overflow-y-auto"
+        @scroll="onScroll()"
+      >
         <div style="height: {{=topPad}}px"></div>
         {{forOf visibleRows as row idx}}
         <div
-          class="h-9 flex items-center px-4 text-sm gap-2 border-b border-gray-50 hover:bg-green-50/50"
+          class="flex h-9 items-center gap-2 border-b border-gray-50 px-4 text-sm hover:bg-green-50/50"
         >
           <div class="w-16 text-center">
-            <span class="badge badge-xs badge-outline text-xs">{{=row.group}}</span>
+            <span class="badge badge-xs badge-outline text-xs"
+              >{{=row.group}}</span
+            >
           </div>
-          <div class="flex-1 truncate font-mono text-xs" title="{{=row.key}}">{{=row.key}}</div>
-          <div class="w-16 text-right text-xs text-gray-500">{{=row.sizeStr}}</div>
+          <div class="flex-1 truncate font-mono text-xs" title="{{=row.key}}">
+            {{=row.key}}
+          </div>
+          <div class="w-16 text-right text-xs text-gray-500">
+            {{=row.sizeStr}}
+          </div>
           <div class="w-14 text-center">
             {{if row.level === 1}}
             <span class="badge badge-xs badge-success">hot</span>
@@ -68,7 +80,9 @@
             <span class="badge badge-xs badge-ghost">cold</span>
             {{/if}}
           </div>
-          <div class="w-40 text-center text-xs text-gray-500">{{=row.expireStr}}</div>
+          <div class="w-40 text-center text-xs text-gray-500">
+            {{=row.expireStr}}
+          </div>
           <div class="w-16 text-center">
             <button
               class="btn btn-xs btn-error btn-outline"

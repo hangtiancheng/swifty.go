@@ -1,4 +1,4 @@
-<div class="flex flex-col h-full w-full">
+<div class="flex h-full w-full flex-col">
   <div class="p-2">
     <input
       type="text"
@@ -7,37 +7,47 @@
       @input="onSearch()"
     />
   </div>
-  <div class="overflow-y-auto flex-1">
-    <div class="collapse collapse-arrow bg-green-50/50 rounded-none border-b border-green-100">
+  <div class="flex-1 overflow-y-auto">
+    <div
+      class="collapse-arrow collapse rounded-none border-b border-green-100 bg-green-50/50"
+    >
       <input type="checkbox" @change="toggleUsers()" />
       <div class="collapse-title text-sm font-medium text-green-800">Users</div>
       <div class="collapse-content p-0">
         {{forOf userSessions as user idx}}
         <div
-          class="flex items-center gap-2 px-3 py-2 hover:bg-green-50 cursor-pointer transition-colors"
+          class="flex cursor-pointer items-center gap-2 px-3 py-2 transition-colors hover:bg-green-50"
           @click="chatUser({id: '{{=user.user_id}}'})"
         >
           <div class="avatar">
             <div class="w-8 rounded-full"><img src="{{=user.avatar}}" /></div>
           </div>
-          <span class="text-sm truncate text-gray-700">{{=user.user_name}}</span>
+          <span class="truncate text-sm text-gray-700"
+            >{{=user.user_name}}</span
+          >
         </div>
         {{/forOf}}
       </div>
     </div>
-    <div class="collapse collapse-arrow bg-green-50/50 rounded-none border-b border-green-100">
+    <div
+      class="collapse-arrow collapse rounded-none border-b border-green-100 bg-green-50/50"
+    >
       <input type="checkbox" @change="toggleGroups()" />
-      <div class="collapse-title text-sm font-medium text-green-800">Groups</div>
+      <div class="collapse-title text-sm font-medium text-green-800">
+        Groups
+      </div>
       <div class="collapse-content p-0">
         {{forOf groupSessions as group idx}}
         <div
-          class="flex items-center gap-2 px-3 py-2 hover:bg-green-50 cursor-pointer transition-colors"
+          class="flex cursor-pointer items-center gap-2 px-3 py-2 transition-colors hover:bg-green-50"
           @click="chatGroup({id: '{{=group.group_id}}'})"
         >
           <div class="avatar">
             <div class="w-8 rounded-full"><img src="{{=group.avatar}}" /></div>
           </div>
-          <span class="text-sm truncate text-gray-700">{{=group.group_name}}</span>
+          <span class="truncate text-sm text-gray-700"
+            >{{=group.group_name}}</span
+          >
         </div>
         {{/forOf}}
       </div>

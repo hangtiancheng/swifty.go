@@ -51,7 +51,10 @@ export class RtcManager {
 
   async getLocalMedia() {
     if (this.localStream) return this.localStream;
-    this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    this.localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
     this.onLocalStream?.(this.localStream);
     return this.localStream;
   }

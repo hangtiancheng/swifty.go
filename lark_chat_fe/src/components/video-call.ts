@@ -8,16 +8,22 @@ export default defineView({
   rtc: null as RtcManager | null,
 
   init() {
-    this.updater.set({ visible: false, inCall: false, incomingCall: false }).digest();
+    this.updater
+      .set({ visible: false, inCall: false, incomingCall: false })
+      .digest();
     this.rtc = new RtcManager();
     this.rtc.onLocalStream = (stream) => {
-      const el = document.getElementById("local-video") as HTMLVideoElement | null;
+      const el = document.getElementById(
+        "local-video",
+      ) as HTMLVideoElement | null;
       if (el) {
         el.srcObject = stream;
       }
     };
     this.rtc.onRemoteStream = (stream) => {
-      const el = document.getElementById("remote-video") as HTMLVideoElement | null;
+      const el = document.getElementById(
+        "remote-video",
+      ) as HTMLVideoElement | null;
       if (el) {
         el.srcObject = stream;
       }
