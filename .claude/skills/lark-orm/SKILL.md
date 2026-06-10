@@ -12,135 +12,148 @@ description: >
   struct-to-collection name derivation (CollectionName), or any import of
   github.com/hangtiancheng/lark-go/lark_orm. Also use when the user asks about
   Knex-style query chaining in Go for MongoDB, BSON filter construction, the
-  Engine lifecycle, or replacing knex+mysql usage with lark_orm+mongodb. Do not
-  use for GORM, sqlx, ent, raw mongo-driver code that does not import lark_orm,
+  Engine lifecycle, or replacing knex+mysql usage with lark_orm+mongodb. SKIP
+  for GORM, sqlx, ent, raw mongo-driver code that does not import lark_orm,
   or any non-MongoDB datastore.
 ---
 
 # lark_orm
 
 A Knex-inspired, chainable query builder ORM for MongoDB in Go. Provides a
-fluent API for CRUD, aggregation, transactions, and auto-incrementing sequences
-on top of the official `go.mongodb.org/mongo-driver`.
+fluent API for CRUD operations, aggregation, transactions, and auto-incrementing
+sequences on top of the official `go.mongodb.org/mongo-driver`. The package
+exports a single entry point (`NewEngine`) that yields an `Engine` handle from
+which all queries originate via `Collection(name)` or `Model(struct)`.
 
-- Module path: `github.com/hangtiancheng/lark-go/lark_orm`
-- Source root: `lark_orm/`
-- Go toolchain: 1.26+
-- All exported types live directly in the `lark_orm` package (flat layout, no
-  sub-packages).
+Module path: `github.com/hangtiancheng/lark-go/lark_orm`
+
+Source root: `lark_orm/`
+
+Go toolchain: 1.26+
+
+All exported types live directly in the `lark_orm` package (flat layout, no
+sub-packages).
 
 ## Architecture overview
 
 ```
 Engine (engine.go)
-  |-- *mongo.Client            (lifecycle)
-  |-- *mongo.Database          (lifecycle)
-  |-- mongo.Session            (set only inside Transaction)
+  |-- *mongo.Client            (lifecycle: connect, ping, disconnect)
+  |-- *mongo.Database          (selected at construction time)
+  |-- mongo.Session            (set only inside Transaction callback)
   |
-  |-- Client() / Database() / DatabaseName()
-  |-- Close(ctx) / DropDatabase(ctx)
-  |-- Collection(name) -> *Query
-  |-- Model(value)     -> *Query     // collection name derived via reflection
-  |-- Transaction(ctx, fn)            // session-scoped sub-Engine
-  |-- NextSequence(ctx, name)         // atomic int64 counter
+  |-- Client() / Database() / DatabaseName()   [accessors, nil-safe]
+  |-- Close(ctx) / DropDatabase(ctx)           [lifecycle]
+  |-- Collection(name) -> *Query               [entry to query builder]
+  |-- Model(value)     -> *Query               [auto-derives collection name]
+  |-- Transaction(ctx, fn)                     [session-scoped sub-Engine]
+  |-- NextSequence(ctx, name)                  [atomic counter, "counters" col]
 
-Query (query.go, mutable, chainable)
-  |-- conditions []condition
-  |-- orGroups   [][]condition
-  |-- sort, limit, skip, fields
+Query (query.go + query_exec.go + query_aggregate.go, mutable, chainable)
+  |-- collection  *mongo.Collection
+  |-- engine      *Engine
+  |-- conditions  []condition       <- Where / WhereIn / WhereNotIn / etc.
+  |-- orGroups    [][]condition      <- OrWhere
+  |-- sort        bson.D            <- OrderBy
+  |-- limit       int64             <- Limit
+  |-- skip        int64             <- Offset
+  |-- fields      []string          <- Select
   |
-  |-- Where / WhereIn / WhereNotIn / WhereNull / WhereNotNull / WhereBetween / OrWhere
-  |-- OrderBy / Limit / Offset / Select
-  |-- Insert / First / Find / Update / Delete / Count / Exists
-  |-- Sum / Avg / Min / Max / Distinct / Pluck
-  |-- EnsureIndexes / DropCollection
+  |-- [conditions] Where / WhereIn / WhereNotIn / WhereNull / WhereNotNull
+  |                WhereBetween / OrWhere
+  |-- [modifiers]  OrderBy / Limit / Offset / Select
+  |-- [execution]  Insert / First / Find / Update / Delete / Count / Exists
+  |                EnsureIndexes / DropCollection
+  |-- [aggregate]  Sum / Avg / Min / Max / Distinct / Pluck
+
+Filter builder (filter.go)
+  |-- buildFilter()      -> bson.M   [condition chain -> MongoDB query doc]
+  |-- buildProjection()  -> bson.M   [fields -> inclusive projection or nil]
+
+Naming (naming.go)
+  |-- CollectionName(value) string   [struct type -> snake_case plural name]
+
+Logging (log.go)
+  |-- Error / Errorf / Info / Infof  [package-level method-value vars]
+  |-- SetLevel(int)                  [InfoLevel / ErrorLevel / Disabled]
 ```
-
-`Query` is intentionally a small mutable struct. Each chain method appends to
-its slices and returns the same receiver. See "Pitfalls" for the implications.
 
 ## Core types
 
 ### Engine
 
-Wraps a MongoDB client plus a single database handle.
-
 ```go
-func NewEngine(ctx context.Context, uri string, database string) (*Engine, error)
+type Engine struct {
+    // unexported: client, database, databaseName, session
+}
 ```
 
-`NewEngine` connects, pings, and returns a ready engine. It returns errors for
-empty URI, empty database name, connect failure, or ping failure. On ping
-failure the client is disconnected before returning, so no handle leaks.
-
-All Engine methods are nil-safe on the receiver: calling `Client()`,
-`Database()`, `DatabaseName()`, `Close()`, or `DropDatabase()` on a nil
-`*Engine` returns the zero value or nil error rather than panicking.
-
-| Method       | Signature                                                                    | Notes                                                                                    |
-| ------------ | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| NewEngine    | `(ctx, uri, database) (*Engine, error)`                                      | Constructor. Pings before returning.                                                     |
-| Client       | `() *mongo.Client`                                                           | Underlying driver client.                                                                |
-| Database     | `() *mongo.Database`                                                         | Active database handle.                                                                  |
-| DatabaseName | `() string`                                                                  | Database name passed to `NewEngine`.                                                     |
-| Collection   | `(name string) *Query`                                                       | Empty name yields a Query whose execution methods return `ErrCollectionRequired`.        |
-| Model        | `(value interface{}) *Query`                                                 | Equivalent to `Collection(CollectionName(value))`.                                       |
-| Close        | `(ctx context.Context) error`                                                | Disconnect the client.                                                                   |
-| DropDatabase | `(ctx context.Context) error`                                                | Drop the entire database. Destructive.                                                   |
-| NextSequence | `(ctx context.Context, name string) (int64, error)`                          | Atomic counter on the hard-coded `counters` collection. First call for a name returns 1. |
-| Transaction  | `(ctx context.Context, fn func(sc context.Context, tx *Engine) error) error` | Session transaction. `fn` MUST use `sc` as ctx; see "Transactions" below.                |
+| Symbol       | Signature                                                                                                | Description                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| NewEngine    | `func NewEngine(ctx context.Context, uri string, database string) (*Engine, error)`                      | Connect, ping, return ready engine. Errors on empty URI, empty database, or connectivity failure.                            |
+| Client       | `func (e *Engine) Client() *mongo.Client`                                                                | Underlying driver client. Nil-safe.                                                                                          |
+| Database     | `func (e *Engine) Database() *mongo.Database`                                                            | Active database handle. Nil-safe.                                                                                            |
+| DatabaseName | `func (e *Engine) DatabaseName() string`                                                                 | Database name string. Nil-safe.                                                                                              |
+| Collection   | `func (e *Engine) Collection(name string) *Query`                                                        | Start a query on the named collection. Empty/whitespace name yields a Query whose exec methods return ErrCollectionRequired. |
+| Model        | `func (e *Engine) Model(value interface{}) *Query`                                                       | Equivalent to `Collection(CollectionName(value))`.                                                                           |
+| Close        | `func (e *Engine) Close(ctx context.Context) error`                                                      | Disconnect the client. Nil-safe.                                                                                             |
+| DropDatabase | `func (e *Engine) DropDatabase(ctx context.Context) error`                                               | Drop the entire database. Nil-safe.                                                                                          |
+| NextSequence | `func (e *Engine) NextSequence(ctx context.Context, name string) (int64, error)`                         | Atomic counter via FindOneAndUpdate on hard-coded `counters` collection. First call returns 1.                               |
+| Transaction  | `func (e *Engine) Transaction(ctx context.Context, fn func(sc context.Context, tx *Engine) error) error` | Session transaction. The callback receives a session context and a sub-Engine.                                               |
 
 ### Query
 
-Chainable query builder. Obtained from `engine.Collection(name)` or
-`engine.Model(value)`. All condition methods return the receiver for chaining
-and have no error return; errors surface only at execution time.
-
-Condition methods:
-
-| Method       | Signature                                | Behavior                                                                                 |
-| ------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Where        | `(field, value)` or `(field, op, value)` | Two-arg form is equality. Three-arg form uses the operator string.                       |
-| WhereIn      | `(field, values)`                        | `$in`. `values` should be a slice; passed straight to BSON.                              |
-| WhereNotIn   | `(field, values)`                        | `$nin`.                                                                                  |
-| WhereNull    | `(field)`                                | Sets `field: nil`.                                                                       |
-| WhereNotNull | `(field)`                                | Sets `field: {$ne: nil}`.                                                                |
-| WhereBetween | `(field, low, high)`                     | Sets `{$gte: low, $lte: high}` and merges with other ops on the same field.              |
-| OrWhere      | `(field, value)` or `(field, op, value)` | Each call appends a separate `$or` branch.                                               |
-| OrderBy      | `(field, direction?)`                    | Direction is `"asc"` (default) or `"desc"` / `"DESC"`. Other casings are treated as asc. |
-| Limit        | `(n int64)`                              | Only applied when `n > 0`.                                                               |
-| Offset       | `(n int64)`                              | Only applied when `n > 0`. Applies to both `Find` and `First`.                           |
-| Select       | `(fields ...string)`                     | Inclusive projection only. Repeated calls replace, not merge.                            |
-
-Comparison operators recognized in `Where(field, op, value)` (case-sensitive,
-exact match against `opMap`):
-
-```
-=  !=  <>  >  >=  <  <=  $in  $nin
+```go
+type Query struct {
+    // unexported: collection, engine, conditions, orGroups, sort, limit, skip, fields
+}
 ```
 
-Any operator string not in the map is passed through to MongoDB verbatim, so
-`Where("name", "$regex", "^A")` works. This also means typos like `>==` reach
-the driver and cause a server-side error.
+Condition methods (return `*Query` for chaining):
+
+| Method       | Signature                                                                              | Behavior                                                             |
+| ------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Where        | `func (q *Query) Where(args ...interface{}) *Query`                                    | 2-arg: equality. 3-arg: `(field, op, value)`.                        |
+| WhereIn      | `func (q *Query) WhereIn(field string, values interface{}) *Query`                     | `$in` operator.                                                      |
+| WhereNotIn   | `func (q *Query) WhereNotIn(field string, values interface{}) *Query`                  | `$nin` operator.                                                     |
+| WhereNull    | `func (q *Query) WhereNull(field string) *Query`                                       | Sets `field: nil` in filter.                                         |
+| WhereNotNull | `func (q *Query) WhereNotNull(field string) *Query`                                    | Sets `field: {$ne: nil}`.                                            |
+| WhereBetween | `func (q *Query) WhereBetween(field string, low interface{}, high interface{}) *Query` | Sets `{$gte: low, $lte: high}`, merges with other ops on same field. |
+| OrWhere      | `func (q *Query) OrWhere(args ...interface{}) *Query`                                  | Each call appends a separate `$or` branch.                           |
+
+Modifier methods (return `*Query` for chaining):
+
+| Method  | Signature                                                           | Behavior                                                         |
+| ------- | ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| OrderBy | `func (q *Query) OrderBy(field string, direction ...string) *Query` | `"desc"` or `"DESC"` for descending; anything else is ascending. |
+| Limit   | `func (q *Query) Limit(n int64) *Query`                             | Applied only when n > 0.                                         |
+| Offset  | `func (q *Query) Offset(n int64) *Query`                            | Applied only when n > 0. Works with both Find and First.         |
+| Select  | `func (q *Query) Select(fields ...string) *Query`                   | Inclusive projection. Repeated calls replace, not merge.         |
 
 Execution methods:
 
-| Method         | Signature                                          | Behavior                                                                                                           |
-| -------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Insert         | `(ctx, docs ...interface{}) (InsertResult, error)` | One doc uses `InsertOne`; multiple docs use `InsertMany`. Requires at least one doc.                               |
-| First          | `(ctx, out interface{}) error`                     | Backed by `FindOne`. Honors sort, skip, projection. Returns `mongo.ErrNoDocuments` when nothing matches.           |
-| Find           | `(ctx, out interface{}) error`                     | Backed by `Find` + `cursor.All`. Loads the entire result set into `out`.                                           |
-| Update         | `(ctx, update interface{}) (int64, error)`         | Backed by `UpdateMany`. Returns `ModifiedCount`. Auto-wraps `bson.M` without `$`-prefixed keys into `{$set: ...}`. |
-| Delete         | `(ctx) (int64, error)`                             | Backed by `DeleteMany`. Returns `DeletedCount`.                                                                    |
-| Count          | `(ctx) (int64, error)`                             | Backed by `CountDocuments`.                                                                                        |
-| Exists         | `(ctx) (bool, error)`                              | Implemented as `Count(ctx) > 0`.                                                                                   |
-| EnsureIndexes  | `(ctx, []mongo.IndexModel) ([]string, error)`      | No-op (returns `nil, nil`) when the slice is empty.                                                                |
-| DropCollection | `(ctx) error`                                      | Drops the underlying collection.                                                                                   |
+| Method         | Signature                                                                                          | Behavior                                                                                             |
+| -------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Insert         | `func (q *Query) Insert(ctx context.Context, documents ...interface{}) (InsertResult, error)`      | 1 doc uses InsertOne; 2+ docs use InsertMany. Requires at least one doc.                             |
+| First          | `func (q *Query) First(ctx context.Context, out interface{}) error`                                | FindOne. Honors sort, skip, projection. Returns `mongo.ErrNoDocuments` when nothing matches.         |
+| Find           | `func (q *Query) Find(ctx context.Context, out interface{}) error`                                 | Find + cursor.All. Loads entire result set into `out`.                                               |
+| Update         | `func (q *Query) Update(ctx context.Context, update interface{}) (int64, error)`                   | UpdateMany. Returns ModifiedCount. Auto-wraps `bson.M` without `$`-prefixed keys into `{$set: ...}`. |
+| Delete         | `func (q *Query) Delete(ctx context.Context) (int64, error)`                                       | DeleteMany. Returns DeletedCount.                                                                    |
+| Count          | `func (q *Query) Count(ctx context.Context) (int64, error)`                                        | CountDocuments.                                                                                      |
+| Exists         | `func (q *Query) Exists(ctx context.Context) (bool, error)`                                        | `Count(ctx) > 0`.                                                                                    |
+| EnsureIndexes  | `func (q *Query) EnsureIndexes(ctx context.Context, indexes []mongo.IndexModel) ([]string, error)` | No-op when slice is empty.                                                                           |
+| DropCollection | `func (q *Query) DropCollection(ctx context.Context) error`                                        | Drops the underlying collection.                                                                     |
 
-`Update`'s `$set` auto-wrap fires only when the argument is the concrete type
-`bson.M` and none of its keys start with `$`. If you pass `bson.D`,
-`map[string]interface{}`, or a struct, the value is forwarded as-is and the
-driver will reject documents lacking an update operator.
+Aggregation methods:
+
+| Method   | Signature                                                                            | Behavior                                                              |
+| -------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Sum      | `func (q *Query) Sum(ctx context.Context, field string) (float64, error)`            | `$sum`. Returns `(0, nil)` when no documents match.                   |
+| Avg      | `func (q *Query) Avg(ctx context.Context, field string) (float64, error)`            | `$avg`. Returns `(0, nil)` when no documents match.                   |
+| Min      | `func (q *Query) Min(ctx context.Context, field string) (float64, error)`            | `$min`. Non-numeric fields fail at decode.                            |
+| Max      | `func (q *Query) Max(ctx context.Context, field string) (float64, error)`            | `$max`. Non-numeric fields fail at decode.                            |
+| Distinct | `func (q *Query) Distinct(ctx context.Context, field string) ([]interface{}, error)` | Direct call to Collection.Distinct. Caller must type-assert elements. |
+| Pluck    | `func (q *Query) Pluck(ctx context.Context, field string, out interface{}) error`    | Mutates `q.fields` then calls Find. Treat as terminal.                |
 
 ### InsertResult
 
@@ -151,178 +164,117 @@ type InsertResult struct {
 }
 ```
 
-`InsertedCount` is derived from `len(InsertedIDs)` in both the single and
-multi-document paths.
-
-### Aggregation methods
-
-All aggregation methods reuse the current condition chain. They build the
-pipeline `[{$match: filter}, {$group: {_id: null, result: <accumulator>}}]` and
-read the single grouped result.
-
-| Method   | Signature                             | Behavior                                                                                      |
-| -------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Sum      | `(ctx, field) (float64, error)`       | `$sum`. Returns `(0, nil)` when no documents match.                                           |
-| Avg      | `(ctx, field) (float64, error)`       | `$avg`. Returns `(0, nil)` when no documents match.                                           |
-| Min      | `(ctx, field) (float64, error)`       | `$min`. Numeric only; non-numeric fields will fail to decode into `float64`.                  |
-| Max      | `(ctx, field) (float64, error)`       | `$max`. Same numeric-only caveat.                                                             |
-| Distinct | `(ctx, field) ([]interface{}, error)` | Direct call to `Collection.Distinct`. Caller must type-assert each element.                   |
-| Pluck    | `(ctx, field, out) error`             | Mutates `q.fields = []string{field}` then calls `Find`. Do not reuse the Query after `Pluck`. |
-
-### Collection naming
-
-`CollectionName(value)` derives a collection name from a struct type:
-
-1. Unwrap pointers, then unwrap slice/array element, then unwrap pointers again
-2. If the resulting kind is not a struct, return `""`
-3. Convert the type's `Name()` from `CamelCase` to `snake_case` by inserting an
-   underscore before each non-leading uppercase letter
-4. Pluralize with these rules in order:
-   - consonant + `y` -> drop `y`, add `ies`
-   - ends with `s`, `x`, `sh`, `ch` -> add `es`
-   - otherwise -> add `s`
-
-Worked examples:
-
-```
-User           -> users
-Address        -> addresses
-Category       -> categories
-Day            -> days
-ChatHistory    -> chat_histories
-[]testCity     -> test_cities
-&testUser{}    -> test_users
-42 (non-struct)-> ""
-```
-
-Limitations to be aware of:
-
-- Acronyms are split letter-by-letter: `HTTPServer` becomes `h_t_t_p_server`,
-  not `http_servers`. For acronym-heavy names, call `engine.Collection("explicit_name")`.
-- Irregular plurals are not handled (`Person -> persons`, `Hero -> heros`,
-  `Child -> childs`). Override via `engine.Collection(...)`.
-- There is no `CollectionNamer` interface escape hatch; the only override is to
-  use `Collection` instead of `Model`.
-
-### Filter construction (`filter.go`)
-
-`(*Query).buildFilter()` translates the condition chain into a `bson.M`:
-
-- `op == "="` sets `field: value` directly on the filter map
-- `op == "null"` sets `field: nil`
-- `op == "notNull"` merges `{$ne: nil}` onto the field
-- `op == "between"` merges `{$gte: low, $lte: high}` onto the field
-- Any other op is looked up in `opMap` (or passed through if absent), then
-  merged onto the field via `mergeFieldOp`
-- Multiple non-equality ops on the same field merge into one sub-document
-  (`Where("age", ">", 18).Where("age", "<", 30)` produces
-  `{age: {$gt: 18, $lt: 30}}`)
-- `OrWhere` produces `{$or: [<base>, <or-group-1>, <or-group-2>, ...]}` where
-  `<base>` is the filter built from the main `Where*` chain
-
-`buildProjection()` returns `nil` when no `Select` was called, otherwise a
-`bson.M` mapping each field to `1` (inclusive projection only).
-
-## Transactions
+### ErrCollectionRequired
 
 ```go
-err := engine.Transaction(ctx, func(sc context.Context, tx *lark_orm.Engine) error {
-    if _, err := tx.Collection("accounts").
-        Where("_id", fromID).
-        Update(sc, bson.M{"$inc": bson.M{"balance": -amount}}); err != nil {
-        return err
-    }
-    if _, err := tx.Collection("accounts").
-        Where("_id", toID).
-        Update(sc, bson.M{"$inc": bson.M{"balance": amount}}); err != nil {
-        return err
-    }
-    return nil
-})
+var ErrCollectionRequired = errors.New("collection is required before query execution")
 ```
 
-Contract:
+Returned by every execution method when the Query has a nil collection (caused
+by calling `engine.Collection("")` or operating on a nil Query).
 
-- `tx` shares the same `*mongo.Client` and `*mongo.Database` as the outer
-  engine; it carries the session privately
-- The callback MUST pass `sc` (the `mongo.SessionContext` re-typed as
-  `context.Context`) into every lark_orm execution method that should
-  participate in the transaction. Using `ctx` from the outer scope silently
-  skips the session
-- Returning `nil` from the callback commits; returning an error aborts and
-  propagates the error to the caller of `Transaction`
-- Requires MongoDB deployed as a replica set or sharded cluster. Standalone
-  `mongod` instances reject sessions with "Transaction numbers are only allowed
-  on a replica set member or mongos."
-
-## Auto-increment sequences
+### CollectionName
 
 ```go
-nextID, err := engine.NextSequence(ctx, "order_id")
+func CollectionName(value interface{}) string
 ```
 
-- Uses `FindOneAndUpdate` with `$inc: {value: 1}`, upsert, and
-  `ReturnDocument: After` on the collection named `counters` (hard-coded)
-- Each sequence name is a separate document keyed by `_id: name`
-- First call for an unseen name returns `1`
-- Returns an error for an empty `name` or a nil/uninitialized engine
+Derives a collection name from a struct type via reflection: unwrap pointers,
+unwrap slice/array element, require struct kind, convert CamelCase to
+snake_case, then pluralize.
 
-## Logging
-
-Package-level loggers with ANSI color prefixes and a level switch. Defined as
-method-value assignments in `log.go`:
+### Log constants and functions
 
 ```go
-var (
-    Error  = errorLogger.Println   // func(...any)
-    Errorf = errorLogger.Printf    // func(string, ...any)
-    Info   = infoLogger.Println
-    Infof  = infoLogger.Printf
+const (
+    InfoLevel  = iota  // 0
+    ErrorLevel         // 1
+    Disabled           // 2
 )
 
-const (
-    InfoLevel = iota   // 0 - everything
-    ErrorLevel         // 1 - error only
-    Disabled           // 2 - silent
+var (
+    Error  = errorLogger.Println
+    Errorf = errorLogger.Printf
+    Info   = infoLogger.Println
+    Infof  = infoLogger.Printf
 )
 
 func SetLevel(level int)
 ```
 
-Notes:
-
-- Higher constant value means quieter; `SetLevel(Disabled)` silences both
-  loggers
-- The framework itself does not currently emit any log lines; these are
-  exported for downstream code or future instrumentation
-- Output goes to `os.Stdout`. The ANSI color codes will appear as literal
-  escape sequences in terminals that do not support color
-- To redirect, reassign the package-level vars (e.g. `lark_orm.Info =
-myLogger.Println`); there is no interface-based logger injection
-
-## Errors
-
-Exported sentinel:
-
-| Sentinel                | Source          | Raised when                                             |
-| ----------------------- | --------------- | ------------------------------------------------------- |
-| `ErrCollectionRequired` | `query_exec.go` | Any execution method runs on a Query with no collection |
-
-Plain `errors.New` strings (NOT comparable with `errors.Is`; match on substring
-only if you must):
+Comparison operators recognized in `Where(field, op, value)`:
 
 ```
-mongo uri is required
-mongo database is required
-engine is not initialized
-sequence name is required
-at least one document is required
-collection is required before query execution    // also wrapped by ErrCollectionRequired
+=  !=  <>  >  >=  <  <=  $in  $nin
 ```
 
-Driver errors from `mongo-driver` are returned as-is, not wrapped with `%w`.
-Use the driver's own error helpers (`mongo.IsDuplicateKeyError`, comparison
-against `mongo.ErrNoDocuments`, etc.) to classify them.
+Any operator string not in the map passes through to MongoDB verbatim (e.g.,
+`"$regex"`, `"$exists"`).
+
+## Internal implementation details affecting correctness
+
+### Filter construction (filter.go)
+
+`buildFilter()` translates the condition chain into a `bson.M`:
+
+- Equality (`op == "="`) sets `field: value` directly on the map.
+- `op == "null"` sets `field: nil`.
+- `op == "notNull"` merges `{$ne: nil}` via `mergeFieldOp`.
+- `op == "between"` type-asserts the value to `[2]interface{}` and merges both
+  `$gte` and `$lte` onto the field.
+- All other ops are looked up in `opMap` (or passed through if absent), then
+  merged via `mergeFieldOp`.
+
+`mergeFieldOp` accumulates multiple operators on the same field into a single
+`bson.M` sub-document. If the existing value for a field is already a `bson.M`,
+it adds the new operator key. If the existing value is a non-map scalar (from a
+prior equality condition), the scalar is overwritten with a new `bson.M`
+containing only the new operator -- the equality is silently lost.
+
+When `orGroups` is non-empty, the entire output becomes
+`{$or: [<base-filter>, <group1>, <group2>, ...]}` where `<base-filter>` is
+built from the main `conditions` slice.
+
+`buildProjection()` returns `nil` when `q.fields` is empty, otherwise a
+`bson.M` mapping each field to `1` (inclusive projection only; `_id` is not
+explicitly excluded).
+
+### Update normalization (query_exec.go)
+
+`normalizeUpdate` checks whether the argument is the concrete type `bson.M`. If
+so, it scans for any key starting with `$`. If none found, it wraps the
+document: `bson.M{"$set": originalDoc}`. If the argument is any other type
+(`bson.D`, `map[string]interface{}`, a struct), it passes through unchanged and
+the driver will reject documents that lack an update operator.
+
+### Naming (naming.go)
+
+`toSnake` inserts an underscore before every uppercase letter that is not at
+position 0. Acronyms are split letter-by-letter (`HTTPServer` becomes
+`h_t_t_p_server`).
+
+Pluralization rules applied in order:
+
+1. Ends in consonant + `y`: replace `y` with `ies`
+2. Ends in `s`, `x`, `sh`, or `ch`: append `es`
+3. Otherwise: append `s`
+
+Irregular plurals and already-plural words are not handled.
+
+### Transaction session propagation (engine.go)
+
+`Transaction` creates a new `Engine` value (`txEngine`) that shares the same
+client, database, and database name, but carries the session. The session is
+private and not exposed to query execution methods -- the transactional
+guarantee depends entirely on the caller passing the `mongo.SessionContext` (the
+`sc` parameter) into every lark_orm method call inside the callback. If the
+outer `ctx` is passed instead, operations silently run outside the transaction.
+
+### Query mutability
+
+`Query` methods append to internal slices and return the same pointer receiver.
+The struct is not copied. Branching from a shared Query aliases the underlying
+slices; subsequent mutations affect all branches.
 
 ## Typical usage
 
@@ -331,11 +283,14 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     "time"
 
     "github.com/hangtiancheng/lark-go/lark_orm"
     "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/mongo"
+    "go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type User struct {
@@ -347,171 +302,192 @@ type User struct {
 }
 
 func main() {
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
-    engine, err := lark_orm.NewEngine(ctx, "mongodb://localhost:27017", "mydb")
+    engine, err := lark_orm.NewEngine(ctx, "mongodb://localhost:27017", "myapp")
     if err != nil {
         log.Fatal(err)
     }
     defer engine.Close(ctx)
 
-    _, err = engine.Collection("users").Insert(ctx,
-        bson.M{"_id": 1, "name": "Alice", "age": 30},
-        bson.M{"_id": 2, "name": "Bob",   "age": 25},
+    // Insert documents
+    result, err := engine.Collection("users").Insert(ctx,
+        &User{ID: 1, Name: "Alice", Email: "alice@example.com", Age: 30, CreatedAt: time.Now()},
+        &User{ID: 2, Name: "Bob", Email: "bob@example.com", Age: 25, CreatedAt: time.Now()},
     )
     if err != nil {
         log.Fatal(err)
     }
+    fmt.Println("inserted:", result.InsertedCount)
 
+    // Query with conditions, ordering, and projection
     var users []User
-    if err := engine.Model(&User{}).
+    err = engine.Model(&User{}).
         Where("age", ">=", 18).
         WhereNotNull("email").
         OrderBy("created_at", "desc").
         Limit(10).
-        Select("name", "email").
-        Find(ctx, &users); err != nil {
+        Offset(0).
+        Select("name", "email", "_id").
+        Find(ctx, &users)
+    if err != nil {
         log.Fatal(err)
     }
 
-    avg, _ := engine.Collection("orders").
-        Where("status", "completed").
-        Avg(ctx, "total")
-    _ = avg
+    // Single document lookup
+    var user User
+    err = engine.Model(&User{}).
+        Where("_id", 1).
+        First(ctx, &user)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-    n, _ := engine.Model(&User{}).Where("active", true).Count(ctx)
-    _ = n
+    // Update with auto $set wrap
+    modified, err := engine.Collection("users").
+        Where("_id", 1).
+        Update(ctx, bson.M{"name": "Alice Updated"})
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("modified:", modified)
+
+    // Update with explicit operator (no $set wrap)
+    _, _ = engine.Collection("users").
+        Where("_id", 1).
+        Update(ctx, bson.M{"$inc": bson.M{"age": 1}})
+
+    // Delete with condition
+    deleted, _ := engine.Collection("users").
+        Where("age", "<", 18).
+        Delete(ctx)
+    fmt.Println("deleted:", deleted)
+
+    // Aggregation
+    avg, _ := engine.Collection("users").
+        Where("age", ">", 0).
+        Avg(ctx, "age")
+    fmt.Println("average age:", avg)
+
+    // Count and Exists
+    count, _ := engine.Model(&User{}).Count(ctx)
+    exists, _ := engine.Model(&User{}).Where("name", "Alice Updated").Exists(ctx)
+    fmt.Println("count:", count, "exists:", exists)
+
+    // Auto-increment sequence
+    nextID, _ := engine.NextSequence(ctx, "user_id")
+    fmt.Println("next id:", nextID)
+
+    // Transaction (requires replica set)
+    err = engine.Transaction(ctx, func(sc context.Context, tx *lark_orm.Engine) error {
+        _, err := tx.Collection("users").
+            Where("_id", 1).
+            Update(sc, bson.M{"$inc": bson.M{"age": -1}})
+        if err != nil {
+            return err
+        }
+        _, err = tx.Collection("users").
+            Where("_id", 2).
+            Update(sc, bson.M{"$inc": bson.M{"age": 1}})
+        return err
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Create indexes
+    _, err = engine.Collection("users").EnsureIndexes(ctx, []mongo.IndexModel{
+        {
+            Keys:    bson.D{{Key: "email", Value: 1}},
+            Options: options.Index().SetUnique(true).SetName("uniq_email"),
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
-## Do / Don't
+## Pitfalls / known limitations
 
-Do build a fresh Query for each request rather than reusing one across calls:
-
-```go
-// Good: each branch builds its own query
-adults := engine.Model(&User{}).Where("age", ">=", 18)
-minors := engine.Model(&User{}).Where("age", "<",  18)
-```
-
-```go
-// Bad: branches alias the same underlying slices and may interfere.
-base   := engine.Model(&User{}).Where("active", true)
-adults := base.Where("age", ">=", 18) // mutates base
-minors := base.Where("age", "<",  18) // also mutates base
-```
-
-Do guard `Update` / `Delete` with at least one condition:
-
-```go
-// Good
-_, err := engine.Collection("users").
-    Where("_id", id).
-    Delete(ctx)
-```
-
-```go
-// Bad: empty filter chain deletes every document in "users".
-_, err := engine.Collection("users").Delete(ctx)
-```
-
-Do pass `sc` inside transactions:
-
-```go
-// Good
-err := engine.Transaction(ctx, func(sc context.Context, tx *lark_orm.Engine) error {
-    _, err := tx.Collection("orders").Insert(sc, order)
-    return err
-})
-```
-
-```go
-// Bad: using outer ctx silently skips the session; no transaction occurs.
-err := engine.Transaction(ctx, func(sc context.Context, tx *lark_orm.Engine) error {
-    _, err := tx.Collection("orders").Insert(ctx, order)
-    return err
-})
-```
-
-Do use `bson.M` literals when you want the `$set` auto-wrap:
-
-```go
-// Good: auto-wrapped to {$set: {name: "Bob"}}
-engine.Collection("users").Where("_id", 1).Update(ctx, bson.M{"name": "Bob"})
-```
-
-```go
-// Bad: bson.D bypasses auto-wrap; driver rejects the document.
-engine.Collection("users").Where("_id", 1).Update(ctx, bson.D{{Key: "name", Value: "Bob"}})
-```
-
-## Pitfalls
-
-These behaviors are real and are not obvious from reading method signatures.
-Always factor them into generated code.
-
-1. Empty filter on `Update` / `Delete` operates on the entire collection.
-   There is no built-in guard.
-2. `OrWhere` without a preceding `Where*` produces `{$or: [{}, ...]}`. Since
-   `{}` matches every document in MongoDB, this degenerates into a full-table
-   match. Always pair `OrWhere` with at least one `Where`.
-3. `mergeFieldOp` overwrites silently when the existing field value is a
-   non-map scalar. After `Where("age", 18).Where("age", ">", 10)` the final
-   filter is `{age: {$gt: 10}}`; the equality is lost.
-4. `Query` is a stateful mutable struct. Branching from a shared base via
-   chained `Where*` calls aliases the underlying condition slice and can yield
-   inconsistent filters. Start each query from `Collection`/`Model`.
-5. `Pluck` mutates `q.fields`. Subsequent uses of the same Query inherit the
-   single-field projection. Treat `Pluck` as terminal.
-6. `Update` auto-wraps `$set` only for `bson.M` without `$`-prefixed keys.
-   `bson.D`, `map[string]interface{}`, and structs bypass the wrap.
-7. `Select` only supports inclusive projection. Repeated calls replace.
-8. `OrderBy` direction matches `"desc"` or `"DESC"` only. Mixed casings like
-   `"Desc"` silently fall back to ascending.
-9. Numeric aggregators always return `float64`. For integer fields you lose
-   the original type; for non-numeric fields the cursor decode fails.
-10. Transactions require a replica set or sharded cluster.
-11. `NextSequence` uses the hard-coded `counters` collection name; this is not
-    configurable.
+1. Empty filter on `Update` or `Delete` operates on the entire collection.
+   There is no built-in guard against unconditional mass mutation.
+2. `OrWhere` without a preceding `Where` produces `{$or: [{}, ...]}`. The empty
+   document `{}` matches all documents in MongoDB, making the query degenerate
+   to a full-collection match.
+3. `mergeFieldOp` silently overwrites a prior equality value when a subsequent
+   operator condition targets the same field. After
+   `Where("age", 18).Where("age", ">", 10)` the final filter is
+   `{age: {$gt: 10}}` and the equality is lost.
+4. `Query` is a mutable struct. Branching from a shared base via chained
+   `Where` calls aliases the underlying condition slice and produces
+   inconsistent filters. Always start each query from `Collection` or `Model`.
+5. `Pluck` mutates `q.fields` as a side effect. Subsequent uses of the same
+   Query inherit the single-field projection. Treat `Pluck` as terminal.
+6. `Update` auto-wraps `$set` only for the concrete type `bson.M` without any
+   `$`-prefixed keys. `bson.D`, `map[string]interface{}`, and structs bypass
+   the wrap and the driver rejects documents lacking an update operator.
+7. `Select` supports inclusive projection only. MongoDB does not allow mixing
+   inclusion and exclusion (except for `_id`). Repeated calls replace.
+8. `OrderBy` direction matching is strict: only `"desc"` and `"DESC"` produce
+   descending order. Mixed casings like `"Desc"` or `"DESC "` silently fall
+   back to ascending.
+9. Numeric aggregators (`Sum`, `Avg`, `Min`, `Max`) always return `float64`.
+   For integer fields the original type is lost; for non-numeric fields the
+   cursor decode will fail with an error.
+10. Transactions require a MongoDB replica set or sharded cluster. Standalone
+    `mongod` instances reject sessions with a "Transaction numbers are only
+    allowed on a replica set member or mongos" error.
+11. `NextSequence` uses the hard-coded collection name `counters`. This is not
+    configurable and will conflict with application code that uses a collection
+    of the same name for other purposes.
+12. `CollectionName` splits acronyms letter-by-letter (`HTTPServer` becomes
+    `h_t_t_p_servers`). For acronym-heavy names, use
+    `engine.Collection("explicit_name")` instead of `engine.Model(...)`.
+13. Irregular plurals are not handled (`Person` becomes `persons`, `Child`
+    becomes `childs`). Override with `engine.Collection(...)`.
+14. There is no `CollectionNamer` interface; the only way to override the
+    derived name is to call `Collection` directly.
+15. The `session` field on `txEngine` is set but never read by Query execution
+    methods -- transactional behavior depends solely on passing the
+    `mongo.SessionContext` as `ctx`. The session field is present for potential
+    future use.
 
 ## File map
 
-| File                 | Purpose                                                                          |
-| -------------------- | -------------------------------------------------------------------------------- |
-| `lark_orm.go`        | Package declaration only.                                                        |
-| `engine.go`          | `Engine` type, connection, `Collection`, `Model`, `Transaction`, `NextSequence`. |
-| `query.go`           | `Query` type and chainable condition / sort / limit / offset / select methods.   |
-| `query_exec.go`      | Execution methods plus `ErrCollectionRequired` and `normalizeUpdate`.            |
-| `query_aggregate.go` | Aggregation methods `Sum`, `Avg`, `Min`, `Max`, `Distinct`, `Pluck`.             |
-| `filter.go`          | Condition chain to `bson.M` translation, projection builder.                     |
-| `naming.go`          | `CollectionName`, `toSnake`, `pluralize`.                                        |
-| `log.go`             | Colored loggers and `SetLevel`.                                                  |
-| `lark_orm_test.go`   | Unit and integration tests; requires a reachable MongoDB.                        |
+| File                 | Purpose                                                                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lark_orm.go`        | Package declaration only (anchor file).                                                                                                            |
+| `engine.go`          | `Engine` struct, `NewEngine`, `Client`, `Database`, `DatabaseName`, `Collection`, `Model`, `Close`, `DropDatabase`, `NextSequence`, `Transaction`. |
+| `query.go`           | `Query` struct and chainable condition/sort/limit/offset/select methods.                                                                           |
+| `query_exec.go`      | Execution methods, `InsertResult`, `ErrCollectionRequired`, `normalizeUpdate`.                                                                     |
+| `query_aggregate.go` | `Sum`, `Avg`, `Min`, `Max`, `Distinct`, `Pluck`, private `aggregate` helper.                                                                       |
+| `filter.go`          | `condition` type, `parseWhere`, `opMap`, `buildFilter`, `applyCondition`, `mergeFieldOp`, `buildProjection`.                                       |
+| `naming.go`          | `CollectionName`, `toSnake`, `pluralize`, `isVowel`.                                                                                               |
+| `log.go`             | `Error`, `Errorf`, `Info`, `Infof`, `InfoLevel`, `ErrorLevel`, `Disabled`, `SetLevel`.                                                             |
+| `lark_orm_test.go`   | Unit and integration tests; requires a reachable MongoDB instance.                                                                                 |
+| `go.mod`             | Module declaration and dependencies.                                                                                                               |
 
 ## Dependencies
 
-- Go 1.26 or newer
-- `go.mongodb.org/mongo-driver` v1.17+
+- Go 1.26 or newer (per `go.mod`)
+- `go.mongodb.org/mongo-driver` v1.17.6
 
-## Stable vs. evolving surface
+Transitive dependencies (indirect): `golang.org/x/crypto`, `golang.org/x/sync`,
+`golang.org/x/text`, `github.com/klauspost/compress`,
+`github.com/golang/snappy`, `github.com/montanaflynn/stats`,
+`github.com/xdg-go/pbkdf2`, `github.com/xdg-go/scram`,
+`github.com/xdg-go/stringprep`, `github.com/youmark/pkcs8`.
 
-Stable (changes here will be treated as breaking):
+## Cross-references to sibling skills
 
-- `NewEngine`, `Engine.Close`, `Engine.Collection`, `Engine.Model`,
-  `Engine.Transaction`, `Engine.NextSequence`
-- Query lifecycle: `Where`, `WhereIn`, `WhereNotIn`, `WhereNull`,
-  `WhereNotNull`, `WhereBetween`, `OrderBy`, `Limit`, `Offset`, `Select`,
-  `Insert`, `First`, `Find`, `Update`, `Delete`, `Count`, `Exists`,
-  `EnsureIndexes`, `DropCollection`
-- `ErrCollectionRequired`
-- `CollectionName`
-
-Evolving (signatures or semantics may shift; pin behavior with tests if you
-depend on them):
-
-- Numeric aggregator return type (`float64`) and zero-on-empty semantics
-- `Pluck` side effect on `q.fields`
-- Logger globals as method-value vars
-- `counters` collection name used by `NextSequence`
-- Plural / snake-case rules for irregular and acronym-heavy struct names
+- `lark-cache`: Distributed cache framework. When building an application that
+  caches MongoDB query results, combine lark_orm for persistence with lark_cache
+  for distributed read-through caching and invalidation.
+- `lark-http`: HTTP server framework. Use lark_http to expose REST endpoints
+  that perform database operations via lark_orm Engine instances. The Engine is
+  typically initialized at server startup and injected into handlers.
+- `lark-rpc`: gRPC service framework. Use lark_rpc when database-backed services
+  communicate over gRPC; the Engine provides the persistence layer behind RPC
+  method implementations.

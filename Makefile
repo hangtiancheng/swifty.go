@@ -1,5 +1,5 @@
 NODE ?= node
-COMMANDS := coverage test clean deps lark_cache lark_cache-v2 lark_http lark_orm lark_rpc lark_rpc-v2 server v1 v2
+COMMANDS := coverage test clean deps lark_cache lark_http lark_orm lark_rpc
 
 .PHONY: help $(COMMANDS)
 help:
@@ -13,6 +13,7 @@ $(COMMANDS):
 
 .PHONY: feat
 feat:
+	ln -s ./.claude ./.github
 	git add -A
 	git commit -m "feat: Introduce new features"
 	git push origin main

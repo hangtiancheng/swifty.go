@@ -1,26 +1,34 @@
 ---
 name: lark-cache
 description: >
-  Distributed cache framework (lark_cache module), groupcache-style read-through with
-  write propagation. Use this skill when working on cache namespaces (Group), Getter
-  callbacks, two-level bucketed LRU storage, ByteView semantics, single-flight
-  deduplication, consistent hashing with auto-rebalancing, gRPC cache servers and
-  clients, etcd-based service registration and discovery, peer Set/Delete forwarding,
-  or cache statistics. Also use it for any code that imports
-  github.com/hangtiancheng/lark-go/lark_cache, or when the user asks about cache
-  topology, eventual-consistency guarantees, peer synchronization, or shutdown
-  ordering. SKIP for plain in-process caches that do not need clustering, for cache
-  libraries other than lark_cache (e.g., groupcache, bigcache, freecache), or for
-  Redis client code.
+  Distributed cache framework (github.com/hangtiancheng/lark-go/lark_cache).
+  Groupcache-style read-through with write propagation. Use when working with
+  Group, Getter, GetterFunc, ByteView, Cache, CacheOptions, Store, lruStore,
+  StoreOptions, Entry, SingleFlightGroup, ConHashMap, ConHashConfig, PeerPicker,
+  Peer, ClientPicker, Client, Server, ServerOptions, Register, RegisterConfig,
+  DashboardHandler, StartDashboard, NewGroup, GetGroup, ListGroups, GetAllGroups,
+  DestroyGroup, DestroyAllGroups, NewCache, NewStore, NewConHash, NewClientPicker,
+  NewClient, NewServer, WithExpiration, WithPeers, WithCacheOptions,
+  WithServiceName, WithConHashConfig, WithEtcdEndpoints, WithDialTimeout, WithTLS,
+  ErrKeyRequired, ErrValueRequired, ErrGroupClosed, HashBKRD, MaskOfNextPowOf2,
+  Now, ValidPeerAddr, or DefaultCacheOptions, DefaultConHashConfig,
+  DefaultRegisterConfig, DefaultServerOptions. Also use for cache topology,
+  eventual-consistency guarantees, peer synchronization, etcd service discovery,
+  consistent hashing with auto-rebalancing, single-flight deduplication, two-level
+  bucketed LRU, gRPC cache servers/clients, or dashboard WebSocket endpoints.
+  SKIP for plain in-process caches that do not need clustering, for cache libraries
+  other than lark_cache (e.g., groupcache, bigcache, freecache, ristretto), or for
+  Redis/Memcached client code.
 ---
 
 # lark_cache
 
 A distributed, groupcache-inspired caching framework with gRPC transport, etcd-based
 service discovery, consistent hashing with automatic rebalancing, single-flight
-request coalescing, and a bucketed two-level LRU eviction store. Unlike groupcache,
-which is strictly read-through, lark_cache additionally propagates `Set` and `Delete`
-to the owning peer with best-effort, eventually-consistent semantics.
+request coalescing, a bucketed two-level LRU eviction store, and an optional
+real-time WebSocket dashboard. Unlike groupcache, which is strictly read-through,
+lark_cache additionally propagates `Set` and `Delete` to the owning peer with
+best-effort, eventually-consistent semantics.
 
 Module path: `github.com/hangtiancheng/lark-go/lark_cache`
 
@@ -33,25 +41,31 @@ sub-package for generated protobuf code).
 
 ## When to load adjacent skills
 
-- For HTTP integration in `lark_demo`, also load the `lark-http` skill.
-- For RPC integration in `lark_demo`, also load the `lark-rpc` skill.
-- For MongoDB persistence in `lark_demo`, also load the `lark-orm` skill.
+- For HTTP integration (dashboard, middleware), also load the `lark-http` skill.
+- For RPC integration patterns, also load the `lark-rpc` skill.
+- For MongoDB persistence layers backing a Getter, also load the `lark-orm` skill.
 
 ## Architecture overview
 
 ```
 Group (namespace, registered globally by name)
   |-- mainCache (*Cache -> *lruStore)
+  |     |-- [BucketCount] shards, each with L1 + L2 fixed-cap LRU
   |-- loader   (*SingleFlightGroup)
   |-- peers    (PeerPicker -> *ClientPicker)
-                 |-- consHash (*ConHashMap)
+                 |-- consHash (*ConHashMap, auto-rebalancer goroutine)
                  |-- clients  (map[addr]*Client, each is a gRPC Peer)
                  |-- etcdCli  (etcd watcher for /services/<svcName>/)
 
 Server (gRPC, one per node)
   |-- pb.LarkCacheServer (Get / Set / Delete RPCs)
-  |-- grpc health.Server (lameduck via SetServingStatus)
+  |-- grpc health.Server (serves status under svcName)
   |-- Register()  (etcd lease + keepalive on /services/<svcName>/<addr>)
+
+Dashboard (optional, WebSocket)
+  |-- StartDashboard(addr) -> lark_http server on /dashboard/ws
+  |-- DashboardHandler() -> mountable middleware for existing lark_http apps
+  |-- pushes groupSnapshot every 2s; accepts {"action":"delete"} commands
 ```
 
 Read path (`Group.Get`):
@@ -97,6 +111,62 @@ lark_cache is best-effort and eventually consistent. Specifically:
 
 ## Core types
 
+### Entry
+
+Exported data structure representing a single cache entry, returned by `Cache.Entries`
+and `Group.Entries`, and passed to `Store.Walk` callbacks.
+
+```go
+type Entry struct {
+    Key      string
+    Size     int    // value.Len()
+    ExpireAt int64  // nanosecond timestamp; maxExpireAt = math.MaxInt64 for no-expire
+    Level    int    // 0 = L1, 1 = L2
+}
+```
+
+### Value interface
+
+```go
+type Value interface {
+    Len() int
+}
+```
+
+All values stored in a `Store` must implement `Value`. `ByteView` satisfies this.
+
+### ByteView
+
+Immutable wrapper for cached byte data. The internal `b []byte` is unexported;
+`ByteSlice()` returns a defensive copy on every call.
+
+```go
+type ByteView struct {
+    b []byte  // unexported
+}
+
+func (b ByteView) Len() int         // implements Value
+func (b ByteView) ByteSlice() []byte // defensive copy
+func (b ByteView) String() string    // standard []byte->string conversion (copies)
+```
+
+There is no exported constructor; `ByteView` instances are produced inside the
+package from `cloneBytes(raw)`.
+
+### Getter and GetterFunc
+
+```go
+type Getter interface {
+    Get(ctx context.Context, key string) ([]byte, error)
+}
+
+type GetterFunc func(ctx context.Context, key string) ([]byte, error)
+
+func (f GetterFunc) Get(ctx context.Context, key string) ([]byte, error)
+```
+
+`GetterFunc` adapts a plain function to the `Getter` interface.
+
 ### Group
 
 The cache namespace. Each Group owns a `Getter`, a local `Cache`, an optional
@@ -104,32 +174,30 @@ The cache namespace. Each Group owns a `Getter`, a local `Cache`, an optional
 `map[name]*Group`; creating a second group with the same name replaces the first
 and logs a warning.
 
-```go
-type Getter interface {
-    Get(ctx context.Context, key string) ([]byte, error)
-}
-type GetterFunc func(ctx context.Context, key string) ([]byte, error)
-```
+Sentinel errors:
 
-The `Getter` must not panic. `SingleFlightGroup.Do` has no panic recovery; a panic
-inside the getter leaves waiting callers observing `(nil, nil)` and silently
-suppresses the failure. Recover internally if the loader can panic.
+```go
+var ErrKeyRequired   = errors.New("key is required")
+var ErrValueRequired = errors.New("value is required")
+var ErrGroupClosed   = errors.New("cache group is closed")
+```
 
 Group options:
 
 ```go
 type GroupOption func(*Group)
 
-func WithExpiration(d time.Duration) GroupOption       // zero = no expiry
-func WithPeers(peers PeerPicker) GroupOption           // alternative to RegisterPeers
-func WithCacheOptions(opts CacheOptions) GroupOption   // override default CacheOptions
+func WithExpiration(d time.Duration) GroupOption     // zero = no expiry
+func WithPeers(peers PeerPicker) GroupOption         // alternative to RegisterPeers
+func WithCacheOptions(opts CacheOptions) GroupOption // override default CacheOptions
 ```
 
-Constructor and registry:
+Constructor and registry functions:
 
 ```go
 func NewGroup(name string, cacheBytes int64, getter Getter, opts ...GroupOption) *Group
 func GetGroup(name string) *Group
+func GetAllGroups() map[string]*Group
 func ListGroups() []string
 func DestroyGroup(name string) bool
 func DestroyAllGroups()
@@ -141,17 +209,17 @@ func DestroyAllGroups()
 
 Methods:
 
-| Method        | Signature                                               | Notes                                                              |
-| ------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
-| Get           | `(ctx context.Context, key string) (ByteView, error)`   | Read-through; peer failure is not surfaced, only logged            |
-| Set           | `(ctx context.Context, key string, value []byte) error` | Local write + async peer sync; rejects empty value                 |
-| Delete        | `(ctx context.Context, key string) error`               | Local delete + async peer sync                                     |
-| Clear         | `()`                                                    | Removes all local entries; does not propagate                      |
-| Close         | `() error`                                              | Idempotent (atomic CAS guard); removes the group from the registry |
-| RegisterPeers | `(PeerPicker)`                                          | Must be called at most once; panics on the second call             |
-| Stats         | `() map[string]interface{}`                             | See key list below                                                 |
-
-Sentinel errors: `ErrKeyRequired`, `ErrValueRequired`, `ErrGroupClosed`.
+| Method           | Signature                                               | Notes                                                              |
+| ---------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| Get              | `(ctx context.Context, key string) (ByteView, error)`   | Read-through; peer failure is not surfaced, only logged            |
+| Set              | `(ctx context.Context, key string, value []byte) error` | Local write + async peer sync; rejects empty value                 |
+| Delete           | `(ctx context.Context, key string) error`               | Local delete + async peer sync                                     |
+| Clear            | `()`                                                    | Removes all local entries; does not propagate                      |
+| Close            | `() error`                                              | Idempotent (atomic CAS guard); removes the group from the registry |
+| RegisterPeers    | `(PeerPicker)`                                          | Must be called at most once; panics on the second call             |
+| Stats            | `() map[string]interface{}`                             | See key list below                                                 |
+| DashboardEnabled | `() bool`                                               | True when mainCache has a non-empty DashboardAddr                  |
+| Entries          | `() []Entry`                                            | Returns all live entries from the local cache                      |
 
 `Group.Stats` keys (always present unless noted):
 
@@ -171,20 +239,6 @@ avg_load_time_ms  float64  // only present if loads > 0
 cache_<key>       any      // every key from Cache.Stats prefixed with "cache_"
 ```
 
-### ByteView
-
-Immutable wrapper for cached byte data. The internal `b []byte` is unexported;
-`ByteSlice()` returns a defensive copy on every call.
-
-```go
-func (b ByteView) Len() int
-func (b ByteView) ByteSlice() []byte   // defensive copy
-func (b ByteView) String() string      // standard []byte->string conversion (copies)
-```
-
-Implements `Value` (`Len() int`). There is no exported constructor; `ByteView`
-instances are produced inside the package from `cloneBytes(raw)`.
-
 ### Cache
 
 Thin wrapper around a `Store` with lazy initialization, hit/miss counters, and
@@ -192,12 +246,13 @@ idempotent close.
 
 ```go
 type CacheOptions struct {
-    MaxBytes     int64                                  // see caveat below
-    BucketCount  uint16                                 // rounded up to a power of 2; default 16
-    CapPerBucket uint16                                 // L1 capacity per bucket; default 512
-    Level2Cap    uint16                                 // L2 capacity per bucket; default 256
-    CleanupTime  time.Duration                          // background expiry sweep; default 1m
-    OnEvicted    func(key string, value Value)         // optional eviction callback
+    MaxBytes      int64                            // see caveat below
+    BucketCount   uint16                           // rounded up to power of 2; default 16
+    CapPerBucket  uint16                           // L1 capacity per bucket; default 512
+    Level2Cap     uint16                           // L2 capacity per bucket; default 256
+    CleanupTime   time.Duration                    // background expiry sweep; default 1m
+    OnEvicted     func(key string, value Value)   // optional eviction callback
+    DashboardAddr string                           // if non-empty, starts the dashboard server
 }
 
 func DefaultCacheOptions() CacheOptions
@@ -209,21 +264,19 @@ strictly by per-bucket entry count. To bound memory, size the cache with
 `BucketCount * (CapPerBucket + Level2Cap) * avg_entry_size`. Do not rely on
 `MaxBytes` for a byte ceiling.
 
-Caveat: `NewStoreOptions()` (in `store.go`) defaults `MaxBytes` to 8192 (bytes),
-which disagrees with `DefaultCacheOptions().MaxBytes = 8 MiB`. The discrepancy is
-moot today because `MaxBytes` is unused; mention it if you ever wire it up.
-
 Cache methods:
 
 | Method            | Signature                                            | Notes                                                     |
 | ----------------- | ---------------------------------------------------- | --------------------------------------------------------- |
 | Add               | `(key string, value ByteView)`                       | No-op on a closed cache                                   |
 | AddWithExpiration | `(key string, value ByteView, exp time.Time)`        | Silently drops entries whose `exp` is already in the past |
-| Get               | `(ctx context.Context, key string) (ByteView, bool)` | Lazy-initializes the store on first hit                   |
+| Get               | `(ctx context.Context, key string) (ByteView, bool)` | Lazy-initializes the store on first Add                   |
 | Delete            | `(key string) bool`                                  | Returns `false` if the cache is closed or uninitialized   |
 | Clear             | `()`                                                 | Resets hits/misses; no-op if closed or uninitialized      |
 | Len               | `() int`                                             | Walks both LRU levels                                     |
 | Close             | `()`                                                 | Idempotent (atomic CAS); releases the store               |
+| DashboardEnabled  | `() bool`                                            | True when `DashboardAddr != ""`                           |
+| Entries           | `() []Entry`                                         | Returns all live entries via Store.Walk                   |
 | Stats             | `() map[string]any`                                  | See key list below                                        |
 
 `Cache.Stats` keys: `initialized`, `closed`, `hits`, `misses`, plus `size` and
@@ -232,8 +285,6 @@ Cache methods:
 ### Store interface and lruStore
 
 ```go
-type Value interface { Len() int }
-
 type Store interface {
     Get(key string) (Value, bool)
     Set(key string, value Value) error
@@ -241,6 +292,7 @@ type Store interface {
     Delete(key string) bool
     Clear()
     Len() int
+    Walk(fn func(Entry) bool)
     Close()
 }
 
@@ -278,6 +330,9 @@ The `lruStore` implements a bucketed two-level LRU:
   by a goroutine started in `init()`. TTLs below ~100 ms are not reliable.
 - `Clear` and `Len` walk both levels and perform `O(N)` linear deduplication
   between L1 and L2; avoid calling them on large caches in hot paths.
+- `Walk` iterates L2 then L1, deduplicating via a `seen` map. The callback
+  receives `Entry` structs with `Level` set to 0 for L1 entries and 1 for L2.
+  Return `false` from the callback to stop iteration early.
 
 Exported helpers (consider these package-internal even though they are exported):
 
@@ -287,6 +342,24 @@ func MaskOfNextPowOf2(cap uint16) uint16  // next power-of-two minus one
 func Now() int64                          // coarse atomic nanosecond clock
 func Create(cap uint16) *cache            // raw L1/L2 list factory; do not use outside the package
 ```
+
+### SingleFlightGroup
+
+```go
+type SingleFlightGroup struct {
+    m sync.Map  // unexported
+}
+
+func (g *SingleFlightGroup) Do(key string, fn func() (interface{}, error)) (interface{}, error)
+```
+
+Uses `sync.Map.LoadOrStore` for the lock-free fast path; duplicate callers block
+on the leader's `sync.WaitGroup`. The leader stores `(val, err)` on the `call`
+struct, then `wg.Done()` releases the followers, all of whom return the same
+`(val, err)`. The call is removed from the map via `defer`.
+
+Caveat: no panic recovery. A panic inside `fn` runs `defer wg.Done()` but skips
+the assignment, so followers receive `(nil, nil)`. Wrap `fn` if it can panic.
 
 ## Distributed layer
 
@@ -299,9 +372,9 @@ type PeerPicker interface {
 }
 
 type Peer interface {
-    Get(group, key string) ([]byte, error)
-    Set(ctx context.Context, group, key string, value []byte) error
-    Delete(group, key string) (bool, error)
+    Get(group string, key string) ([]byte, error)
+    Set(ctx context.Context, group string, key string, value []byte) error
+    Delete(group string, key string) (bool, error)
     Close() error
 }
 ```
@@ -315,6 +388,7 @@ the network round-trip.
 
 ```go
 type PickerOption func(*ClientPicker)
+
 func WithServiceName(name string) PickerOption   // default: "lark_cache"
 
 func NewClientPicker(addr string, opts ...PickerOption) (*ClientPicker, error)
@@ -328,14 +402,6 @@ func (p *ClientPicker) Close() error
 with a 3-second timeout to seed the peer list, and starts a background watcher
 on the same prefix. Put events spawn a new `Client`; delete events close and
 remove it. Self-addressed entries are filtered out.
-
-Caveat: the watcher handler runs `NewClient` while holding the picker's write
-lock. Topology churn briefly blocks `PickPeer` calls; do not assume non-blocking
-peer-list reads.
-
-Caveat: `ConHashMap` (the ring used by `ClientPicker`) starts a per-second
-rebalancer goroutine in `NewConHash` that has no shutdown path. `ClientPicker.Close`
-closes etcd and gRPC connections but does not stop the rebalancer.
 
 ### Client (gRPC Peer)
 
@@ -377,6 +443,7 @@ var DefaultServerOptions = &ServerOptions{
 }
 
 type ServerOption func(*ServerOptions)
+
 func WithEtcdEndpoints(endpoints []string) ServerOption
 func WithDialTimeout(timeout time.Duration) ServerOption
 func WithTLS(certFile, keyFile string) ServerOption
@@ -391,27 +458,34 @@ serving status `SERVING` under `svcName`). `Server.Stop` does not flip the healt
 status to `NOT_SERVING` before stopping; clients may still consider the node
 healthy during shutdown.
 
-gRPC handlers (`server.go`):
+gRPC handlers:
 
-- `Get` looks up the group by name and returns `view.ByteSlice()`. The group
-  name must be registered on the receiving node, otherwise the RPC errors.
-- `Set` and `Delete` always inject `withPeerRequest(ctx)` before delegating to
-  `Group.Set` / `Group.Delete`, ensuring the receiving peer does not re-broadcast.
-
-Caveat: `DefaultServerOptions` is a mutable global pointer. Do not mutate it from
-business code; copy from `*DefaultServerOptions` if you need a custom baseline.
+- `Get(ctx, *pb.Request) (*pb.ResponseForGet, error)` looks up the group by name
+  and returns `view.ByteSlice()`. The group name must be registered on the
+  receiving node, otherwise the RPC errors.
+- `Set(ctx, *pb.Request) (*pb.ResponseForGet, error)` injects `withPeerRequest(ctx)`
+  before delegating to `Group.Set`, ensuring the receiving peer does not re-broadcast.
+- `Delete(ctx, *pb.Request) (*pb.ResponseForDelete, error)` injects
+  `withPeerRequest(ctx)` before delegating to `Group.Delete`.
 
 ## Consistent hashing
 
 ```go
 type ConHashConfig struct {
-    DefaultReplicas      int      // default 50
-    MinReplicas          int      // default 10
-    MaxReplicas          int      // default 200
-    HashFunc             func(data []byte) uint32   // default crc32.ChecksumIEEE
-    LoadBalanceThreshold float64  // default 0.25
+    DefaultReplicas      int                     // default 50
+    MinReplicas          int                     // default 10
+    MaxReplicas          int                     // default 200
+    HashFunc             func(data []byte) uint32 // default crc32.ChecksumIEEE
+    LoadBalanceThreshold float64                 // default 0.25
 }
-var DefaultConHashConfig *ConHashConfig  // mutable global; treat as read-only
+
+var DefaultConHashConfig = &ConHashConfig{
+    DefaultReplicas:      50,
+    MinReplicas:          10,
+    MaxReplicas:          200,
+    HashFunc:             crc32.ChecksumIEEE,
+    LoadBalanceThreshold: 0.25,
+}
 
 type ConHashOption func(*ConHashMap)
 func WithConHashConfig(config *ConHashConfig) ConHashOption
@@ -427,30 +501,19 @@ Behavior:
 
 - `Add` inserts `DefaultReplicas` virtual nodes per physical node, keyed by
   `HashFunc([]byte(fmt.Sprintf("%s-%d", node, i)))`, then re-sorts the ring.
+  Returns an error if no nodes are provided. Empty-string nodes are silently
+  skipped.
+- `Remove` returns an error if the node is empty or not found in the ring.
 - `Get` does a binary search on the sorted ring; the request count for the
   selected node is incremented under the ring's write lock (`mu.Lock`), so `Get`
-  is the hot-path serialization point.
+  is the hot-path serialization point. Returns `""` if the key is empty or the
+  ring is empty.
+- `GetStats` returns the traffic share per node as a `map[node]fraction`.
 - A goroutine started inside `NewConHash` runs every second. When the total
   request count exceeds 1000 and the maximum per-node deviation from average
   exceeds `LoadBalanceThreshold`, it rebalances replica counts per node, clamped
   to `[MinReplicas, MaxReplicas]`, and resets all counters. The rebalancer has
   no shutdown path; the goroutine leaks until process exit.
-
-## Single flight
-
-```go
-type SingleFlightGroup struct{ /* sync.Map of in-flight calls */ }
-
-func (g *SingleFlightGroup) Do(key string, fn func() (interface{}, error)) (interface{}, error)
-```
-
-Uses `sync.Map.LoadOrStore` for the lock-free fast path; duplicate callers block
-on the leader's `sync.WaitGroup`. The leader stores `(val, err)` on the `call`
-struct, then `wg.Done()` releases the followers, all of whom return the same
-`(val, err)`. The call is removed from the map via `defer`.
-
-Caveat: no panic recovery. A panic inside `fn` runs `defer wg.Done()` but skips
-the assignment, so followers receive `(nil, nil)`. Wrap `fn` if it can panic.
 
 ## Service registration
 
@@ -459,6 +522,7 @@ type RegisterConfig struct {
     Endpoints   []string
     DialTimeout time.Duration
 }
+
 var DefaultRegisterConfig = &RegisterConfig{
     Endpoints:   []string{"localhost:2379"},
     DialTimeout: 5 * time.Second,
@@ -482,6 +546,35 @@ directly. Behavior:
   lease. `KeepAlive` renews indefinitely.
 - On `stopCh` close, revokes the lease with a 3-second timeout.
 
+## Dashboard
+
+The optional real-time dashboard streams cache state over WebSocket.
+
+```go
+func DashboardHandler() func(ctx *lark_http.Context, next func())
+func StartDashboard(addr string)
+```
+
+`StartDashboard` is guarded by `sync.Once`; only the first invocation takes
+effect. It creates a `lark_http` application listening on `addr` with a single
+route `GET /dashboard/ws`. It is called automatically by `NewGroup` when
+`CacheOptions.DashboardAddr` is non-empty.
+
+`DashboardHandler` returns a middleware-compatible handler that upgrades the
+connection to WebSocket and serves the dashboard protocol. Mount it on an existing
+`lark_http` app if you prefer to share a port.
+
+Protocol:
+
+- Every 2 seconds, the server pushes a `dashboardSnapshot` JSON message containing
+  all groups that have `DashboardEnabled() == true`. Each group entry includes its
+  `Stats()` map and a list of `entrySnapshot` objects (`Key`, `Size`, `ExpireAt`,
+  `Level`).
+- A 30-second WebSocket heartbeat (ping) is active.
+- The client may send `{"action":"delete","group":"<name>","key":"<key>"}` to
+  delete a specific entry from the named group. Unknown actions are logged and
+  ignored.
+
 ## Utilities
 
 ```go
@@ -501,16 +594,24 @@ message ResponseForDelete{ bool  value = 1; }
 
 service LarkCache {
   rpc Get   (Request) returns (ResponseForGet);
-  rpc Set   (Request) returns (ResponseForGet);   // reuses ResponseForGet
+  rpc Set   (Request) returns (ResponseForGet);
   rpc Delete(Request) returns (ResponseForDelete);
 }
+```
+
+Generated constants:
+
+```go
+const LarkCache_Get_FullMethodName    = "/pb.LarkCache/Get"
+const LarkCache_Set_FullMethodName    = "/pb.LarkCache/Set"
+const LarkCache_Delete_FullMethodName = "/pb.LarkCache/Delete"
 ```
 
 Conventions when extending:
 
 - All three RPCs share `Request`; the `value` field is only populated for `Set`.
-- `Set` reuses `ResponseForGet`. Mirror this if you must, but a new RPC should
-  introduce a dedicated message rather than overloading existing ones.
+- `Set` reuses `ResponseForGet`. A new RPC should introduce a dedicated message
+  rather than overloading existing ones.
 - The protocol has no metadata fields (trace id, tenant, version). Add them
   through gRPC metadata interceptors rather than the message body.
 
@@ -533,6 +634,7 @@ func main() {
     ctx := context.Background()
     g := cache.NewGroup("scores", 64<<20, cache.GetterFunc(
         func(ctx context.Context, key string) ([]byte, error) {
+            // Load from database, remote API, etc.
             return []byte("score-of-" + key), nil
         },
     ), cache.WithExpiration(5*time.Minute))
@@ -542,7 +644,7 @@ func main() {
     if err != nil {
         panic(err)
     }
-    fmt.Println(view.String())
+    fmt.Println(view.String()) // "score-of-player:42"
 }
 ```
 
@@ -611,6 +713,40 @@ func main() {
 }
 ```
 
+### With dashboard enabled
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    cache "github.com/hangtiancheng/lark-go/lark_cache"
+)
+
+func main() {
+    opts := cache.DefaultCacheOptions()
+    opts.DashboardAddr = ":8080"
+
+    g := cache.NewGroup("inventory", 32<<20, cache.GetterFunc(
+        func(ctx context.Context, key string) ([]byte, error) {
+            return []byte("item-" + key), nil
+        },
+    ), cache.WithCacheOptions(opts), cache.WithExpiration(10*time.Minute))
+    defer g.Close()
+
+    // Dashboard is now serving at ws://localhost:8080/dashboard/ws
+    log.Printf("dashboard enabled: %v", g.DashboardEnabled())
+
+    view, _ := g.Get(context.Background(), "sku:123")
+    log.Println(view.String())
+
+    select {} // keep running
+}
+```
+
 ## Testing patterns
 
 Unit tests in this repo do not require a running etcd or gRPC server. Reuse the
@@ -638,70 +774,81 @@ Run the suite from the module root:
 cd lark_cache && go test ./...
 ```
 
-## Troubleshooting
+## Pitfalls / known limitations
 
-- "Every local Get takes ~3 seconds and finally returns the local value":
-  topology has a stale entry pointing at a downed peer, or `selfAddr` does not
-  match the rewritten registration address. Check `ClientPicker.PrintPeers()`
-  and reconcile with `Register`'s address-rewrite rule.
-- "`SingleFlightGroup` callers get `(nil, nil)`": the `Getter` panicked. Wrap
-  the loader body with `defer recover` and surface the panic as an error.
-- "etcd connections grow unbounded over time": `Client.NewClient` was called with
-  `etcdCli == nil`; the auto-created etcd client is leaked on every `Client.Close`.
-  Pass a shared `*client_v3.Client` instead.
-- "Cache memory grows beyond `MaxBytes`": `MaxBytes` is not enforced. Reduce
-  `BucketCount`, `CapPerBucket`, or `Level2Cap` to bound entries.
-- "TTLs under 100 ms behave erratically": expected. The internal clock advances
-  in ~100 ms increments.
-- "Health check still reports SERVING during shutdown": `Server.Stop` does not
-  call `healthServer.SetServingStatus(svcName, NOT_SERVING)`. Add it before
-  `Stop` if you depend on lameduck behavior.
+1. `CacheOptions.MaxBytes` is accepted but not enforced. The underlying `lruStore`
+   evicts strictly by per-bucket entry count. Either implement byte accounting or
+   rename to `MaxEntries`.
+2. `lruStore.cache.del` does not delete the key from L1's `hashMap`, so a key
+   can be promoted to L2 multiple times before the slot is recycled.
+3. `Client.NewClient` with `etcdCli == nil` leaks the auto-created etcd client on
+   `Close`. Always pass a shared `*client_v3.Client`.
+4. `ConHashMap.Get` takes a write lock (`mu.Lock`) to increment the stats counter;
+   this serializes the hottest path in the system. Consider atomic per-node
+   counters.
+5. `ConHashMap` has no `Close` method; the rebalancer goroutine leaks until process
+   exit.
+6. `ClientPicker.handleWatchEvents` calls `NewClient` while holding a write lock;
+   topology churn briefly stalls `PickPeer` reads.
+7. `SingleFlightGroup` has no panic recovery and no `Forget` / `DoChan` API.
+   A panic leaves followers observing `(nil, nil)`.
+8. `Server.groups *sync.Map` field is declared but never used; it should be
+   removed.
+9. `Client.Set` logs every successful response at `log.Printf` level; remove the
+   debug log in production builds.
+10. The protobuf protocol overloads `Request` and `ResponseForGet` across RPCs;
+    new RPCs should introduce dedicated messages.
+11. TTLs below ~100 ms are unreliable because the internal clock (`Now()`) is
+    advanced in ~100 ms increments by a goroutine in `init()`.
+12. `Server.Stop` does not flip the gRPC health status to `NOT_SERVING` before
+    calling `GracefulStop`; clients may still route to the node during shutdown.
+13. `NewStoreOptions()` defaults `MaxBytes` to 8192 (bytes), disagreeing with
+    `DefaultCacheOptions().MaxBytes = 8 MiB`. The discrepancy is moot because
+    `MaxBytes` is unused, but confuses readers.
+14. `Register` creates its own etcd client, separate from the one inside `Server`;
+    three distinct etcd connections exist per node (Register, Server, ClientPicker).
+15. `lruStore.Clear()` and `lruStore.Len()` perform `O(N)` linear deduplication
+    by walking both LRU levels; avoid them in hot paths for large caches.
 
 ## File map
 
-| File               | Purpose                                                                    |
-| ------------------ | -------------------------------------------------------------------------- |
-| `byte_view.go`     | Immutable byte slice value type and `cloneBytes`                           |
-| `store.go`         | `Value` and `Store` interfaces, `StoreOptions`, `NewStoreOptions`          |
-| `lru.go`           | Bucketed two-level LRU (`lruStore`), `Now`, `HashBKRD`, `MaskOfNextPowOf2` |
-| `cache.go`         | `Cache` wrapper with lazy init, stats, and idempotent close                |
-| `group.go`         | `Group` type, read-through / write-propagation pipelines, registry         |
-| `single_flight.go` | `SingleFlightGroup` (no panic recovery)                                    |
-| `con_hash.go`      | Consistent hash ring with virtual nodes and auto-rebalancer goroutine      |
-| `config.go`        | `ConHashConfig` and `DefaultConHashConfig`                                 |
-| `peers.go`         | `PeerPicker` / `Peer` interfaces, `ClientPicker` with etcd discovery       |
-| `server.go`        | gRPC server, health check registration, optional TLS                       |
-| `client.go`        | gRPC `Peer` implementation                                                 |
-| `register.go`      | etcd lease registration and keepalive; rewrites `:port` to `<ip>:port`     |
-| `utils.go`         | `ValidPeerAddr` (opt-in helper, not used internally)                       |
-| `pb/`              | `lark.proto` and generated gRPC code                                       |
+| File                 | Purpose                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `byte_view.go`       | Immutable byte slice value type and `cloneBytes`                                                       |
+| `store.go`           | `Value` and `Store` interfaces, `StoreOptions`, `NewStoreOptions`                                      |
+| `lru.go`             | Bucketed two-level LRU (`lruStore`), `Entry`, `Now`, `HashBKRD`, `MaskOfNextPowOf2`, cleanup goroutine |
+| `cache.go`           | `Cache` wrapper with lazy init, stats, entries, and idempotent close                                   |
+| `group.go`           | `Group` type, read-through / write-propagation pipelines, global registry                              |
+| `single_flight.go`   | `SingleFlightGroup` (no panic recovery)                                                                |
+| `con_hash.go`        | Consistent hash ring with virtual nodes and auto-rebalancer goroutine                                  |
+| `config.go`          | `ConHashConfig` and `DefaultConHashConfig`                                                             |
+| `peers.go`           | `PeerPicker` / `Peer` interfaces, `ClientPicker` with etcd discovery                                   |
+| `server.go`          | gRPC server, health check registration, optional TLS                                                   |
+| `client.go`          | gRPC `Peer` implementation                                                                             |
+| `register.go`        | `RegisterConfig`, `Register` function, etcd lease + keepalive, IP rewrite                              |
+| `dashboard.go`       | WebSocket dashboard: `StartDashboard`, `DashboardHandler`, snapshot push                               |
+| `utils.go`           | `ValidPeerAddr` (opt-in helper, not used internally)                                                   |
+| `pb/lark.pb.go`      | Generated protobuf message types                                                                       |
+| `pb/lark_grpc.pb.go` | Generated gRPC client/server stubs and service descriptor                                              |
 
 ## Dependencies
 
+- `github.com/hangtiancheng/lark-go/lark_http` for the dashboard WebSocket server
 - `go.etcd.io/etcd/client/v3` for service discovery and registration
 - `google.golang.org/grpc` and `google.golang.org/grpc/health` for transport and
   health checking
 - `google.golang.org/protobuf` for message serialization
-- Standard library only beyond the above (`hash/crc32`, `sync`, `sync/atomic`,
-  `context`, `time`, `log`)
+- Standard library only beyond the above (`hash/crc32`, `math`, `sync`,
+  `sync/atomic`, `context`, `time`, `log`, `net`, `crypto/tls`, `sort`,
+  `strings`, `errors`, `fmt`)
 
-## Known limitations to surface in code review
+## Cross-references
 
-These are not bugs the agent should silently work around; flag them in PR
-reviews and propose fixes:
-
-1. `CacheOptions.MaxBytes` is unenforced. Either implement byte accounting or
-   rename to `MaxEntries`.
-2. `lruStore.cache.del` does not delete the key from L1's `hashMap`, so a key
-   can be promoted to L2 multiple times before the slot is recycled.
-3. `Client.NewClient` leaks the auto-created etcd client on `Close`.
-4. `ConHashMap.Get` takes a write lock for stats increment; the ring is the
-   hottest path in the system.
-5. `ConHashMap` has no `Close`; the rebalancer goroutine leaks.
-6. `ClientPicker.handleWatchEvents` calls `NewClient` while holding a write
-   lock; topology churn briefly stalls `PickPeer`.
-7. `SingleFlightGroup` has no panic recovery and no `Forget` / `DoChan` API.
-8. `Server.groups *sync.Map` field is declared but never used; remove it.
-9. `Client.Set` logs every response at `log.Printf` level; remove the debug log.
-10. The pb package overloads `Request` and `ResponseForGet` across RPCs; new
-    RPCs should use dedicated messages.
+- `lark-http`: The dashboard feature depends on `lark_http.Context`, `ctx.Upgrade`,
+  `lark_http.UpgradeOptions`, `lark_http.WSConn`, and `lark_http.New()` / `app.Listen`.
+  Load the lark-http skill when working on dashboard code or mounting
+  `DashboardHandler` on a shared application.
+- `lark-rpc`: For higher-level service patterns that compose lark_cache groups with
+  RPC service definitions.
+- `lark-orm`: For database-backed `Getter` implementations that load cache misses
+  from MongoDB via the ORM layer.

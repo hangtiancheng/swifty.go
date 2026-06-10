@@ -4,12 +4,13 @@ description: >
   Lightweight, Koa-inspired HTTP framework implemented in the `lark_http` package at
   `github.com/hangtiancheng/lark-go/lark_http`. Use this skill when working on HTTP
   routing, middleware chains, the `*Context` request/response API, Server-Sent Events
-  streaming, router groups with prefixes, trie-based path matching, the deferred
-  response pattern (`ctx.Status` / `ctx.Body` / `ctx.Type`), or the `Application`
-  lifecycle (`Listen`, `Shutdown`). Strong trigger tokens include `lark_http`,
-  `lark.New()`, `lark.Default()`, `app.Use(`, `app.Router(`, `ctx.SSE()`,
-  `ctx.JSON(`, `ctx.Throw(`, `ctx.BindJSON(`, `lark.H{`, `lark.Middleware`,
-  `*lark.Context`, `Logger()`, `Recovery()`, and the import path
+  streaming, WebSocket connections, router groups with prefixes, trie-based path
+  matching, the deferred response pattern (`ctx.Status` / `ctx.Body` / `ctx.Type`),
+  or the `Application` lifecycle (`Listen`, `Shutdown`). Strong trigger tokens include
+  `lark_http`, `lark.New()`, `lark.Default()`, `app.Use(`, `app.Router(`,
+  `ctx.SSE()`, `ctx.Upgrade(`, `WSConn`, `ctx.JSON(`, `ctx.Throw(`, `ctx.BindJSON(`,
+  `lark.H{`, `lark.Middleware`, `*lark.Context`, `Logger()`, `Recovery()`,
+  `TextMessage`, `BinaryMessage`, `ErrWSClosed`, and the import path
   `github.com/hangtiancheng/lark-go/lark_http`.
 
   Do NOT use this skill for: plain `net/http` servers with no `lark_http` import;
@@ -23,7 +24,8 @@ description: >
 
 A lightweight, Koa-inspired HTTP framework for Go with trie-based routing,
 Koa-style middleware (ctx, next), deferred response rendering, Server-Sent Events
-support, and router prefixing.
+support, a zero-dependency WebSocket implementation with event-driven and
+request/response APIs, and router prefixing.
 
 Module path: `github.com/hangtiancheng/lark-go/lark_http`
 
@@ -47,7 +49,18 @@ Request lifecycle:
                 -> resolve route via trie; synthesize a notFound handler on miss
                 -> compose(middlewares, routeHandler)(ctx)
             -> ctx.respond()                 // skipped when ctx.flushed == true
-                                             // (set by ctx.SSE() and Router.Static)
+                                             // (set by ctx.SSE(), ctx.Upgrade(),
+                                             //  and Router.Static)
+
+WebSocket lifecycle:
+  ctx.Upgrade(opts) -> validate Connection/Upgrade/Key headers
+                    -> negotiate subprotocol (optional)
+                    -> hijack the net.Conn via http.NewResponseController
+                    -> set ctx.flushed = true
+                    -> write 101 handshake response directly to conn
+                    -> return *WSConn
+  WSConn.Listen()   -> blocking read loop dispatching to OnMessage/OnClose/OnError
+  WSConn.ReadMessage() -> manual per-message read (alternative to Listen)
 ```
 
 Key invariants an agent must respect:
@@ -62,8 +75,8 @@ Key invariants an agent must respect:
 - Calling `next()` more than once inside a single middleware is currently
   allowed and will execute the downstream chain multiple times. Do not rely on
   Koa's single-call guarantee.
-- `ctx.flushed = true` tells `respond()` to skip rendering. `SSE()` and
-  `Static` set this flag because they own the bytes themselves.
+- `ctx.flushed = true` tells `respond()` to skip rendering. `SSE()`, `Upgrade()`,
+  and `Static` set this flag because they own the bytes themselves.
 
 ## Core types
 
@@ -146,13 +159,14 @@ the body after a throw, assign `ctx.Status` explicitly.
 
 Request accessors:
 
-| Method          | Description                                                                       |
-| --------------- | --------------------------------------------------------------------------------- |
-| `Query(key)`    | URL query parameter                                                               |
-| `Param(key)`    | Route path parameter (`:name` or `*name`)                                         |
-| `PostForm(key)` | Form value (`application/x-www-form-urlencoded` or `multipart/form-data`)         |
-| `Get(header)`   | Request header                                                                    |
-| `BindJSON(out)` | Decode JSON request body via `json.NewDecoder`; closes `Request.Body` via `defer` |
+| Method                                                                | Description                                                                       |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `Query(key string) string`                                            | URL query parameter                                                               |
+| `Param(key string) string`                                            | Route path parameter (`:name` or `*name`)                                         |
+| `PostForm(key string) string`                                         | Form value (`application/x-www-form-urlencoded` or `multipart/form-data`)         |
+| `Get(header string) string`                                           | Request header                                                                    |
+| `BindJSON(out interface{}) error`                                     | Decode JSON request body via `json.NewDecoder`; closes `Request.Body` via `defer` |
+| `FormFile(key string) (multipart.File, *multipart.FileHeader, error)` | Retrieve uploaded file from multipart form                                        |
 
 `BindJSON` is destructive: it consumes and closes the request body. Call it at
 most once per request and do not expect downstream middleware to re-read the
@@ -161,14 +175,14 @@ body. There is no first-class accessor for the raw body; if you need it, read
 
 Response setters (deferred -- written by `respond()` at end of chain):
 
-| Method                 | Description                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| `JSON(obj)`            | Sets `Type = "application/json"` and `Body = obj`                                       |
-| `String(fmt, vals...)` | Sets `Type = "text/plain"` and `Body = fmt.Sprintf(fmt, vals...)`                       |
-| `Data([]byte)`         | Sets `Body = bytes`; Content-Type is whatever `Type` already holds (may be empty)       |
-| `HTML(name, data)`     | Sets `Type = "text/html"` and `Body = htmlPayload{name, data}`; requires `LoadHTMLGlob` |
-| `Redirect(url)`        | Sets `Status = 302` and the `Location` header; always 302, overwrites any prior status  |
-| `Set(header, value)`   | Buffers a response header; flushed by `respond()` or by `ctx.SSE()`                     |
+| Method                                         | Description                                                                             |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `JSON(obj interface{})`                        | Sets `Type = "application/json"` and `Body = obj`                                       |
+| `String(format string, values ...interface{})` | Sets `Type = "text/plain"` and `Body = fmt.Sprintf(format, values...)`                  |
+| `Data(data []byte)`                            | Sets `Body = bytes`; Content-Type is whatever `Type` already holds (may be empty)       |
+| `HTML(name string, data interface{})`          | Sets `Type = "text/html"` and `Body = htmlPayload{name, data}`; requires `LoadHTMLGlob` |
+| `Redirect(url string)`                         | Sets `Status = 302` and the `Location` header; always 302, overwrites any prior status  |
+| `Set(header, value string)`                    | Buffers a response header; flushed by `respond()` or by `ctx.SSE()`                     |
 
 `respond()` dispatches on the runtime type of `Body`:
 
@@ -178,8 +192,8 @@ Response setters (deferred -- written by `respond()` at end of chain):
 - `io.Reader` -> copied to the writer via `io.Copy`
 - anything else -> `json.Marshal` and write as JSON
 
-`respond()` returns early if `ctx.flushed == true`. `ctx.SSE()` and
-`Router.Static` set this flag because they own the response bytes. Do not call
+`respond()` returns early if `ctx.flushed == true`. `ctx.SSE()`, `ctx.Upgrade()`,
+and `Router.Static` set this flag because they own the response bytes. Do not call
 response setters after either of those paths takes over.
 
 ### Router
@@ -255,19 +269,33 @@ the deferred response API is unsupported.
 
 SSEWriter methods:
 
-| Method                        | Description                                                                |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| `Event(event, data string)`   | Writes `event: <event>\n` followed by one or more `data:` lines and `\n\n` |
-| `Data(data string)`           | Writes the data block; multiline input becomes multiple `data:` lines      |
-| `JSON(event string, obj any)` | `json.Marshal` then write; if `event == ""` the `event:` line is omitted   |
-| `ID(id string)`               | Writes `id: <id>\n` (a field line, not a complete event)                   |
-| `Retry(ms int)`               | Writes `retry: <ms>\n\n`                                                   |
-| `Comment(text string)`        | Writes one `: ` comment line per `\n`-separated input line                 |
-| `Heartbeat(interval) func()`  | Spawns a goroutine that writes `: keepalive\n\n` every `interval`          |
-| `Stream(ch <-chan string)`    | Forwards channel values via `Data` until `ch` closes or client disconnects |
-| `Closed() <-chan struct{}`    | Returns `ctx.Request.Context().Done()` for client-disconnect detection     |
-| `Flush()`                     | Manually invokes the underlying `http.Flusher`                             |
-| `Done()`                      | Writes `data: [DONE]\n\n`, the conventional OpenAI-compatible sentinel     |
+```go
+func (w *SSEWriter) Event(event string, data string)
+func (w *SSEWriter) Data(data string)
+func (w *SSEWriter) JSON(event string, obj interface{})
+func (w *SSEWriter) ID(id string)
+func (w *SSEWriter) Retry(ms int)
+func (w *SSEWriter) Comment(text string)
+func (w *SSEWriter) Heartbeat(interval time.Duration) func()
+func (w *SSEWriter) Stream(ch <-chan string)
+func (w *SSEWriter) Closed() <-chan struct{}
+func (w *SSEWriter) Flush()
+func (w *SSEWriter) Done()
+```
+
+| Method                                | Description                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `Event(event, data string)`           | Writes `event: <event>\n` followed by one or more `data:` lines and `\n\n` |
+| `Data(data string)`                   | Writes the data block; multiline input becomes multiple `data:` lines      |
+| `JSON(event string, obj interface{})` | `json.Marshal` then write; if `event == ""` the `event:` line is omitted   |
+| `ID(id string)`                       | Writes `id: <id>\n` (a field line, not a complete event)                   |
+| `Retry(ms int)`                       | Writes `retry: <ms>\n\n`                                                   |
+| `Comment(text string)`                | Writes one `: ` comment line per `\n`-separated input line                 |
+| `Heartbeat(interval) func()`          | Spawns a goroutine that writes `: keepalive\n\n` every `interval`          |
+| `Stream(ch <-chan string)`            | Forwards channel values via `Data` until `ch` closes or client disconnects |
+| `Closed() <-chan struct{}`            | Returns `ctx.Request.Context().Done()` for client-disconnect detection     |
+| `Flush()`                             | Manually invokes the underlying `http.Flusher`                             |
+| `Done()`                              | Writes `data: [DONE]\n\n`, the conventional OpenAI-compatible sentinel     |
 
 Concurrency and lifetime contracts:
 
@@ -287,6 +315,128 @@ Concurrency and lifetime contracts:
   leaks.
 - `Event` does not check for an empty `event` argument; pass a non-empty
   name or use `Data` / `JSON("", obj)` for unnamed events.
+
+### WebSocket
+
+Zero-dependency WebSocket implementation supporting both event-driven (Node.js
+ws-style) and synchronous read/write APIs.
+
+Constants:
+
+```go
+const (
+    TextMessage   = 1
+    BinaryMessage = 2
+    CloseMessage  = 8
+    PingMessage   = 9
+    PongMessage   = 10
+)
+```
+
+Errors:
+
+```go
+var (
+    ErrWSClosed       = errors.New("websocket: connection closed")
+    ErrWSInvalidFrame = errors.New("websocket: invalid frame")
+)
+```
+
+UpgradeOptions:
+
+```go
+type UpgradeOptions struct {
+    ReadBufferSize  int
+    WriteBufferSize int
+    CheckOrigin     func(r *http.Request) bool
+    Subprotocols    []string
+}
+```
+
+Upgrade entry point:
+
+```go
+func (ctx *Context) Upgrade(opts *UpgradeOptions) (*WSConn, error)
+```
+
+`Upgrade` performs the following:
+
+1. If `opts.CheckOrigin` is set and returns false, calls `ctx.Throw(403, ...)`
+   and returns an error.
+2. Validates the `Connection: upgrade` and `Upgrade: websocket` headers and the
+   `Sec-WebSocket-Key` header. Returns an error for any missing header.
+3. Negotiates a subprotocol if `opts.Subprotocols` is non-empty.
+4. Hijacks the connection via `http.NewResponseController(ctx.Writer).Hijack()`.
+   If hijack fails (for example when using `httptest.ResponseRecorder`), returns
+   an error.
+5. Sets `ctx.flushed = true`.
+6. Clears the connection deadline.
+7. Constructs a `bufio.Reader` with `ReadBufferSize` (default 4096).
+8. Writes the HTTP 101 switching protocols response with the computed accept key
+   and optional subprotocol header directly to the connection.
+9. Returns the `*WSConn`.
+
+WSConn methods -- event-driven API (Node.js ws-style):
+
+```go
+func (ws *WSConn) OnMessage(fn func(messageType int, data []byte))
+func (ws *WSConn) OnClose(fn func(code int, text string))
+func (ws *WSConn) OnError(fn func(err error))
+func (ws *WSConn) OnPing(fn func(data []byte))
+func (ws *WSConn) OnPong(fn func(data []byte))
+func (ws *WSConn) Listen()
+```
+
+`Listen` runs a blocking read loop. It dispatches frames to the registered event
+handlers. Ping frames receive an automatic pong reply. Close frames trigger a
+close reply, close the `Closed()` channel, invoke `OnClose`, and return. Any
+read error invokes `OnError`, closes the `Closed()` channel, and returns.
+
+WSConn methods -- synchronous read/write API:
+
+```go
+func (ws *WSConn) ReadMessage() (messageType int, data []byte, err error)
+func (ws *WSConn) ReadJSON(v any) error
+func (ws *WSConn) WriteMessage(messageType int, data []byte) error
+func (ws *WSConn) WriteJSON(v any) error
+func (ws *WSConn) Send(text string) error
+func (ws *WSConn) WriteText(text string) error
+func (ws *WSConn) WriteBinary(data []byte) error
+func (ws *WSConn) Ping() error
+func (ws *WSConn) Close() error
+func (ws *WSConn) CloseWithMessage(code int, text string) error
+```
+
+WSConn utility methods:
+
+```go
+func (ws *WSConn) Closed() <-chan struct{}
+func (ws *WSConn) SetReadDeadline(t time.Time) error
+func (ws *WSConn) SetWriteDeadline(t time.Time) error
+func (ws *WSConn) Heartbeat(interval time.Duration) func()
+func (ws *WSConn) NetConn() net.Conn
+```
+
+WebSocket concurrency and lifetime contracts:
+
+- `WriteMessage`, `WriteJSON`, `Send`, `WriteText`, `WriteBinary`, and `Ping`
+  are serialized by an internal `sync.Mutex` (`writeMu`). Concurrent writes
+  from multiple goroutines are safe.
+- `ReadMessage` and `ReadJSON` are serialized by a separate `sync.Mutex`
+  (`readMu`). Concurrent reads from multiple goroutines are safe.
+- `Listen` does not acquire the read mutex. Do not call `ReadMessage` /
+  `ReadJSON` while `Listen` is running; choose one API or the other.
+- `Close` and `CloseWithMessage` close the `Closed()` channel exactly once via
+  `sync.Once`, then write a close frame and close the underlying `net.Conn`.
+- `Heartbeat` returns a stop function that closes an internal channel. Calling
+  the stop function more than once panics. Call it exactly once via `defer`.
+- `maxFrameSize` is 65536 bytes. Frames larger than this cause `ReadMessage` /
+  `Listen` to return `ErrWSInvalidFrame`.
+- Server frames are unmasked (per RFC 6455). Client frames must be masked;
+  the implementation correctly unmasks incoming masked frames.
+- The `WriteBufferSize` field in `UpgradeOptions` is declared but not used by
+  the current implementation. Writes go directly to the underlying `net.Conn`
+  without additional buffering.
 
 ## Routing
 
@@ -332,9 +482,10 @@ func Logger() Middleware
 
 Records `time.Now()` before calling `next()`, then prints
 `[<status>] <RequestURI> in <duration>` through the standard `log` package
-once the chain returns. Output is plain text, not structured. If you need
-structured logging, replace this middleware with one that wraps your own
-logger; do not chain a second middleware on top hoping to override the
+once the chain returns. If `ctx.flushed` is true (SSE or WebSocket), the
+logged status is hardcoded to 101. Output is plain text, not structured. If
+you need structured logging, replace this middleware with one that wraps your
+own logger; do not chain a second middleware on top hoping to override the
 format.
 
 ### Recovery
@@ -358,12 +509,58 @@ logging; with this middleware in place the abort is converted into a normal
 `Recovery` and add `if err == http.ErrAbortHandler { panic(err) }` before
 the response-mutation block.
 
+## Internal implementation details affecting correctness
+
+### Trie structure
+
+Each HTTP method has its own root `node`. The `node` type is unexported:
+
+```go
+type node struct {
+    pattern  string   // non-empty only at leaf nodes representing a complete route
+    part     string   // the segment this node represents
+    children []*node
+    isWild   bool     // true when part starts with ':' or '*'
+}
+```
+
+`matchChild` returns the first child with an exact `part` match (used during
+insertion). `matchChildren` returns all children that match -- exact matches
+first, then wild matches. This ordering gives literal segments priority during
+search.
+
+### compose function
+
+```go
+func compose(middlewares []Middleware, final Middleware) func(ctx *Context)
+```
+
+Builds a dispatch closure. Each call to `next()` increments an index counter.
+When the index exceeds `len(middlewares)`, the `final` handler executes with
+an empty `next` (`func() {}`). There is no guard against calling `next()`
+multiple times; the downstream chain re-executes from the next index.
+
+### Response rendering
+
+`ctx.respond()` is called exactly once by `router.handle` after the composed
+chain returns. It checks `ctx.flushed` first (SSE/WebSocket/Static bail out).
+The auto-200 logic: if `Body != nil` and `statusSet == false` and
+`Status == http.StatusNotFound`, promote to `http.StatusOK`. Headers from
+`ctx.headers` are flushed. Then the type switch selects the renderer.
+
+### matchRouterPath
+
+```go
+func matchRouterPath(requestPath, routerPrefix string) bool
+```
+
+Returns true when the prefix is empty or `/`, or when requestPath starts with
+routerPrefix and the next character is either end-of-string or `/`. This
+prevents `/v1` from matching `/v10`.
+
 ## Typical usage
 
-Minimal JSON API plus an SSE endpoint. Note the canonical patterns: import
-under the alias `lark`, use `http.StatusOK` constants instead of literals,
-run `Listen` in a goroutine, watch `sse.Closed()` to honor client
-disconnects, and call `stop()` exactly once via `defer`.
+### Minimal JSON API with SSE streaming
 
 ```go
 package main
@@ -432,25 +629,187 @@ func main() {
 }
 ```
 
+### WebSocket echo server
+
+```go
+package main
+
+import (
+    lark "github.com/hangtiancheng/lark-go/lark_http"
+)
+
+func main() {
+    app := lark.Default()
+
+    app.Get("/ws", func(ctx *lark.Context, next func()) {
+        ws, err := ctx.Upgrade(nil)
+        if err != nil {
+            return
+        }
+        defer ws.Close()
+
+        for {
+            msgType, data, err := ws.ReadMessage()
+            if err != nil {
+                return
+            }
+            if err := ws.WriteMessage(msgType, data); err != nil {
+                return
+            }
+        }
+    })
+
+    app.Listen(":8080")
+}
+```
+
+### WebSocket with event-driven API
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+
+    lark "github.com/hangtiancheng/lark-go/lark_http"
+)
+
+func main() {
+    app := lark.Default()
+
+    app.Get("/ws", func(ctx *lark.Context, next func()) {
+        ws, err := ctx.Upgrade(&lark.UpgradeOptions{
+            CheckOrigin: func(r *http.Request) bool { return true },
+        })
+        if err != nil {
+            return
+        }
+        defer ws.Close()
+
+        stop := ws.Heartbeat(30 * time.Second)
+        defer stop()
+
+        ws.OnMessage(func(messageType int, data []byte) {
+            log.Printf("received: %s", data)
+            _ = ws.Send("echo: " + string(data))
+        })
+
+        ws.OnClose(func(code int, text string) {
+            log.Printf("closed: %d %s", code, text)
+        })
+
+        ws.OnError(func(err error) {
+            log.Printf("error: %v", err)
+        })
+
+        ws.Listen()
+    })
+
+    app.Listen(":8080")
+}
+```
+
+### WebSocket with JSON messages
+
+```go
+app.Get("/ws", func(ctx *lark.Context, next func()) {
+    ws, err := ctx.Upgrade(nil)
+    if err != nil {
+        return
+    }
+    defer ws.Close()
+
+    var req RequestMessage
+    if err := ws.ReadJSON(&req); err != nil {
+        return
+    }
+    _ = ws.WriteJSON(ResponseMessage{Status: "ok", Data: req.Data})
+})
+```
+
+## Pitfalls / known limitations
+
+1. `BindJSON` closes the request body. Calling it twice or reading the body
+   afterwards yields an empty or errored read. There is no built-in body
+   buffering.
+
+2. The `next()` function inside `compose` has no single-call guard. Calling it
+   more than once from the same middleware re-executes the downstream chain.
+   Write middleware defensively.
+
+3. `Recovery` swallows `http.ErrAbortHandler`. Standard library middleware that
+   panics with this sentinel (e.g., `httputil.ReverseProxy` on client disconnect)
+   will not abort cleanly; the request gets a 500 instead.
+
+4. Route registration is not goroutine-safe. All routes must be registered
+   before calling `Listen`. Registering routes from handlers or background
+   goroutines causes data races.
+
+5. `SSEWriter.Heartbeat` and `WSConn.Heartbeat` return a stop function that
+   panics if called more than once. Always use `defer stop()` and do not
+   store the function for reuse.
+
+6. `WriteBufferSize` in `UpgradeOptions` is accepted but not used. All WebSocket
+   writes go unbuffered to the underlying `net.Conn`.
+
+7. WebSocket `maxFrameSize` is 65536 bytes. Messages larger than this cause a
+   read error (`ErrWSInvalidFrame`). There is no message fragmentation support.
+
+8. `SetFuncMap` must be called before `LoadHTMLGlob`; otherwise the template
+   function map is not applied and template execution may fail.
+
+9. `ctx.Set(...)` headers are only flushed by `respond()` and by `ctx.SSE()`.
+   The `Static` handler bypasses header flushing entirely. To add custom
+   headers to static file responses, write to `ctx.Writer.Header()` directly
+   in a wrapping middleware.
+
+10. `Redirect` always uses status 302 (Found). There is no parameter for 301
+    (Moved Permanently) or 307 (Temporary Redirect). Set `ctx.Status` manually
+    and `ctx.Set("Location", url)` if you need a different redirect status.
+
+11. The WebSocket `Listen` method does not acquire `readMu`. Do not call
+    `ReadMessage` or `ReadJSON` concurrently with `Listen`; choose one read
+    pattern per connection.
+
+12. Middleware ordering depends on router declaration order in `app.routers`,
+    not nesting depth. All routers whose prefix matches the request path
+    contribute their middleware, concatenated in the order they were created.
+
 ## File map
 
-| File          | Purpose                                                                                |
-| ------------- | -------------------------------------------------------------------------------------- |
-| `lark.go`     | `Application`, constructors, `Listen`, `Shutdown`, `ServeHTTP`, and `compose`          |
-| `context.go`  | `Context`, `H` and `Middleware` aliases, request accessors, `Throw`, `Set`             |
-| `response.go` | Deferred response setters (`JSON`, `String`, `Data`, `HTML`, `Redirect`) and `respond` |
-| `group.go`    | `Router` with prefix, `Use`, method registration, `Static`, `matchRouterPath`          |
-| `router.go`   | Internal `router`: `addRoute`, `getRoute`, `handle`, synthesized 404 handler           |
-| `trie.go`     | Trie `node`: `insert`, `search`, `travel`, child matching                              |
-| `sse.go`      | `SSEWriter` and `Context.SSE`                                                          |
-| `logger.go`   | `Logger` middleware                                                                    |
-| `recovery.go` | `Recovery` middleware and the panic trace helper                                       |
-| `main.go`     | Demo entry point; carries `//go:build ignore`, excluded from package builds            |
+| File           | Purpose                                                                                |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `lark.go`      | `Application`, constructors, `Listen`, `Shutdown`, `ServeHTTP`, and `compose`          |
+| `context.go`   | `Context`, `H` and `Middleware` aliases, request accessors, `Throw`, `Set`             |
+| `response.go`  | Deferred response setters (`JSON`, `String`, `Data`, `HTML`, `Redirect`) and `respond` |
+| `group.go`     | `Router` with prefix, `Use`, method registration, `Static`, `matchRouterPath`          |
+| `router.go`    | Internal `router`: `addRoute`, `getRoute`, `handle`, synthesized 404 handler           |
+| `trie.go`      | Trie `node`: `insert`, `search`, `travel`, child matching                              |
+| `sse.go`       | `SSEWriter` and `Context.SSE`                                                          |
+| `websocket.go` | `WSConn`, `UpgradeOptions`, `Context.Upgrade`, WebSocket frame I/O, constants, errors  |
+| `logger.go`    | `Logger` middleware                                                                    |
+| `recovery.go`  | `Recovery` middleware and the panic trace helper                                       |
+| `main.go`      | Demo entry point; carries `//go:build ignore`, excluded from package builds            |
 
 ## Dependencies
 
 None beyond the Go standard library. The package's `go.mod` declares
 `go 1.26.0`; generated code should target that toolchain or newer.
+
+Standard library packages used: `bufio`, `context`, `crypto/sha1`,
+`encoding/base64`, `encoding/binary`, `encoding/json`, `errors`, `fmt`,
+`html/template`, `io`, `log`, `mime/multipart`, `net`, `net/http`, `path`,
+`runtime`, `strings`, `sync`, `time`, `unicode/utf8`.
+
+## Cross-references
+
+- `lark-cache` -- in-memory caching layer; commonly used together in API
+  handlers that need response caching.
+- `lark-orm` -- database ORM; handlers typically call into ORM models to
+  fetch data before responding via `ctx.JSON`.
+- `lark-rpc` -- gRPC framework; for services that expose both HTTP and gRPC,
+  use `lark_http` for the HTTP surface and `lark_rpc` for the gRPC surface.
 
 ## Behavioral contracts cheat sheet
 
@@ -462,7 +821,7 @@ non-obvious contract enforced by the source.
 | Status auto-200   | `Body != nil` and `Status` never explicitly set promotes status from `http.StatusNotFound` to `http.StatusOK`.            |
 | Throw stickiness  | `ctx.Throw` flips an internal `statusSet`; later setters keep the throw status unless `ctx.Status` is reassigned.         |
 | Redirect lock     | `ctx.Redirect(url)` always writes status 302 and overwrites any previously assigned status.                               |
-| respond skip      | `respond()` returns early when `ctx.flushed == true`; `SSE()` and `Static` rely on this.                                  |
+| respond skip      | `respond()` returns early when `ctx.flushed == true`; `SSE()`, `Upgrade()`, and `Static` rely on this.                    |
 | BindJSON closes   | `ctx.BindJSON` closes `Request.Body` via `defer`; do not read the body again afterwards.                                  |
 | Header buffering  | `ctx.Set` buffers headers in `ctx.headers`; they flush in `respond()` and in `SSE()` only. `Static` does not flush them.  |
 | Static 404 body   | A missing static file responds 404 with an empty body; the static handler does not populate `ctx.Body`.                   |
@@ -472,10 +831,15 @@ non-obvious contract enforced by the source.
 | Wildcard position | `*name` must be the last segment; trailing segments are silently dropped by `parsePattern`.                               |
 | Literal priority  | When literal and wildcard children coexist, literal wins.                                                                 |
 | next() reuse      | `compose` does not guard against multiple `next()` calls; downstream chains run repeatedly if invoked again.              |
-| Heartbeat stop    | The `stop` function returned by `SSEWriter.Heartbeat` is not idempotent; call it exactly once (typically via `defer`).    |
+| Heartbeat stop    | The `stop` function returned by `SSEWriter.Heartbeat` and `WSConn.Heartbeat` is not idempotent; call exactly once.        |
 | SSE flusher       | `ctx.Writer` not implementing `http.Flusher` degrades silently; `Flush` becomes a no-op and writes may buffer.            |
 | ID / Retry        | SSE field lines (`ID`, `Retry`) do not by themselves dispatch an event; pair them with `Event`, `Data`, or `JSON`.        |
 | Stream cancel     | `SSEWriter.Stream` returns on channel close or client disconnect; it does not cancel the upstream producer for you.       |
 | Recovery panic    | `Recovery` does not re-raise `http.ErrAbortHandler`; forks must add the re-raise if that distinction matters.             |
 | Listen return     | `Listen` returns `http.ErrServerClosed` after a successful `Shutdown`; treat that value as a normal termination.          |
 | Templates         | `SetFuncMap` must precede `LoadHTMLGlob`; otherwise FuncMap is not captured.                                              |
+| WS maxFrameSize   | Frames over 65536 bytes return `ErrWSInvalidFrame`. No fragmentation support.                                             |
+| WS Listen vs Read | `WSConn.Listen` and `ReadMessage` must not run concurrently; `Listen` does not acquire the read mutex.                    |
+| WS hijack         | `ctx.Upgrade` requires a `ResponseWriter` that supports `Hijack` via `http.NewResponseController`.                        |
+| WS close once     | `WSConn.Close` / `CloseWithMessage` use `sync.Once` on the closed channel; safe to call once only from user code.         |
+| Logger flushed    | Logger logs status 101 when `ctx.flushed == true` regardless of actual `ctx.Status`.                                      |

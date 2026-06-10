@@ -1,211 +1,214 @@
 ---
 name: lark-rpc
 description: >
-  TCP-based RPC framework for Go (lark_rpc module,
-  github.com/hangtiancheng/lark-go/lark_rpc) with a grpc-go-style public API,
-  request multiplexing over a single connection, server-streaming, pluggable
-  codecs (JSON / Protobuf) with mandatory Gzip body compression, connection
-  pooling, three-state circuit breaking, token-bucket rate limiting,
-  RoundRobin / Random / smooth-weighted load balancing, and etcd v3 service
-  discovery. Use when writing or modifying Go code that calls rpc.NewServer,
-  server.Register, server.Serve / GracefulStop / Stop, rpc.Dial,
-  ClientConn.Invoke / NewStream / Close, rpc.WithCodec / WithTimeout /
-  WithDialCodec / WithRegistry / WithLoadBalancer, rpc.NewRegistry, the
-  ServerStream / ClientStream interfaces, or any import of
-  github.com/hangtiancheng/lark-go/lark_rpc. Also use when the user asks about
-  the wire protocol (Magic + HeaderLen + BodyLen + Header + Body framing),
-  Header.StreamFlag (StreamNone / StreamData / StreamEnd / StreamError),
-  multiplexing by RequestID, the reflection-based service dispatcher (grpc-go
-  vs net/rpc method signatures), server-streaming handlers, registry mode vs
-  static mode behavioural differences, circuit-breaker tuning, or migrating
-  net/rpc / grpc-go code to lark_rpc. Do not use for grpc-go itself, gRPC
-  gateways, Connect-Go, Twirp, net/rpc code that does not import lark_rpc, or
-  for HTTP / SSE work (use lark_http instead).
+  TCP-based RPC framework for Go (module path:
+  github.com/hangtiancheng/lark-go/lark_rpc). Key exported symbols: rpc.Dial,
+  rpc.NewServer, rpc.NewRegistry, ClientConn, Server, ServerStream,
+  ClientStream, DialOption, ServerOption, CodecType, CodecJSON, CodecProto,
+  Instance, LoadBalancer, WithTimeout, WithDialCodec, WithRegistry,
+  WithLoadBalancer, WithCodec. Use when writing or modifying Go code that
+  imports github.com/hangtiancheng/lark-go/lark_rpc, uses rpc.NewServer /
+  Register / Serve / GracefulStop / Stop, rpc.Dial / ClientConn.Invoke /
+  ClientConn.NewStream / ClientConn.Close, service discovery via
+  rpc.NewRegistry, the ServerStream / ClientStream interfaces, or questions
+  about the binary wire protocol (Magic 0x1234, HeaderLen, BodyLen framing),
+  StreamFlag (StreamNone / StreamData / StreamEnd / StreamError), request
+  multiplexing by RequestID, the reflection-based method dispatcher (grpc-go
+  and net/rpc signatures), server-streaming handlers, circuit-breaker /
+  rate-limiting / load-balancing internals, registry vs static mode, or
+  migrating net/rpc or grpc-go code to lark_rpc. Skip for grpc-go itself,
+  Connect-Go, Twirp, net/rpc code that does not import lark_rpc, HTTP / SSE /
+  WebSocket work (use lark-http instead), or pure Protobuf schema questions
+  unrelated to lark_rpc dispatch.
 ---
 
 # lark_rpc
 
-A TCP-based RPC framework with a grpc-go-style public API. Provides request
-multiplexing on a single connection, server-streaming, pluggable JSON / Protobuf
-codecs with mandatory Gzip body compression, connection pooling, three-state
-circuit breaking, token-bucket rate limiting, load balancing, and etcd v3
-service registration / discovery.
-
-- Module path: `github.com/hangtiancheng/lark-go/lark_rpc`
-- Source root: `lark_rpc/`
-- Go toolchain: 1.26+
-- Public API lives in `pkg/rpc`; everything else is `internal/` and not
-  importable by downstream code.
+A TCP-based RPC framework with a grpc-go-style public API that provides request multiplexing on a single connection, server-streaming, pluggable JSON and Protobuf codecs with mandatory Gzip body compression, connection pooling, three-state circuit breaking, token-bucket rate limiting, three built-in load-balancing strategies (round-robin, random, smooth-weighted round-robin), and etcd v3 service registration and discovery. The module path is `github.com/hangtiancheng/lark-go/lark_rpc`, the public API lives in `pkg/rpc`, and all implementation details reside under `internal/` which Go prevents external packages from importing.
 
 ## Architecture overview
 
 ```
-pkg/
-  rpc/      Public API (grpc-go style)
-    Server     -- NewServer, Register, Serve, GracefulStop, Stop
-    ClientConn -- Dial, Invoke, NewStream, Close
-    ServerStream / ClientStream  (type aliases of internal/stream)
-  api/      Example service (Arith) used by tests and demos
+                          +------------------+
+                          |   pkg/rpc        |  Public API surface
+                          |  (Server,        |
+                          |   ClientConn,    |
+                          |   Dial, types)   |
+                          +--------+---------+
+                                   |
+              +--------------------+--------------------+
+              |                                         |
+   +----------v-----------+              +-------------v-----------+
+   | internal/server      |              | internal/client         |
+   |  Server loop         |              |  Registry-mode client   |
+   |  Handler (reflect)   |              |  Breaker + Limiter + LB |
+   |  serverStream        |              |  Invoke / InvokeStream  |
+   +----------+-----------+              +-------------+-----------+
+              |                                         |
+              |    +-------------------+                |
+              +--->| internal/transport |<--------------+
+              |    |  TCPConnection    |
+              |    |  TCPClient        |
+              |    |  ConnectionPool   |
+              |    |  Future           |
+              |    |  ClientStreamConn |
+              |    +--------+----------+
+              |             |
+              v             v
+   +----------+-------------+----------+
+   | internal/protocol                 |
+   |  Header, Message, Encode, Decode  |
+   |  Magic = 0x1234                   |
+   +----------+------------------------+
+              |
+              v
+   +----------+------------------------+
+   | internal/codec                    |
+   |  Codec interface, JSON, Protobuf  |
+   |  CompressionType, Gzip           |
+   +-----------------------------------+
 
-internal/
-  server/         TCP server loop, reflection-based dispatch, server-streaming
-  client/         Registry-mode client with breaker / limiter / LB / pool
-  transport/      TCPConnection, ConnectionPool, TCPClient, Future, ClientStreamConn
-  protocol/       Header + Message framing (length-delimited binary)
-  codec/          Codec interface + JSON / Protobuf + Gzip compressor
-  breaker/        Three-state circuit breaker (Closed -> Open -> HalfOpen)
-  limiter/        Token-bucket rate limiter (per-second refill)
-  load_balance/   LoadBalancer interface + RoundRobin, Random, WeightedRR
-  registry/       etcd v3 service registration, discovery, watch
-  stream/         ServerStream / ClientStream interface definitions
+   +---------------------+    +---------------------+    +-------------------------+
+   | internal/breaker    |    | internal/limiter    |    | internal/load_balance   |
+   |  CircuitBreaker     |    |  TokenBucket        |    |  RoundRobin, Random,    |
+   |  (Closed/Open/Half) |    |  (per-second refill)|    |  WeightedRR             |
+   +---------------------+    +---------------------+    +-------------------------+
+
+   +---------------------+    +---------------------+
+   | internal/registry   |    | internal/stream     |
+   |  etcd v3 register/  |    |  ServerStream iface |
+   |  discover/watch     |    |  ClientStream iface |
+   +---------------------+    +---------------------+
 ```
 
-Two strict boundaries to keep in mind:
+Two strict structural boundaries:
 
-1. `pkg/rpc` re-exports a minimal set of types from `internal/codec`,
-   `internal/registry`, and `internal/load_balance` via `type alias`. Downstream
-   code must never import `internal/*` directly.
-2. The `internal/stream` package exists only to break a potential cyclic
-   dependency between `internal/server` and `internal/transport`. Both packages
-   refer to `stream.ServerStream` / `stream.ClientStream`, never to each other.
+1. `pkg/rpc` re-exports a minimal set of types from `internal/codec`, `internal/registry`, and `internal/load_balance` via type aliases. Downstream code must never import `internal/*` directly.
+2. `internal/stream` exists solely to break a potential cyclic dependency between `internal/server` and `internal/transport`. Both packages reference `stream.ServerStream` / `stream.ClientStream`, never each other.
 
-## Public API (pkg/rpc)
+## Core types
 
-### Server
+### Package pkg/rpc -- exported types
 
 ```go
+// Type aliases re-exported from internal packages.
+type CodecType    = codec.Type
+type Registry     = registry.Registry
+type Instance     = registry.Instance
+type LoadBalancer = load_balance.LoadBalancer
+type ServerStream = stream.ServerStream
+type ClientStream = stream.ClientStream
+```
+
+### Package pkg/rpc -- exported constants and variables
+
+```go
+var CodecJSON  = codec.JSON   // codec.Type value 1
+var CodecProto = codec.PROTO  // codec.Type value 2
+```
+
+### Package pkg/rpc -- exported functions
+
+```go
+func NewRegistry(endpoints []string) (*Registry, error)
+
 func NewServer(opts ...ServerOption) *Server
 
+func Dial(target string, opts ...DialOption) (*ClientConn, error)
+
+func WithTimeout(d time.Duration) DialOption
+func WithDialCodec(t CodecType) DialOption
+func WithRegistry(reg *Registry) DialOption
+func WithLoadBalancer(lb LoadBalancer) DialOption
+
+func WithCodec(t CodecType) ServerOption
+```
+
+### Package pkg/rpc -- exported struct types and methods
+
+```go
+type DialOption func(*dialOptions)
+
+type ServerOption func(*serverOptions)
+
+type Server struct { /* unexported fields */ }
 func (s *Server) Register(name string, service interface{})
 func (s *Server) Serve(lis net.Listener) error
 func (s *Server) GracefulStop()
 func (s *Server) Stop()
-```
 
-Conventions match grpc-go: the constructor takes options (not an address), the
-caller supplies the `net.Listener`, and shutdown is split into `GracefulStop`
-(closes the listener, waits for in-flight goroutines, then stops the limiter)
-and `Stop` (same plus forcibly closes every live connection). Both are
-idempotent (guarded by `sync.Once`).
-
-Available `ServerOption`:
-
-| Option         | Description                           |
-| -------------- | ------------------------------------- |
-| `WithCodec(t)` | Set the body codec (JSON or Protobuf) |
-
-Notes:
-
-- `NewServer` panics if an option is invalid; option errors are treated as
-  programmer errors, not runtime errors.
-- Every server instance installs a fixed-rate token bucket of 10 000 RPS
-  (`limiter.NewTokenBucket(10000)`), shared across all connections and
-  methods. There is no option to tune it; requests over the limit receive a
-  response with `Header.Error = "rate limit exceeded"`.
-- `Register` may be called concurrently with `Serve`; it takes the server
-  mutex.
-
-### ClientConn
-
-```go
-func Dial(target string, opts ...DialOption) (*ClientConn, error)
-
+type ClientConn struct { /* unexported fields */ }
 func (cc *ClientConn) Invoke(ctx context.Context, service, method string, args, reply interface{}) error
 func (cc *ClientConn) NewStream(ctx context.Context, service, method string, args interface{}) (ClientStream, error)
 func (cc *ClientConn) Close() error
 ```
 
-`ClientConn` supports two distinct modes selected at `Dial` time:
-
-- Static mode (default): direct `ConnectionPool` to a single target address.
-- Registry mode (`WithRegistry(reg)`): the `target` argument is ignored;
-  addresses are resolved via etcd and selected by the configured
-  `LoadBalancer`.
-
-Available `DialOption`:
-
-| Option                 | Description                                           |
-| ---------------------- | ----------------------------------------------------- |
-| `WithTimeout(d)`       | Per-call timeout, default 5s, applied via context     |
-| `WithDialCodec(t)`     | Codec for request and reply bodies (JSON or Protobuf) |
-| `WithRegistry(reg)`    | Enable registry mode (etcd v3 service discovery)      |
-| `WithLoadBalancer(lb)` | Load-balancing strategy for registry mode             |
-
-Important behavioural cliff between the two modes:
-
-| Capability                 | Static mode  | Registry mode                                       |
-| -------------------------- | ------------ | --------------------------------------------------- |
-| Codec / compression        | yes          | yes                                                 |
-| Request multiplexing       | yes          | yes                                                 |
-| Per-call timeout           | yes          | yes                                                 |
-| Connection pool            | yes (1 conn) | yes (1 conn per addr)                               |
-| Service discovery          | no           | etcd v3                                             |
-| Load balancing             | no           | yes                                                 |
-| Token-bucket rate limiting | no           | yes (10 000 RPS, hard-coded)                        |
-| Circuit breaker            | no           | yes (10-window, 60% threshold, 5s open, hard-coded) |
-
-Static mode goes through `pkg/rpc/client.go::invokeStatic`, which talks to a
-`transport.ConnectionPool` directly and bypasses `internal/client.Client`
-entirely. Registry mode delegates to `internal/client.Client.Invoke` /
-`InvokeStream`.
-
-### Streaming interfaces
+### Package pkg/rpc -- exported interfaces (via type alias)
 
 ```go
+// stream.ServerStream
 type ServerStream interface {
     Send(msg interface{}) error
     Context() context.Context
 }
 
+// stream.ClientStream
 type ClientStream interface {
     Recv(msg interface{}) error
     Context() context.Context
 }
+
+// load_balance.LoadBalancer
+type LoadBalancer interface {
+    Select([]registry.Instance) registry.Instance
+}
 ```
 
-Only server-streaming is implemented. Client-streaming and bidirectional
-streaming are not supported by the current `StreamFlag` set; the protocol has
-no client-originated stream frame after the initial request.
-
-### Re-exported types and constants
+### Package pkg/rpc -- exported struct fields (via type alias)
 
 ```go
-type CodecType    = codec.Type
-type Registry     = registry.Registry
-type Instance     = registry.Instance
-type LoadBalancer = load_balance.LoadBalancer
-
-var CodecJSON  = codec.JSON   // value 1
-var CodecProto = codec.PROTO  // value 2
-
-func NewRegistry(endpoints []string) (*Registry, error)
+// registry.Instance
+type Instance struct {
+    Addr string
+}
 ```
 
-`pkg/rpc` does not re-export a server-side helper that registers the local
-listener address into etcd. Today the only ways to publish a service instance
-are to write a thin wrapper package or to add a re-export in `pkg/rpc`;
-importing `internal/registry` directly is forbidden by Go.
+### Package pkg/api -- example service types
 
-## Internal components
+```go
+type Args struct { A int; B int }
+type Args1 struct { A int; B int; C int }
+type Reply struct { Result int }
+
+type Arith struct{}
+func (a *Arith) Add(_ context.Context, args *Args) (*Reply, error)
+func (a *Arith) Mul(_ context.Context, args *Args) (*Reply, error)
+
+type Arith2 struct{}
+func (a *Arith2) Add(_ context.Context, args *Args1) (*Reply, error)
+func (a *Arith2) Mul(_ context.Context, args *Args1) (*Reply, error)
+```
+
+## Internal implementation details affecting correctness
 
 ### Wire protocol (internal/protocol)
 
-Binary, length-delimited, big-endian:
+Binary, length-delimited, big-endian framing:
 
 ```
 +--------+-----------+---------+----------------+--------------+
 | Magic  | HeaderLen | BodyLen |  Header(JSON)  | Body(bytes)  |
-| 2 byte | 4 byte    | 4 byte  |    N byte      |    M byte    |
+| 2 byte | 4 byte   | 4 byte  |    N byte      |    M byte    |
 +--------+-----------+---------+----------------+--------------+
 
 Magic = 0x1234
 ```
 
-`PacketBuffer.Read` walks the byte stream looking for the magic; on mismatch it
-advances by one byte and retries, which is a simple resync mechanism.
-`Decode` rejects packets whose `10 + headerLen + bodyLen` exceeds `math.MaxInt`.
+`PacketBuffer.Read` scans for the magic number; on mismatch it advances by one byte and retries, providing a simple resync mechanism for corrupted streams. `Decode` rejects packets whose computed `10 + headerLen + bodyLen` exceeds `math.MaxInt`.
 
-Header layout (declared in `internal/protocol/header.go`):
+The header is always JSON-encoded on the wire, regardless of the body codec. The body is always Gzip-compressed: every send site in the codebase hard-codes `Compression: codec.CompressionGzip`.
+
+Header struct:
 
 ```go
 type Header struct {
@@ -213,34 +216,25 @@ type Header struct {
     ServiceName string
     MethodName  string
     Error       string
-    CodecType   CodecType                  // protocol.CodecType, not codec.Type
+    CodecType   CodecType                  // protocol-local type
     Compression codec.CompressionType
     StreamFlag  StreamFlag `json:",omitempty"`
 }
 
 type StreamFlag byte
 const (
-    StreamNone  StreamFlag = 0
-    StreamData  StreamFlag = 1
-    StreamEnd   StreamFlag = 2
-    StreamError StreamFlag = 3
+    StreamNone  StreamFlag = 0   // unary response
+    StreamData  StreamFlag = 1   // stream data frame
+    StreamEnd   StreamFlag = 2   // stream terminal success
+    StreamError StreamFlag = 3   // stream terminal error
 )
 ```
 
-Two type-system facts that bite if missed:
+`StreamFlag` uses JSON `omitempty`, so `StreamNone` (value 0) does not appear in serialised headers. A missing `StreamFlag` key means a normal unary response.
 
-- `protocol.CodecType` and `codec.Type` are two independent types that happen
-  to share the same numeric encoding (1 = JSON, 2 = Proto). Headers carry the
-  protocol-local one.
-- `StreamFlag` is JSON-encoded with `omitempty`, so `StreamNone` does not
-  appear in serialised headers. When debugging packet dumps, a missing
-  `StreamFlag` key means "normal unary response", not "malformed packet".
+`protocol.CodecType` and `codec.Type` are two independent types sharing the same numeric encoding (1 = JSON, 2 = Proto). Headers carry the protocol-local type.
 
-The header is always JSON-encoded on the wire (regardless of the body codec).
-The body is always Gzip-compressed: every send site in the repo hard-codes
-`Compression: codec.CompressionGzip` and there is no option to disable it.
-
-### Codec (internal/codec)
+### Codec system (internal/codec)
 
 ```go
 type Codec interface {
@@ -249,416 +243,303 @@ type Codec interface {
 }
 
 type Type byte
-const (
-    JSON  Type = 1
-    PROTO Type = 2
-)
+const JSON  Type = 1
+const PROTO Type = 2
 
 type CompressionType byte
-const (
-    CompressionNone CompressionType = 0
-    CompressionGzip CompressionType = 1
-)
+const CompressionNone CompressionType = 0
+const CompressionGzip CompressionType = 1
 ```
 
-Codecs are registered through an `init`-time factory map keyed by `Type`. The
-Protobuf codec requires `v` to implement `proto.Message`; sending a plain
-struct under `CodecProto` fails at Marshal time with
-`proto codec: not proto.Message`.
+Codecs are registered through an `init`-time factory map keyed by `Type`. The JSON codec uses `encoding/json`. The Protobuf codec requires `v` to implement `proto.Message`; passing a plain struct produces `proto codec: not proto.Message` at Marshal time. `Register` panics if the factory is nil or the type is already registered.
 
-### Transport (internal/transport)
+Compression functions `Compress(data, type)` and `Decompress(data, type)` delegate to a compressor registry. Only Gzip is registered by default.
 
-- `TCPConnection` wraps a `net.Conn` with a `PacketBuffer` for frame
-  extraction. `Read() (*protocol.Message, error)` and
-  `Write(msg *protocol.Message) error`. `Close` calls `SetLinger(0)` so closing
-  produces a TCP RST rather than FIN.
-- `TCPClient` owns one `TCPConnection` plus two `sync.Map` registries:
-  `pending` (RequestID -> *Future) for unary calls, and `streams`
-  (RequestID -> *ClientStreamConn) for server-streams. `nextSeq` uses
-  `atomic.AddUint64` starting at 1; RequestID 0 is never produced by the
-  client. `SendAsync` / `SendAsyncWithCodec` return a `*Future`; `SendStream`
-  returns a `*ClientStreamConn`. A single `readLoop` goroutine demultiplexes
-  every response.
-- `ConnectionPool` is a pool of `*TCPClient` keyed by address. Constructed as
-  `NewConnectionPool(addr, maxIdle, maxActive)`, but `maxIdle` is silently
-  dropped (never stored) and every call site passes `maxActive = 1`. In
-  practice, one pool = one TCP connection multiplexed across all callers.
-  `Acquire` holds the pool mutex across `net.DialTimeout` (5s), so concurrent
-  callers serialise behind cold-start dials.
-- `Future` exposes both raw-byte and decoded-reply consumers:
-  `Wait() ([]byte, error)`, `WaitWithContext(ctx)`, `WaitWithTimeout(d)`,
-  `GetResult(reply)`, `GetResultWithContext(ctx, reply)`, `DoneChan()`,
-  `OnComplete(fn)`, `IsDone()`, and the producer-side `Done(res, err)`.
-  `OnComplete` invokes the callback immediately if the future is already
-  complete; otherwise it stores the callback for `Done` to invoke.
-  `internal/client/invoke.go::InvokeAsync` uses `DoneChan()` plus a manual
-  `future.Done(nil, context.DeadlineExceeded)` race to implement async
-  timeout.
-- `ClientStreamConn` is backed by a buffered channel of cap 64. `Recv`
-  decodes the next frame; `Push` is called by `readLoop` for `StreamData`;
-  `End` and `Error` are guarded by `sync.Once` so they fire exactly one
-  terminal frame.
+### Transport layer (internal/transport)
 
-`TCPClient.readLoop` switches on `Header.StreamFlag`:
+`TCPConnection` wraps a `net.Conn` with a `bufio.Reader` (4096 buffer) and a `PacketBuffer` for frame extraction. `Close` calls `SetLinger(0)`, producing a TCP RST rather than FIN.
 
-- `StreamData` -> `streams[seq].Push(body)`.
-- `StreamEnd` -> `streams[seq].End()` and remove.
-- `StreamError` -> `streams[seq].Error(err)` and remove.
-- default (`StreamNone`) -> `pending[seq].Done(body, err)` and remove.
+`TCPClient` owns one `TCPConnection` plus two `sync.Map` registries: `pending` (RequestID to Future) for unary calls, and `streams` (RequestID to ClientStreamConn) for server-streams. `nextSeq` uses `atomic.AddUint64` starting at 1; RequestID 0 is never produced. A single `readLoop` goroutine demultiplexes every response by examining `Header.StreamFlag`:
 
-When the TCP read fails, `fail(err)` is invoked exactly once
-(`atomic.CompareAndSwapInt32`) and resolves every outstanding Future and
-stream with the error, preventing goroutine leaks.
+- `StreamData` -> `streams[seq].Push(body)`
+- `StreamEnd` -> `streams[seq].End()` and delete entry
+- `StreamError` -> `streams[seq].Error(err)` and delete entry
+- default (`StreamNone`) -> `pending[seq].Done(body, err)` and delete entry
 
-### Server (internal/server)
+When the TCP read fails, `fail(err)` fires exactly once (`atomic.CompareAndSwapInt32`) and resolves every outstanding Future and stream with the error, preventing goroutine leaks.
 
-`Server.Serve` is the canonical accept loop:
+`ConnectionPool` holds a slice of `*TCPClient` with a configured `maxActive` (always 1 at every call site). `Acquire` holds the pool mutex across `net.DialTimeout` (5s), serialising concurrent callers behind cold-start dials. Dead connections are evicted on access: the loop checks `conn.closed` and removes stale entries.
 
-```
-for { conn := lis.Accept(); go s.Handle(transport.NewTCPConnection(conn)) }
-```
+`Future` provides both raw-byte and decoded-reply consumers: `Wait`, `WaitWithContext`, `WaitWithTimeout`, `GetResult`, `GetResultWithContext`, `DoneChan`, `OnComplete`, `IsDone`, and the producer-side `Done`. Calling `Done` multiple times is safe (second call is a no-op). `OnComplete` invokes the callback immediately if the future is already complete; otherwise stores it for `Done` to invoke.
 
-Each `Handle` invocation: read a message, check the limiter, look up the
-service by `Header.ServiceName`, delegate to `Handler.Process`. Rate-limit
-rejections are written back as `Header.Error = "rate limit exceeded"` with an
-empty body.
+`ClientStreamConn` is backed by a buffered channel of capacity 64. `Push`, `End`, and `Error` are the producer methods called by `readLoop`. `End` and `Error` are guarded by `sync.Once` so they fire exactly one terminal frame. `Recv` blocks on the channel or the context, returning `io.EOF` on end, the error on error, or decoded data on data frames.
 
-`Handler.invoke` dispatches by reflecting on the registered service value.
-There are two outer branches:
+### Reflection-based method dispatch (internal/server/handler.go)
 
-1. `numIn == 2 && numOut == 2` and `In(0).Implements(contextType)` and
-   `In(1).Kind() == Ptr` and `Out(1).Implements(errorType)` -> grpc-go
-   unary: `Method(ctx context.Context, req *T) (*R, error)`. The `contextType`
-   check uses `Implements`, not equality, so any type satisfying the context
-   interface qualifies.
-2. `numIn == 2 && numOut == 1` and `Out(0).Implements(errorType)` ->
-   either streaming or net/rpc unary, distinguished by an inner check on
-   `In(1)`:
-   - `In(1).Implements(stream.ServerStream)` -> streaming:
-     `Method(req *T, stream ServerStream) error`. `invoke` constructs a
-     `serverStream`, calls the method, and emits a `StreamEnd` (success) or
-     `StreamError` (error) terminal frame automatically.
-   - `In(1).Kind() == Ptr` -> net/rpc unary:
-     `Method(req *T, reply *R) error`. The reply is allocated via
-     `reflect.New(In(1).Elem())`.
+`Handler.invoke` reflects on the registered service value and matches one of three method signatures:
 
-Any other shape returns `unsupported method signature: <Service>.<Method>`.
+1. grpc-go style: `Method(ctx context.Context, req *T) (*R, error)` -- detected when `numIn == 2`, `numOut == 2`, `In(0).Implements(contextType)`, `In(1).Kind() == Ptr`, and `Out(1).Implements(errorType)`. A nil `*R` returns an empty body.
+2. net/rpc style: `Method(req *T, reply *R) error` -- detected when `numIn == 2`, `numOut == 1`, `Out(0).Implements(errorType)`, and `In(1).Kind() == Ptr`. Reply is allocated by the framework via `reflect.New`.
+3. Streaming style: `Method(req *T, stream ServerStream) error` -- same outer shape as net/rpc but `In(1).Implements(serverStreamType)`. The framework constructs a `serverStream`, invokes the method, then emits `StreamEnd` on success or `StreamError` on error.
 
-Streaming success path: business method returns nil -> framework emits
-`StreamEnd`. Streaming error path: business method returns non-nil ->
-framework emits `StreamError` with `Header.Error = err.Error()`.
-
-### Client (internal/client)
-
-`internal/client.Client` is the registry-mode implementation. It composes:
-
-- A `*registry.Registry` for discovery.
-- A `load_balance.LoadBalancer` (default `&load_balance.RoundRobin{}`).
-- A `limiter.TokenBucket(10 000)` shared across all addresses.
-- `pools sync.Map` (addr -> \*ConnectionPool).
-- `breaker sync.Map` (key `service|addr` -> \*CircuitBreaker, created lazily
-  with `windowSize=10, threshold=0.6, openTimeout=5s`).
-
-`Invoke` wraps the supplied context with `context.WithTimeout(ctx, c.timeout)`,
-then delegates to `invokeAsync` and waits with
-`future.GetResultWithContext(callCtx, reply)`. The async path registers an
-`OnComplete` callback that calls `RecordSuccess` or `RecordFailure` on the
-breaker. `InvokeStream` only records a failure at send time; mid-stream errors
-are not currently fed back into the breaker.
-
-`getAddr` calls `registry.Discover(service)`. The first call triggers
-`initService` (full Get + start a Watch goroutine); subsequent calls hit the
-in-memory cache.
+Any other signature produces `unsupported method signature: <Service>.<Method>` at call time (not at registration time).
 
 ### Circuit breaker (internal/breaker)
 
-```go
-func NewCircuitBreaker(windowSize int, failureThreshold float64, openTimeout time.Duration) *CircuitBreaker
-func (cb *CircuitBreaker) Allow() bool
-func (cb *CircuitBreaker) RecordSuccess()
-func (cb *CircuitBreaker) RecordFailure()
-func (cb *CircuitBreaker) State() State
+Three states: `Closed` (0), `Open` (1), `HalfOpen` (2).
 
-type State int
-const (
-    Closed   State = 0
-    Open     State = 1
-    HalfOpen State = 2
-)
-```
+- Closed: accumulates successes and failures. When total reaches `windowSize`, computes `failure/total`; if it meets `failureThreshold`, transitions to Open; otherwise resets counters for a fresh window.
+- Open: rejects all `Allow()` calls until `openTimeout` elapses from the last state change. The next `Allow()` returns true (single probe) and transitions to HalfOpen.
+- HalfOpen: one in-flight probe permitted (`halfOpenProbe` flag). Successful probe transitions to Closed; failed probe returns to Open.
 
-Behaviour:
-
-- Closed: count successes and failures. When `success + failure >=
-windowSize`, compute `failure / total`; if it meets `failureThreshold`,
-  transition to Open and reset counters; otherwise reset and start a fresh
-  window.
-- Open: reject all `Allow()` calls until `openTimeout` has elapsed since the
-  last state change. After that, the next `Allow()` returns true (single
-  probe) and transitions to HalfOpen.
-- HalfOpen: only one in-flight probe is permitted at a time
-  (`halfOpenProbe` flag). A successful probe -> Closed; a failed probe -> Open.
-
-Parameters are not exposed via `pkg/rpc`. The client always uses
-`(10, 0.6, 5s)`.
+The client always creates breakers with parameters `(windowSize=10, failureThreshold=0.6, openTimeout=5s)`, keyed by `service|addr`.
 
 ### Rate limiter (internal/limiter)
 
-```go
-func NewTokenBucket(rate int) *TokenBucket
-func (tb *TokenBucket) Allow() bool
-func (tb *TokenBucket) Stop()
-```
+Token bucket refilled to `rate` once per second by a background goroutine. Burst capacity equals `rate`. `Stop` shuts the goroutine down idempotently via `sync.Once`. Negative or zero rates produce a bucket that always rejects.
 
-The bucket is refilled to `rate` once per second by a background goroutine
-(not a continuous leaky-bucket rate). Burst capacity equals `rate`. `Stop`
-shuts the goroutine down idempotently via `sync.Once`.
+### Load balancing (internal/load_balance)
 
-### Load balancer (internal/load_balance)
-
-```go
-type LoadBalancer interface {
-    Select([]registry.Instance) registry.Instance
-}
-```
-
-Built-ins:
-
-- `RoundRobin{}` -- lock-free, `atomic.AddUint64` on an internal counter.
-- `Random` (use `NewRandom()`) -- `math/rand` guarded by a mutex.
-- `WeightedRR` (use `NewWeightedRR(weights)`) -- Nginx-style smooth weighted
-  round-robin. The weight slice is indexed positionally against the
-  `[]Instance` argument. Combined with `registry.copyInstances` (which iterates
-  a `map[string]Instance` and therefore returns instances in unspecified
-  order), `WeightedRR` cannot be safely composed with the etcd registry
-  without an extra stable-sorting layer.
+- `RoundRobin` -- lock-free via `atomic.AddUint64`. Returns empty `Instance` for nil/empty lists.
+- `Random` (construct with `NewRandom()`) -- `math/rand` guarded by a mutex.
+- `WeightedRR` (construct with `NewWeightedRR(weights)`) -- Nginx-style smooth weighted round-robin. Returns empty `Instance` if the weight slice length does not match the instance list length, or if total weight is zero or negative.
 
 ### Service registry (internal/registry)
 
-```go
-func NewRegistry(endpoints []string) (*Registry, error)
-func (r *Registry) Register(service string, ins Instance, ttl int64) error
-func (r *Registry) Discover(service string) ([]Instance, error)
-func (r *Registry) Close() error
+- `Register(service, ins, ttl)` grants an etcd lease of `ttl` seconds, writes `<prefix><service>/<addr> = <addr>` under that lease, and starts a KeepAlive goroutine that drains the channel but does not handle failures.
+- `Discover(service)` lazily initialises a per-service in-memory cache plus a background watch goroutine. Subsequent calls return a defensive copy of the cached instances in unspecified order.
+- The etcd key prefix is hard-coded: `/github.com/hangtiancheng/lark-go/lark_rpc/services/`.
+- `Close()` cancels the background context and closes the etcd client.
 
-type Instance struct {
-    Addr string
-}
-```
+### Registry-mode client (internal/client)
 
-- `Register` grants a lease of `ttl` seconds, writes
-  `<prefix><service>/<addr> = <addr>` under that lease, and starts a
-  KeepAlive goroutine that drains the lease channel but does nothing on
-  failure. Lease expiry is not surfaced to the caller.
-- `Discover` lazily initialises a per-service cache and a background watch
-  goroutine. Subsequent calls return a copy of the cached map values, in
-  unspecified order.
-- There is no exported `Watch` method; consumers cannot subscribe to instance
-  changes externally.
-- The etcd key prefix is hard-coded to
-  `/github.com/hangtiancheng/lark-go/lark_rpc/services/`. There is no
-  namespace / environment parameter.
-
-### Stream interfaces (internal/stream)
-
-Exists solely to break the `server` <-> `transport` import cycle.
-
-```go
-type ServerStream interface {
-    Send(msg interface{}) error
-    Context() context.Context
-}
-
-type ClientStream interface {
-    Recv(msg interface{}) error
-    Context() context.Context
-}
-```
-
-`pkg/rpc/stream.go` re-exports both via `type alias`.
+Composes a `*registry.Registry`, a `LoadBalancer` (default `RoundRobin`), a `TokenBucket(10000)`, a `sync.Map` of connection pools (addr to ConnectionPool), and a `sync.Map` of circuit breakers (service|addr to CircuitBreaker). `Invoke` wraps the context with `context.WithTimeout`, delegates to `invokeAsync`, and waits with `GetResultWithContext`. The async path registers an `OnComplete` callback that records success/failure on the breaker. `InvokeStream` only records a failure at send time; mid-stream errors are not fed back into the breaker.
 
 ## Typical usage
 
-### Server (grpc-go style)
+### Unary server (grpc-go style)
 
 ```go
+package main
+
+import (
+    "context"
+    "log"
+    "net"
+
+    "github.com/hangtiancheng/lark-go/lark_rpc/pkg/rpc"
+)
+
+type Args struct {
+    A int
+    B int
+}
+
+type Reply struct {
+    Result int
+}
+
 type MathService struct{}
 
 func (s *MathService) Add(ctx context.Context, args *Args) (*Reply, error) {
     return &Reply{Result: args.A + args.B}, nil
 }
 
-server := rpc.NewServer()
-server.Register("Math", &MathService{})
+func main() {
+    server := rpc.NewServer()
+    server.Register("Math", &MathService{})
 
-lis, err := net.Listen("tcp", ":8080")
-if err != nil {
-    log.Fatal(err)
-}
+    lis, err := net.Listen("tcp", ":8080")
+    if err != nil {
+        log.Fatal(err)
+    }
 
-errCh := make(chan error, 1)
-go func() { errCh <- server.Serve(lis) }()
+    errCh := make(chan error, 1)
+    go func() { errCh <- server.Serve(lis) }()
 
-// Wait on signals or whatever else, then:
-server.GracefulStop()
-if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-    log.Fatal(err)
-}
-```
+    // ... wait for signal ...
 
-### Client (static)
-
-```go
-conn, err := rpc.Dial(":8080", rpc.WithTimeout(5*time.Second))
-if err != nil { log.Fatal(err) }
-defer conn.Close()
-
-var reply Reply
-if err := conn.Invoke(ctx, "Math", "Add", &Args{A: 1, B: 2}, &reply); err != nil {
-    log.Fatal(err)
+    server.GracefulStop()
 }
 ```
 
-### Client (registry mode)
+### Unary client (static mode)
 
 ```go
-reg, err := rpc.NewRegistry([]string{"localhost:2379"})
-if err != nil { log.Fatal(err) }
+package main
 
-conn, err := rpc.Dial(
-    "",                              // target is ignored in registry mode
-    rpc.WithRegistry(reg),
-    rpc.WithTimeout(3*time.Second),
-    // rpc.WithLoadBalancer(load_balance.NewRandom()), // optional
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/hangtiancheng/lark-go/lark_rpc/pkg/rpc"
 )
-if err != nil { log.Fatal(err) }
-defer conn.Close()
 
-var reply Reply
-err = conn.Invoke(ctx, "Math", "Add", &Args{A: 1, B: 2}, &reply)
+type Args struct {
+    A int
+    B int
+}
+
+type Reply struct {
+    Result int
+}
+
+func main() {
+    conn, err := rpc.Dial("127.0.0.1:8080", rpc.WithTimeout(5*time.Second))
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer conn.Close()
+
+    var reply Reply
+    if err := conn.Invoke(context.Background(), "Math", "Add", &Args{A: 1, B: 2}, &reply); err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("Result: %d", reply.Result)
+}
+```
+
+### Client with registry mode
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/hangtiancheng/lark-go/lark_rpc/pkg/rpc"
+)
+
+type Args struct{ A, B int }
+type Reply struct{ Result int }
+
+func main() {
+    reg, err := rpc.NewRegistry([]string{"localhost:2379"})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    conn, err := rpc.Dial(
+        "",
+        rpc.WithRegistry(reg),
+        rpc.WithTimeout(3*time.Second),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer conn.Close()
+
+    var reply Reply
+    err = conn.Invoke(context.Background(), "Math", "Add", &Args{A: 1, B: 2}, &reply)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("Result: %d", reply.Result)
+}
 ```
 
 ### Server-streaming
 
 ```go
-// Server side
+// Server side -- handler method
 func (s *FeedService) Subscribe(req *SubArgs, stream rpc.ServerStream) error {
-    for msg := range feed {
-        if err := stream.Send(msg); err != nil {
-            return err // framework emits StreamError automatically
+    for i := 0; i < req.Count; i++ {
+        if err := stream.Send(&Event{Index: i}); err != nil {
+            return err
         }
     }
     return nil // framework emits StreamEnd automatically
 }
 
-// Client side
-stream, err := conn.NewStream(ctx, "Feed", "Subscribe", &SubArgs{Topic: "news"})
-if err != nil { log.Fatal(err) }
+// Client side -- consuming the stream
+stream, err := conn.NewStream(ctx, "Feed", "Subscribe", &SubArgs{Count: 10})
+if err != nil {
+    log.Fatal(err)
+}
 
 for {
-    var msg Message
-    if err := stream.Recv(&msg); err != nil {
-        if errors.Is(err, io.EOF) {
+    var event Event
+    if err := stream.Recv(&event); err != nil {
+        if err == io.EOF {
             break
         }
         log.Fatal(err)
     }
-    process(msg)
+    process(event)
 }
 ```
 
-## Method signature cheat sheet
+### Method signature reference
 
-`Register(name, srv)` reflects on every exported method of `srv`. Three shapes
-are recognised; everything else is rejected at call time.
+| Signature                                         | Style     | Notes                                                       |
+| ------------------------------------------------- | --------- | ----------------------------------------------------------- |
+| `Method(ctx context.Context, req *T) (*R, error)` | grpc-go   | Recommended. nil \*R yields empty body.                     |
+| `Method(req *T, reply *R) error`                  | net/rpc   | Reply allocated by framework.                               |
+| `Method(req *T, stream rpc.ServerStream) error`   | streaming | Server-streaming only. Terminal frame emitted by framework. |
 
-| Shape                                             | Style     | Notes                                                           |
-| ------------------------------------------------- | --------- | --------------------------------------------------------------- |
-| `Method(ctx context.Context, req *T) (*R, error)` | grpc-go   | Recommended. `*R == nil` returns an empty body.                 |
-| `Method(req *T, reply *R) error`                  | net/rpc   | Backward compatible. Reply is allocated by the framework.       |
-| `Method(req *T, stream rpc.ServerStream) error`   | streaming | Server-streaming only. Terminal frame is emitted automatically. |
+## Pitfalls / known limitations
 
-## Framework-level error strings
+1. Body Gzip compression is mandatory. Every internal send site sets `Compression: codec.CompressionGzip`. For small payloads the 18-byte gzip header can dwarf the body. There is no option to disable compression.
 
-These travel in `Header.Error` and are returned verbatim by `Invoke` /
-`NewStream` (wrapped as `errors.New(headerError)`):
+2. Server-wide hard cap of 10,000 RPS via `limiter.NewTokenBucket(10000)`, not exposed as a `ServerOption`. An identical 10,000 RPS cap exists on the registry-mode client.
 
-- `service not found: <Service>`
-- `method not found: <Service>.<Method>`
-- `unsupported method signature: <Service>.<Method>`
-- `rate limit exceeded` (server-side bucket exhausted)
-- `circuit breaker open` (registry-mode client breaker tripped)
-- `no instance available` (registry returned an empty set)
-- `connection closed` (TCPClient already failed)
-- `registry not configured` (client.Invoke without a registry)
+3. Circuit-breaker parameters `(windowSize=10, failureThreshold=0.6, openTimeout=5s)` are hard-coded in `internal/client/resolver.go::getBreaker`. There is no public API to tune them.
 
-## Pitfalls
+4. Static-mode `ClientConn` bypasses `internal/client.Client` entirely, so it has neither rate limiting, circuit breaking, nor load balancing. Those capabilities require `WithRegistry`.
 
-- Body Gzip compression is mandatory. Every internal send site sets
-  `Compression: codec.CompressionGzip`. For small payloads the 18-byte gzip
-  header can dwarf the body. There is currently no option to disable it.
-- Server-wide hard cap of 10 000 RPS via `limiter.NewTokenBucket(10000)`,
-  not exposed as a `ServerOption`. Identical cap on the registry-mode client.
-- Circuit-breaker parameters `(10, 0.6, 5s)` are hard-coded in
-  `internal/client/resolver.go::getBreaker`. There is no public way to tune
-  them.
-- Static-mode `ClientConn` bypasses `internal/client.Client`, so it has
-  neither rate limiting, breaker, nor load balancing. Do not promise those
-  capabilities to a caller who has not also passed `WithRegistry`.
-- `ConnectionPool` is single-connection (`maxActive = 1` at every call site).
-  All requests on a `ClientConn` to a given address share one TCP socket and
-  one `readLoop`. A slow stream consumer that fills its 64-frame buffer
-  blocks `readLoop`, which stalls every other future and stream on that
-  connection. Treat lark_rpc as "fast consumers only" until this is fixed.
-- `Acquire` holds the pool mutex across `net.DialTimeout` (5s). Cold-start
-  storms serialise.
-- `WeightedRR.Select` requires the `[]Instance` argument and the configured
-  weight slice to align positionally. `registry.copyInstances` returns
-  instances in `map` iteration order, which is randomised. Combining
-  `WeightedRR` with the etcd registry directly will misroute traffic.
-- `NewServer` panics on invalid options; never feed it untrusted configuration
-  without a recover.
-- `TCPConnection.Close` calls `SetLinger(0)`, which produces a TCP RST. A
-  client mid-Read on a graceful-stop server may see "connection reset by peer"
-  instead of EOF.
-- Only server-streaming exists. The `StreamFlag` enum has no codepoints for
-  client-originated stream frames. Do not attempt bidirectional streaming
-  with this framework as it stands.
-- `pkg/rpc` does not expose a server-side `Register-into-etcd` helper. To
-  publish a service instance, the only options today are an internal package
-  wrapper or to add a re-export in `pkg/rpc`.
-- `pending` Futures have no internal timeout. Always wait with
-  `GetResultWithContext` (or use the timeout passed to `Dial`) or you risk
-  leaking the entry until the connection dies.
+5. `ConnectionPool` is single-connection (`maxActive = 1` at every call site). All requests to a given address share one TCP socket and one `readLoop`. A slow stream consumer that fills its 64-frame buffer blocks `readLoop`, stalling every other future and stream on that connection.
 
-## When not to use this skill
+6. `ConnectionPool.Acquire` holds the pool mutex across `net.DialTimeout` (5s). Concurrent callers serialise behind cold-start dials.
 
-- Anything that imports `google.golang.org/grpc` directly. That is grpc-go,
-  not lark_rpc; the surface looks similar but the wire is incompatible.
-- Connect-Go, Twirp, net/rpc standard library, or HTTP-based RPC.
-- HTTP / SSE / WebSocket work. Use the `lark-http` skill instead.
-- Pure Protobuf schema / codegen questions unrelated to lark_rpc's reflection
-  dispatcher.
+7. `WeightedRR.Select` requires the `[]Instance` argument and the configured weight slice to align positionally. `registry.copyInstances` returns instances in `map` iteration order (randomised per Go spec). Combining `WeightedRR` with the etcd registry directly misroutes traffic unless an extra stable-sorting layer is added.
+
+8. `NewServer` panics on invalid options rather than returning an error. Never feed it untrusted configuration without a `recover`.
+
+9. `TCPConnection.Close` calls `SetLinger(0)`, producing a TCP RST. A client mid-Read during a server graceful-stop may see "connection reset by peer" instead of EOF.
+
+10. Only server-streaming exists. The `StreamFlag` enum has no codepoints for client-originated stream frames. Do not attempt client-streaming or bidirectional streaming.
+
+11. `pkg/rpc` does not expose a server-side "register into etcd" helper. To publish a service instance into the registry, call `registry.Register` through an internal package wrapper or add a re-export to `pkg/rpc`.
+
+12. Pending Futures have no internal timeout. Always wait with `GetResultWithContext` or rely on the timeout passed to `Dial`, or the entry leaks until the connection dies.
+
+13. `InvokeStream` records a circuit-breaker failure only at send time. Mid-stream errors (server crashes, network partitions after the first frame) are not fed back into the breaker state.
+
+14. The etcd key prefix `/github.com/hangtiancheng/lark-go/lark_rpc/services/` is hard-coded with no namespace or environment parameter. Multiple environments sharing one etcd cluster will collide.
+
+15. Method signature validation is deferred to call time. Registering a service with unsupported method shapes succeeds silently; the error surfaces only when a client invokes that method.
+
+16. Framework error strings travel in `Header.Error` and are returned verbatim by `Invoke` / `NewStream` as `errors.New(headerError)`. The full list: `service not found: <Service>`, `method not found: <Service>.<Method>`, `unsupported method signature: <Service>.<Method>`, `rate limit exceeded`, `circuit breaker open`, `no instance available`, `connection closed`, `registry not configured`, `rate limit exceeded` (client-side).
 
 ## File map
 
-| Directory                | Files                                                                                    | Purpose                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `pkg/rpc/`               | `rpc.go`, `server.go`, `client.go`, `stream.go`                                          | Public API: type aliases, Server, ClientConn, stream interfaces       |
-| `pkg/api/`               | `arith.go`                                                                               | Example Arith service used by tests                                   |
-| `internal/server/`       | `server.go`, `handler.go`, `options.go`, `stream.go`                                     | TCP server loop, reflection dispatch, server-side stream emitter      |
-| `internal/client/`       | `client.go`, `invoke.go`, `option.go`, `resolver.go`                                     | Registry-mode client, Invoke / InvokeAsync / InvokeStream, breaker/LB |
-| `internal/transport/`    | `tcp_connection.go`, `tcp_connection_pool.go`, `tcp_client.go`, `future.go`, `stream.go` | TCP framing, pool, multiplexed client, Future, ClientStreamConn       |
-| `internal/protocol/`     | `header.go`, `message.go`                                                                | Wire format: Header struct, Magic, Encode / Decode                    |
-| `internal/codec/`        | `codec.go`, `json.go`, `protobuf.go`, `compress.go`                                      | Codec registry, JSON / Protobuf codecs, Gzip compressor               |
-| `internal/breaker/`      | `breaker.go`                                                                             | Three-state circuit breaker                                           |
-| `internal/limiter/`      | `token_bucket.go`                                                                        | Per-second refill token bucket                                        |
-| `internal/load_balance/` | `balancer.go`, `round_robin.go`, `random.go`, `weighted_rr.go`                           | LoadBalancer interface and three built-in strategies                  |
-| `internal/registry/`     | `registry.go`                                                                            | etcd v3 register / discover / watch                                   |
-| `internal/stream/`       | `stream.go`                                                                              | ServerStream / ClientStream interfaces (cycle-breaker)                |
+| Directory                | Files                                                                                                         | Purpose                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `pkg/rpc/`               | `rpc.go`, `server.go`, `client.go`, `stream.go`, `stream_test.go`                                             | Public API: type aliases, Server, ClientConn, stream interfaces     |
+| `pkg/api/`               | `arith.go`, `arith_test.go`                                                                                   | Example Arith/Arith2 services used by tests and demos               |
+| `internal/server/`       | `server.go`, `handler.go`, `options.go`, `stream.go`, `server_test.go`                                        | TCP server loop, reflection dispatch, server-side stream emitter    |
+| `internal/client/`       | `client.go`, `invoke.go`, `option.go`, `resolver.go`, `client_test.go`                                        | Registry-mode client: Invoke, InvokeAsync, InvokeStream, breaker/LB |
+| `internal/transport/`    | `tcp_connection.go`, `tcp_connection_pool.go`, `tcp_client.go`, `future.go`, `stream.go`, `transport_test.go` | TCP framing, pool, multiplexed client, Future, ClientStreamConn     |
+| `internal/protocol/`     | `header.go`, `message.go`, `message_test.go`                                                                  | Wire format: Header struct, Magic, Encode / Decode                  |
+| `internal/codec/`        | `codec.go`, `json.go`, `protobuf.go`, `compress.go`, `codec_test.go`                                          | Codec registry, JSON / Protobuf codecs, Gzip compressor             |
+| `internal/breaker/`      | `breaker.go`, `breaker_test.go`                                                                               | Three-state circuit breaker                                         |
+| `internal/limiter/`      | `token_bucket.go`, `token_bucket_test.go`                                                                     | Per-second refill token bucket                                      |
+| `internal/load_balance/` | `balancer.go`, `round_robin.go`, `random.go`, `weighted_rr.go`, `load_balance_test.go`                        | LoadBalancer interface and three built-in strategies                |
+| `internal/registry/`     | `registry.go`, `registry_test.go`                                                                             | etcd v3 register / discover / watch                                 |
+| `internal/stream/`       | `stream.go`                                                                                                   | ServerStream / ClientStream interfaces (cycle-breaker)              |
 
 ## Dependencies
 
-- `go.etcd.io/etcd/client/v3` -- service discovery and lease keepalive.
-- `google.golang.org/protobuf` -- Protobuf codec.
-- Standard library only for everything else (TCP, gzip, reflection, JSON).
+- `go.etcd.io/etcd/client/v3 v3.6.7` -- etcd v3 client for service discovery and lease keepalive.
+- `google.golang.org/protobuf v1.36.11` -- Protobuf codec implementation.
+- Go standard library only for everything else: `net`, `compress/gzip`, `reflect`, `encoding/json`, `encoding/binary`, `sync`, `sync/atomic`, `context`, `time`, `bufio`, `io`, `math/rand`, `fmt`, `log`.
+- Go toolchain requirement: 1.26+.
+
+## Cross-references
+
+- `lark-cache` -- Use lark-cache for in-process caching layers. lark_rpc does not integrate a cache; combine the two when building services that need response memoisation on the client side.
+- `lark-http` -- Use lark-http for HTTP servers, REST APIs, SSE, or WebSocket work. lark_rpc is TCP-only with a custom binary protocol; the two are complementary but non-overlapping.
+- `lark-orm` -- Use lark-orm for database access within RPC service handlers. Service methods registered with lark_rpc often use lark-orm internally to query persistence.
