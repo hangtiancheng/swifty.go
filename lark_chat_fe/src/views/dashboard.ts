@@ -3,6 +3,7 @@ import template from "./dashboard.html";
 import useDashboardStore from "@/store/dashboard";
 import type { EntrySnapshot } from "@/store/dashboard";
 import { WS_URL } from "@/config";
+import { icons } from "@/icons";
 
 const ROW_HEIGHT = 36;
 const OVER_SCAN = 5;
@@ -60,6 +61,7 @@ export default defineView({
   pollTimer: 0,
 
   init() {
+    this.updater.set({ icons });
     const store = useDashboardStore();
     store.connect(DASHBOARD_WS);
 

@@ -15,7 +15,7 @@
         class="btn btn-ghost btn-sm btn-square text-green-700 hover:bg-green-200/50"
         @click="goSessions()"
       >
-        <span class="text-base">💬</span>
+        <span class="w-5 h-5 [&>svg]:w-full [&>svg]:h-full">{{!icons.messageSquare}}</span>
       </button>
     </div>
     <div class="tooltip tooltip-right" data-tip="Contacts">
@@ -23,7 +23,7 @@
         class="btn btn-ghost btn-sm btn-square text-green-700 hover:bg-green-200/50"
         @click="goContacts()"
       >
-        <span class="text-base">👥</span>
+        <span class="w-5 h-5 [&>svg]:w-full [&>svg]:h-full">{{!icons.users}}</span>
       </button>
     </div>
     <div class="tooltip tooltip-right" data-tip="Profile">
@@ -31,7 +31,7 @@
         class="btn btn-ghost btn-sm btn-square text-green-700 hover:bg-green-200/50"
         @click="goProfile()"
       >
-        <span class="text-base">👤</span>
+        <span class="w-5 h-5 [&>svg]:w-full [&>svg]:h-full">{{!icons.user}}</span>
       </button>
     </div>
   </div>
@@ -43,7 +43,7 @@
         class="btn btn-ghost btn-sm btn-square text-green-700 hover:bg-green-200/50"
         @click="goManager()"
       >
-        <span class="text-base">⚙️</span>
+        <span class="w-5 h-5 [&>svg]:w-full [&>svg]:h-full">{{!icons.settings}}</span>
       </button>
     </div>
     {{/if}}
@@ -52,7 +52,7 @@
         class="btn btn-ghost btn-sm btn-square text-red-400 hover:bg-red-50"
         @click="logout()"
       >
-        <span class="text-base">🚪</span>
+        <span class="w-5 h-5 [&>svg]:w-full [&>svg]:h-full">{{!icons.logOut}}</span>
       </button>
     </div>
   </div>

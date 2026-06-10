@@ -40,7 +40,7 @@ func WithLoadBalancer(lb LoadBalancer) DialOption {
 type connMode int
 
 const (
-	modeStatic   connMode = iota
+	modeStatic connMode = iota
 	modeRegistry
 )
 

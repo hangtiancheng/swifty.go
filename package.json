@@ -2,17 +2,17 @@
   "name": "lark-go",
   "version": "0.0.3",
   "description": "lark-go monorepo tooling",
-  "type": "module",
-  "author": "github.com/hangtiancheng",
-  "license": "MIT",
   "keywords": [
-    "go",
     "cache",
+    "demo",
+    "go",
     "http",
     "orm",
-    "rpc",
-    "demo"
+    "rpc"
   ],
+  "license": "MIT",
+  "author": "github.com/hangtiancheng",
+  "type": "module",
   "scripts": {
     "tag": "node tag.js",
     "deps": "node main.js deps",

@@ -1,35 +1,35 @@
 # lark_rpc
 
-lark_rpc 是一个用 Go 编写的轻量级 RPC 框架，对外 API 风格对齐 [grpc-go](https://github.com/grpc/grpc-go)，底层走自定义 TCP 二进制协议，开箱即用地提供请求多路复用、服务端流、连接池、熔断、限流、负载均衡和基于 etcd 的服务发现等能力。
+lark_rpc is a lightweight RPC framework written in Go. Its public API is modeled after [grpc-go](https://github.com/grpc/grpc-go), while the transport layer uses a custom TCP binary protocol. The framework provides request multiplexing, server-side streaming, connection pooling, circuit breaking, rate limiting, load balancing, and etcd-based service discovery out of the box.
 
-模块路径：`github.com/hangtiancheng/lark-go/lark_rpc`
+Module path: `github.com/hangtiancheng/lark-go/lark_rpc`
 
-## 特性
+## Features
 
-- API 对齐 grpc-go：`NewServer` / `Register` / `Serve` / `GracefulStop`、`Dial` / `Invoke` / `NewStream` / `Close`，迁移成本低
-- 支持两种调用模式：静态地址直连，与基于 etcd 的注册中心模式
-- 同一条 TCP 连接上多路复用任意数量的并发请求，单连接低开销
-- 内置可插拔的 Codec：JSON（默认）与 Protobuf，并对 Body 支持 Gzip 压缩
-- 服务端流（server-streaming）：用 `Send` / `Recv` 即可优雅地推送任意数量的帧
-- 内置熔断器（三态：Closed / Open / HalfOpen），按 `service|addr` 维度独立隔离
-- 内置令牌桶限流，服务端与客户端各一份
-- 内置负载均衡：RoundRobin、Random、平滑加权 WeightedRR，可自定义
-- 基于 etcd v3 的服务注册与发现，自动 Watch 实时感知实例变更
-- 反射分发服务方法，同时兼容 grpc-go 风格与 net/rpc 风格的方法签名
+- grpc-go-aligned API surface: `NewServer` / `Register` / `Serve` / `GracefulStop` on the server side, `Dial` / `Invoke` / `NewStream` / `Close` on the client side, keeping migration cost low.
+- Two connectivity modes: static direct-address dial, and registry-based discovery through etcd.
+- Full request multiplexing over a single TCP connection, enabling any number of concurrent RPCs with minimal connection overhead.
+- Pluggable codec system with built-in JSON (default) and Protobuf implementations; message bodies are compressed with Gzip by default.
+- Server-side streaming with `Send` / `Recv` semantics for pushing an arbitrary number of frames.
+- Built-in circuit breaker with three states (Closed / Open / HalfOpen), isolated per `service|addr` dimension.
+- Built-in token-bucket rate limiter on both the server and the client.
+- Built-in load balancers: RoundRobin, Random, and smooth Weighted Round-Robin; custom balancers can be provided via the `LoadBalancer` interface.
+- Service registration and discovery powered by etcd v3, with automatic Watch for real-time instance changes.
+- Reflection-based method dispatch that supports both grpc-go-style and net/rpc-style method signatures.
 
-## 安装
+## Installation
 
 ```bash
 go get github.com/hangtiancheng/lark-go/lark_rpc
 ```
 
-要求 Go 1.21 及以上。若使用注册中心模式还需要可访问的 etcd v3 集群。
+Requires Go 1.21 or later. Registry mode additionally requires an accessible etcd v3 cluster.
 
-## 快速开始
+## Quick Start
 
-### 定义服务
+### Defining a Service
 
-服务端方法支持两种签名，框架通过反射自动识别：
+Server methods support two unary signatures. The framework identifies them automatically via reflection:
 
 ```go
 package api
@@ -47,19 +47,19 @@ type Reply struct {
 
 type Arith struct{}
 
-// grpc-go 风格（推荐）
+// grpc-go style (recommended)
 func (a *Arith) Add(_ context.Context, args *Args) (*Reply, error) {
     return &Reply{Result: args.A + args.B}, nil
 }
 
-// net/rpc 兼容风格
+// net/rpc compatible style
 func (a *Arith) Mul(args *Args, reply *Reply) error {
     reply.Result = args.A * args.B
     return nil
 }
 ```
 
-### 启动服务端
+### Starting the Server
 
 ```go
 package main
@@ -88,15 +88,15 @@ func main() {
 }
 ```
 
-优雅停机：
+Graceful shutdown:
 
 ```go
-server.GracefulStop() // 等待存量请求处理完
-// 或
-server.Stop()         // 立即关闭所有连接
+server.GracefulStop() // waits for in-flight requests to complete
+// or
+server.Stop()         // closes all connections immediately
 ```
 
-### 调用客户端（静态直连）
+### Client Invocation (Static Direct-Address)
 
 ```go
 package main
@@ -125,11 +125,11 @@ func main() {
 }
 ```
 
-## 服务端流（Server Streaming）
+## Server-Side Streaming
 
-服务端方法签名为 `Method(req *T, stream rpc.ServerStream) error`，逐帧 `Send`，正常 return 时框架自动发送结束帧，error 返回时自动发送错误帧。
+A server method with the signature `Method(req *T, stream rpc.ServerStream) error` is treated as a streaming endpoint. The method calls `Send` for each data frame and returns normally when the stream is done; the framework automatically sends the end-of-stream marker. If the method returns an error, the framework sends an error frame instead.
 
-服务端：
+Server:
 
 ```go
 type Chunk struct {
@@ -153,7 +153,7 @@ func (s *FeedService) Generate(req *FeedRequest, stream rpc.ServerStream) error 
 }
 ```
 
-客户端：
+Client:
 
 ```go
 stream, err := conn.NewStream(ctx, "Feed", "Generate", &FeedRequest{Count: 5})
@@ -173,22 +173,22 @@ for {
 }
 ```
 
-服务端流在同一条 TCP 连接上以独立 RequestID 多路复用，与其它 unary 调用互不阻塞。
+Streaming shares the same TCP connection as unary calls. Each stream is assigned a unique RequestID and multiplexed independently, so streaming and unary RPCs never block each other.
 
-## 注册中心模式（etcd）
+## Registry Mode (etcd)
 
-服务端注册到 etcd：
+Register the server with etcd:
 
 ```go
 reg, err := rpc.NewRegistry([]string{"127.0.0.1:2379"})
 if err != nil {
     log.Fatal(err)
 }
-// 注：服务端注册接口在 internal/registry 中，暴露后即可写：
+// Register the service instance with a TTL-based lease:
 // reg.Register("Arith", registry.Instance{Addr: "127.0.0.1:8080"}, 10)
 ```
 
-客户端通过注册中心发现并调用：
+Client discovery and invocation through the registry:
 
 ```go
 reg, _ := rpc.NewRegistry([]string{"127.0.0.1:2379"})
@@ -196,7 +196,7 @@ reg, _ := rpc.NewRegistry([]string{"127.0.0.1:2379"})
 conn, err := rpc.Dial("",
     rpc.WithRegistry(reg),
     rpc.WithTimeout(3*time.Second),
-    // 可选：自定义负载均衡策略，默认 RoundRobin
+    // Optional: custom load balancer; defaults to RoundRobin
     // rpc.WithLoadBalancer(load_balance.NewRandom()),
 )
 if err != nil {
@@ -208,11 +208,11 @@ var reply api.Reply
 err = conn.Invoke(context.Background(), "Arith", "Add", &api.Args{A: 3, B: 4}, &reply)
 ```
 
-注册中心模式下，target 参数被忽略，地址由 LoadBalancer 在 Discover 返回的实例集合中实时选择。
+In registry mode the `target` parameter passed to `Dial` is ignored. The address is selected in real time by the `LoadBalancer` from the set of instances returned by `Discover`.
 
-## 编解码
+## Codec and Compression
 
-默认使用 JSON。如需切换到 Protobuf，请在服务端与客户端都显式声明：
+JSON is used by default. To switch to Protobuf, declare it explicitly on both sides:
 
 ```go
 server := rpc.NewServer(rpc.WithCodec(rpc.CodecProto))
@@ -220,143 +220,216 @@ server := rpc.NewServer(rpc.WithCodec(rpc.CodecProto))
 conn, _ := rpc.Dial(addr, rpc.WithDialCodec(rpc.CodecProto))
 ```
 
-Protobuf 模式下，所有 args / reply 必须实现 `proto.Message`。
+In Protobuf mode every args and reply type must implement `proto.Message`.
 
-Body 默认会做 Gzip 压缩，对中大体积的消息节省带宽明显；小消息体场景如有需要可在后续版本中通过参数关闭。
+The codec layer is built on a registry pattern. Each codec type is registered via `codec.Register(type, factory)` during `init()`, so adding a custom codec only requires writing a struct that satisfies the `Codec` interface and registering it at startup.
 
-## 配置选项
+Message bodies are Gzip-compressed by default. The `CompressionType` field in the protocol header controls this per message, and the compression subsystem is also registry-based (currently supporting `None` and `Gzip`).
 
-服务端 Option：
+## Configuration Options
 
-- `rpc.WithCodec(rpc.CodecJSON | rpc.CodecProto)`：设置序列化协议
+Server options:
 
-客户端 Dial Option：
+| Option | Description |
+|---|---|
+| `rpc.WithCodec(rpc.CodecJSON \| rpc.CodecProto)` | Set the serialization codec |
 
-- `rpc.WithTimeout(d time.Duration)`：单次 RPC 超时，默认 5 秒
-- `rpc.WithDialCodec(t rpc.CodecType)`：序列化协议
-- `rpc.WithRegistry(reg *rpc.Registry)`：启用注册中心模式
-- `rpc.WithLoadBalancer(lb rpc.LoadBalancer)`：注册中心模式下的负载均衡策略
+Client dial options:
 
-## 架构
+| Option | Description |
+|---|---|
+| `rpc.WithTimeout(d time.Duration)` | Per-RPC timeout (default 5 s) |
+| `rpc.WithDialCodec(t rpc.CodecType)` | Serialization codec |
+| `rpc.WithRegistry(reg *rpc.Registry)` | Enable registry-based discovery |
+| `rpc.WithLoadBalancer(lb rpc.LoadBalancer)` | Load balancing strategy for registry mode |
+
+## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                     pkg/rpc (公共 API)                    │
-│   Server  ClientConn  ServerStream  ClientStream         │
-└─────────┬──────────────────────────────────────┬─────────┘
-          │                                      │
-┌─────────▼─────────┐                  ┌─────────▼─────────┐
-│ internal/server   │                  │ internal/client   │
-│  反射分发 / 流帧   │                  │ 熔断/限流/LB/连接池│
-└─────────┬─────────┘                  └─────────┬─────────┘
-          │                                      │
-          └────────────────┬─────────────────────┘
-                           │
-                  ┌────────▼────────┐
-                  │ internal/transport│
-                  │ TCPClient / Pool │
-                  │ Future / Stream  │
-                  └────────┬─────────┘
-                           │
-                  ┌────────▼────────┐
-                  │ internal/protocol │
-                  │  Header + Message│
-                  └────────┬─────────┘
-                           │
-                  ┌────────▼────────┐
-                  │  internal/codec  │
-                  │  JSON / Proto    │
-                  │  Gzip Compress   │
-                  └──────────────────┘
++---------------------------------------------------------+
+|                    pkg/rpc (Public API)                  |
+|   Server   ClientConn   ServerStream   ClientStream     |
++--------+---------------------------------------+--------+
+         |                                       |
++--------v----------+                  +---------v--------+
+| internal/server   |                  | internal/client  |
+| Reflection-based  |                  | Circuit Breaker  |
+| dispatch + stream |                  | Rate Limiter     |
++--------+----------+                  | Load Balancer    |
+         |                             | Connection Pool  |
+         |                             +---------+--------+
+         |                                       |
+         +------------------+--------------------+
+                            |
+                   +--------v--------+
+                   | internal/       |
+                   |  transport      |
+                   | TCPClient       |
+                   | ConnectionPool  |
+                   | Future / Stream |
+                   +--------+--------+
+                            |
+                   +--------v--------+
+                   | internal/       |
+                   |  protocol       |
+                   | Header + Message|
+                   +--------+--------+
+                            |
+                   +--------v--------+
+                   | internal/codec  |
+                   | JSON / Protobuf |
+                   | Gzip Compress   |
+                   +-----------------+
 ```
 
-线协议（每帧）：
+### Wire Protocol
+
+Every frame on the wire has the following layout:
 
 ```
 +--------+-----------+---------+----------------+--------------+
-| Magic  | HeaderLen | BodyLen |   Header(JSON) | Body(bytes)  |
-| 2 byte | 4 byte    | 4 byte  |     N byte     |    M byte    |
+| Magic  | HeaderLen | BodyLen |  Header (JSON) | Body (bytes) |
+| 2 byte |  4 byte   |  4 byte |    N bytes     |   M bytes    |
 +--------+-----------+---------+----------------+--------------+
 ```
 
-Header 中携带 RequestID、ServiceName、MethodName、CodecType、Compression、StreamFlag、Error 等控制信息。RequestID 用于在同一连接上做请求/响应多路复用，StreamFlag 区分普通响应（None）、流数据帧（Data）、流结束（End）、流错误（Error）。
+- Magic (`0x1234`): a two-byte constant used to identify valid frames and recover from byte-stream misalignment.
+- HeaderLen / BodyLen: big-endian unsigned 32-bit integers giving the byte length of the Header and Body sections respectively.
+- Header: always JSON-encoded regardless of the chosen body codec. Carries control metadata including `RequestID`, `ServiceName`, `MethodName`, `CodecType`, `Compression`, `StreamFlag`, and `Error`.
+- Body: serialized with the configured codec (JSON or Protobuf) and optionally Gzip-compressed.
 
-## 项目结构
+`RequestID` is a per-connection monotonically increasing uint64 that enables multiplexing of requests and responses on a single TCP connection. `StreamFlag` distinguishes between regular unary responses (`None`), streaming data frames (`Data`), end-of-stream markers (`End`), and error frames (`Error`).
+
+### Transport Layer
+
+The transport layer sits directly above raw TCP and provides several abstractions:
+
+- `TCPConnection`: wraps a `net.Conn` with a buffered reader and a `PacketBuffer` that accumulates partial reads, scans for the magic number, and extracts complete frames. Write operations are serialized with a mutex to prevent interleaving.
+- `TCPClient`: manages a single TCP connection and exposes asynchronous request/response semantics. Each outgoing message is assigned a unique sequence number. A background `readLoop` goroutine continuously reads frames from the connection and dispatches them to the correct `Future` (for unary calls) or `ClientStreamConn` (for streaming calls) based on the `RequestID`.
+- `Future`: a promise-style primitive used for asynchronous unary calls. Supports blocking wait, context-aware wait with cancellation, timeout-based wait, completion callbacks via `OnComplete`, and direct deserialization into a reply struct via `GetResult` / `GetResultWithContext`.
+- `ClientStreamConn`: a context-aware channel-based abstraction for client-side stream consumption. Data frames are pushed into a buffered channel (capacity 64) and consumed via `Recv`. End-of-stream and error signals are delivered through the same channel, guarded by `sync.Once` to prevent duplicate termination. Supports context cancellation for early stream teardown.
+- `ConnectionPool`: maintains a bounded set of `TCPClient` instances for a given address. Connections are lazily created up to `maxActive`. Closed connections are detected and evicted on `Acquire`, with a round-robin index for selection among live connections.
+
+### Server Internals
+
+- `Server`: accepts TCP connections on a `net.Listener`, wraps each in a `TCPConnection`, and dispatches incoming messages to the `Handler`. Each connection is handled in its own goroutine, tracked via a `sync.WaitGroup` for graceful shutdown. A server-side token-bucket rate limiter (default 10,000 tokens/s, refilled every second) rejects excess requests before dispatch.
+- `Handler`: performs reflection-based method dispatch. It inspects the registered service struct's exported methods and matches them against three supported signatures (grpc-go unary, net/rpc unary, and server streaming). For streaming methods, the handler creates a `serverStream` that sends data, end, and error frames back to the client on the same connection, tagged with the originating `RequestID`.
+- `GracefulStop` closes the listener, waits for all connection-handling goroutines to finish (draining in-flight requests), then stops the rate limiter. `Stop` closes the listener and forcibly closes all tracked connections.
+
+### Client Internals (Registry Mode)
+
+When `WithRegistry` is passed to `Dial`, the `ClientConn` delegates to `internal/client.Client`, which layers several resilience mechanisms on top of the transport:
+
+- Service Discovery: on each call, `getAddr` queries the `Registry.Discover` method (backed by etcd) to get the current set of instances for the target service, then passes them to the configured `LoadBalancer.Select`.
+- Circuit Breaker: created lazily per `service|addr` pair. Uses a sliding-window model with configurable window size (default 10), failure-rate threshold (default 60%), and open-state timeout (default 5 s). State transitions: Closed -> Open when the failure rate within a window exceeds the threshold; Open -> HalfOpen after the timeout expires, allowing one probe request; HalfOpen -> Closed on probe success, or back to Open on probe failure.
+- Rate Limiter: a client-side token-bucket limiter (default 10,000 tokens/s) that rejects calls before they reach the network.
+- Connection Pooling: a per-address `ConnectionPool` is created lazily via `sync.Map.LoadOrStore`, so multiple goroutines share the same pool for a given backend.
+- Async Invocation: `invokeAsync` sends the request and returns a `Future` immediately. A completion callback feeds the result into the circuit breaker (`RecordSuccess` / `RecordFailure`). The synchronous `Invoke` wraps `invokeAsync` with `context.WithTimeout`.
+
+### Service Registry (etcd)
+
+The `Registry` connects to an etcd v3 cluster and stores service instances under a key prefix (`/github.com/hangtiancheng/lark-go/lark_rpc/services/<service>/<addr>`).
+
+- `Register`: creates a lease with the specified TTL, puts the instance key, and starts a background goroutine that drains the `KeepAlive` channel to maintain the lease.
+- `Discover`: returns the cached instance list if available; otherwise performs a one-time `Get` with prefix, populates the local cache, and starts a `Watch` goroutine for that service.
+- `Watch`: listens to etcd events for the service prefix. `PUT` events add or update instances; `DELETE` events remove them. If the watch channel closes unexpectedly, it reconnects after a one-second backoff.
+
+### Load Balancing
+
+All balancers implement the `LoadBalancer` interface:
+
+```go
+type LoadBalancer interface {
+    Select([]registry.Instance) registry.Instance
+}
+```
+
+- `RoundRobin` (default): lock-free atomic counter, distributes calls evenly across instances.
+- `Random`: mutex-protected `math/rand` source for uniform random selection.
+- `WeightedRR`: smooth weighted round-robin. Accepts a weight slice at construction time and adjusts current weights on each selection so that higher-weighted instances receive proportionally more traffic while maintaining even distribution over time.
+
+### Rate Limiting
+
+The `TokenBucket` rate limiter maintains a token count that is reset to the configured rate every second via a background goroutine and ticker. Each `Allow()` call atomically decrements the count; when tokens are exhausted the call is rejected. Both the server and the registry-mode client instantiate their own limiter (default 10,000 req/s).
+
+## Method Signatures
+
+After calling `Register(name, service)`, the framework reflects over the exported methods of `service` and recognizes the following three signatures:
+
+```go
+// 1) grpc-go style unary (recommended)
+func (s *Svc) Method(ctx context.Context, req *T) (*R, error)
+
+// 2) net/rpc style unary (backward compatible)
+func (s *Svc) Method(req *T, reply *R) error
+
+// 3) Server-side streaming
+func (s *Svc) Method(req *T, stream rpc.ServerStream) error
+```
+
+Methods that do not match any of these signatures are silently ignored. Invoking an unmatched method returns an `unsupported method signature` error.
+
+## Error Handling
+
+Errors returned by service methods are serialized into the `Header.Error` field and surfaced on the client side as `errors.New(headerError)` from `Invoke`. Framework-level errors include:
+
+| Error | Description |
+|---|---|
+| `service not found: <Service>` | The requested service name was not registered |
+| `method not found: <Service>.<Method>` | The method does not exist on the service |
+| `unsupported method signature: <Service>.<Method>` | The method signature is not recognized |
+| `rate limit exceeded` | Rejected by the token-bucket rate limiter |
+| `circuit breaker open` | Rejected by the circuit breaker |
+| `no instance available` | The registry returned zero instances for the service |
+| `connection closed` | The underlying TCP connection was already closed |
+
+## Project Structure
 
 ```
 lark_rpc/
 ├── pkg/
-│   ├── rpc/                公共 API（对齐 grpc-go 风格）
-│   │   ├── rpc.go          类型别名 / NewRegistry / Codec 常量
-│   │   ├── server.go       Server、NewServer、Serve、GracefulStop、Stop
-│   │   ├── client.go       ClientConn、Dial、Invoke、NewStream
-│   │   └── stream.go       ServerStream / ClientStream 类型别名
-│   └── api/                示例服务（Arith）与示例消息类型
+│   ├── rpc/                 Public API (grpc-go-style facade)
+│   │   ├── rpc.go           Type aliases, NewRegistry, codec constants
+│   │   ├── server.go        Server, NewServer, Serve, GracefulStop, Stop
+│   │   ├── client.go        ClientConn, Dial, Invoke, NewStream, Close
+│   │   └── stream.go        ServerStream / ClientStream type aliases
+│   └── api/                 Example service (Arith) and message types
 └── internal/
-    ├── server/             TCP 服务端 + 反射分发 + 流支持
-    ├── client/             注册中心模式客户端 + 熔断/限流/LB
-    ├── transport/          TCPConnection、ConnectionPool、TCPClient、Future、Stream
-    ├── protocol/           Header、Message、编码解码
-    ├── codec/              Codec 接口与 JSON / Protobuf / Gzip 实现
-    ├── breaker/            三态熔断器
-    ├── limiter/            令牌桶限流
-    ├── load_balance/       RoundRobin / Random / WeightedRR
-    ├── registry/           基于 etcd v3 的服务注册与发现
-    └── stream/             ServerStream / ClientStream 接口定义
+    ├── server/              TCP server, reflection-based dispatch, stream support
+    ├── client/              Registry-mode client with breaker, limiter, LB, pool
+    ├── transport/           TCPConnection, ConnectionPool, TCPClient, Future, Stream
+    ├── protocol/            Header, Message, binary encode/decode
+    ├── codec/               Codec interface, JSON / Protobuf / Gzip implementations
+    ├── breaker/             Three-state circuit breaker
+    ├── limiter/             Token-bucket rate limiter
+    ├── load_balance/        RoundRobin / Random / WeightedRR balancers
+    ├── registry/            etcd v3 service registration and discovery
+    └── stream/              ServerStream / ClientStream interface definitions
 ```
 
-## 服务方法签名
-
-`Register(name, service)` 之后，框架通过反射识别 `service` 上的导出方法，支持以下三种签名：
-
-```go
-// 1) grpc-go 风格 unary（推荐）
-func (s *Svc) Method(ctx context.Context, req *T) (*R, error)
-
-// 2) net/rpc 风格 unary（向后兼容）
-func (s *Svc) Method(req *T, reply *R) error
-
-// 3) 服务端流
-func (s *Svc) Method(req *T, stream rpc.ServerStream) error
-```
-
-不匹配上述任意签名的方法会被忽略，调用时返回 `unsupported method signature` 错误。
-
-## 错误处理
-
-业务方法返回的 error 会被序列化到 Header.Error 字段，客户端 `Invoke` 直接以 `errors.New(headerError)` 形式返回。框架层错误的常见取值：
-
-- `service not found: <Service>`：未注册的服务名
-- `method not found: <Service>.<Method>`：方法在 service 实例上不存在
-- `unsupported method signature: <Service>.<Method>`：方法签名不被识别
-- `rate limit exceeded`：被令牌桶限流
-- `circuit breaker open`：被熔断器拦截
-- `no instance available`：注册中心未发现可用实例
-- `connection closed`：发送时连接已关闭
-
-## 运行测试
+## Running Tests
 
 ```bash
 cd lark_rpc
 go test ./...
 ```
 
-端到端的服务端流集成测试位于 `pkg/rpc/stream_test.go`，覆盖了正常流、中途出错、流与 unary 混合调用、context 取消等场景。
+End-to-end integration tests for server streaming are in `pkg/rpc/stream_test.go`, covering normal streaming, mid-stream errors, mixed stream-and-unary calls, and context cancellation.
 
-## 路线图
+## Dependencies
 
-- 拦截器（Unary / Stream Interceptor），把限流、熔断、日志、Metrics、Tracing 接入点统一
-- 客户端流与双向流
-- 把熔断 / 限流参数外露为 Option
-- 接入 OpenTelemetry 与 Prometheus
-- 基于 .proto 的代码生成器，提供强类型 stub
-- 注册中心抽象，支持 Nacos / Consul / Kubernetes Service 等
+- `go.etcd.io/etcd/client/v3` -- service registration and discovery
+- `google.golang.org/protobuf` -- Protobuf codec
 
-## 依赖
+## Roadmap
 
-- go.etcd.io/etcd/client/v3 —— 服务发现
-- google.golang.org/protobuf —— Protobuf 编解码
+- Interceptors (Unary / Stream), unifying rate limiting, circuit breaking, logging, metrics, and tracing as pluggable middleware
+- Client-side streaming and bidirectional streaming
+- Expose circuit breaker and rate limiter parameters as configurable options
+- OpenTelemetry and Prometheus integration
+- Proto-based code generator for strongly typed client/server stubs
+- Registry abstraction layer to support Nacos, Consul, Kubernetes Service, and others
 
-## 许可证
+## License
 
-详见仓库根目录 LICENSE 文件。
+See the LICENSE file in the repository root.

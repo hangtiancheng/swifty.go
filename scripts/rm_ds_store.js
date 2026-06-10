@@ -117,10 +117,7 @@ function main(argv) {
   return failed > 0 ? 1 : 0;
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
-) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   process.exit(main(process.argv));
 }
 

@@ -4,6 +4,7 @@ import AppService from "@/service/index";
 import "@/service/endpoints";
 import useAuthStore from "@/store/auth";
 import useWsStore from "@/store/ws";
+import { icons } from "@/icons";
 
 export default defineView({
   template,
@@ -16,6 +17,7 @@ export default defineView({
     const auth = useAuthStore();
     this.updater
       .set({
+        icons,
         avatar: auth.userInfo.avatar,
         isAdmin: auth.userInfo.is_admin === 1,
       })

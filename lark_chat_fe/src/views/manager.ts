@@ -4,6 +4,7 @@ import AppService from "@/service/index";
 import "@/service/endpoints";
 import useAuthStore from "@/store/auth";
 import { showToast } from "@/utils/toast";
+import { icons } from "@/icons";
 
 export default defineView({
   template,
@@ -12,7 +13,7 @@ export default defineView({
   selectedGroupIds: [] as string[],
 
   init() {
-    this.updater.set({ currentPanel: "none", userList: [], groupList: [] }).digest();
+    this.updater.set({ icons, currentPanel: "none", userList: [], groupList: [] }).digest();
     this.srv = new AppService();
     this.capture("srv", this.srv);
     this.selectedUserIds = [];

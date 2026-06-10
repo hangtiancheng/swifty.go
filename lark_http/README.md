@@ -1,214 +1,265 @@
-## lark_http
+# lark-http
 
-`lark_http` 是一个用 Go 语言编写的轻量级 HTTP 框架，API 风格对齐 Node.js 的 Koa：洋葱模型中间件、延迟响应（ctx.Status / ctx.Body / ctx.Type）、链式路由分组、Server-Sent Events 流式支持，仅依赖 Go 标准库。
+Go HTTP framework, inspired by Koa.js. Features include deferred response, Trie-based routing, middleware composition, WebSocket (RFC 6455), and Server-Sent Events. Zero external dependencies.
 
-适合用来快速搭建 API 服务、AI Agent 后端、SSE 实时推送层，也适合用作学习 Koa 思想在 Go 中落地的参考实现。
-
-### 特性一览
-
-- Koa 风格中间件签名 `func(ctx *Context, next func())`，洋葱模型保留完整
-- 延迟响应模型：处理器只设置 `ctx.Status` / `ctx.Body` / `ctx.Type`，链路末尾统一落盘，下游中间件可在 `next()` 之后修改响应
-- 基于 Trie 的路由匹配，支持 `:param` 命名参数与 `*wildcard` 通配，命中精确路由优先
-- 路由分组：`app.Router(prefix)` 派生子 Router，独立持有中间件栈，支持任意层级嵌套
-- 内置 Logger 与 Recovery 中间件，`lark_http.Default()` 一行启用
-- 完整 Server-Sent Events 支持：事件、JSON、心跳、Stream、客户端断连感知，并发写线程安全
-- 静态文件托管、HTML 模板渲染、自定义 FuncMap
-- 优雅关闭：`Shutdown(ctx)` 走标准 `http.Server.Shutdown`
-- 零第三方依赖
-
-### 安装
-
-```bash
-go get github.com/hangtiancheng/lark-go/lark_http
-```
-
-要求 Go 1.21 及以上。
-
-### 快速开始
+## Quick Start
 
 ```go
 package main
 
 import (
     "net/http"
-
     lark "github.com/hangtiancheng/lark-go/lark_http"
 )
 
 func main() {
-    app := lark.Default()
-
+    app := lark.Default() // Logger + Recovery
     app.Get("/", func(ctx *lark.Context, next func()) {
         ctx.Status = http.StatusOK
-        ctx.String("Hello, lark_http")
+        ctx.String("Hello World")
     })
-
-    app.Get("/users/:id", func(ctx *lark.Context, next func()) {
-        ctx.JSON(lark.H{"id": ctx.Param("id")})
-    })
-
-    app.Listen(":9999")
+    app.Listen(":8000")
 }
 ```
 
-启动后访问 `http://localhost:9999/` 或 `http://localhost:9999/users/42` 即可。
+## Install
 
-### 核心概念
-
-#### Application
-
-`Application` 是顶层应用对象，同时实现 `http.Handler`，可以直接挂在标准库的 `http.Server` 上。
-
-```go
-app := lark.New()       // 干净的 Application
-app := lark.Default()   // 自动启用 Logger + Recovery
+```bash
+go get github.com/hangtiancheng/lark-go/lark_http
 ```
 
-生命周期：
+Requires Go 1.21+.
+
+## Architecture
+
+```
+Request
+  -> http.Server.ServeHTTP
+    -> Router.handle(ctx, middlewares)
+      -> compose(middlewares, handler)   // Koa-style onion model
+        -> Logger -> Recovery -> ... -> Handler
+      -> ctx.respond()                  // deferred response: writes Status + Body + Headers
+```
+
+The response is not written during middleware execution. Middleware sets `ctx.Status`, `ctx.Body`, and headers via `ctx.Set()`. After the entire chain completes, `ctx.respond()` serializes and writes the HTTP response. This is the "deferred response" pattern from Koa.js -- downstream middleware can inspect or modify the response after `next()` returns.
+
+For WebSocket and SSE, `ctx.flushed` is set to `true` during upgrade/initialization. `ctx.respond()` checks this flag and skips writing, since the connection has already been hijacked or headers have already been sent.
+
+## Application
 
 ```go
+app := lark.New()       // bare Application
+app := lark.Default()   // with Logger + Recovery
+
 go func() {
-    if err := app.Listen(":9999"); err != nil && err != http.ErrServerClosed {
+    if err := app.Listen(":8000"); err != nil && err != http.ErrServerClosed {
         log.Fatal(err)
     }
 }()
 
-// ... 收到退出信号
+// graceful shutdown
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 app.Shutdown(ctx)
 ```
 
-#### Context
+## Routing
 
-`Context` 是单次请求的上下文容器，同时承载请求访问与延迟响应。
-
-请求侧：
+Trie-based router with dynamic segments (`:param`) and wildcard (`*path`). Exact routes take priority over wildcards.
 
 ```go
-ctx.Path                 // 请求路径
-ctx.Method               // HTTP 方法
-ctx.Query("page")        // URL Query
-ctx.Param("id")          // 路由参数（:id 或 *filepath）
-ctx.PostForm("name")     // 表单字段
-ctx.Get("Authorization") // 请求头
-ctx.BindJSON(&payload)   // 解码 JSON 请求体
+app.Get("/users/:id", handler)         // /users/123 -> ctx.Param("id") == "123"
+app.Post("/api/*filepath", handler)    // /api/a/b/c -> ctx.Param("filepath") == "a/b/c"
+app.All("/any", handler)               // all HTTP methods
+app.Static("/static", "./public")      // serve static files
 ```
 
-响应侧（延迟生效，链路末尾统一写出）：
-
-```go
-ctx.Status = http.StatusOK
-ctx.JSON(lark.H{"ok": true})            // 自动设 Content-Type: application/json
-ctx.String("hello %s", name)             // 自动设 Content-Type: text/plain
-ctx.Data([]byte{0x89, 0x50, 0x4e, 0x47}) // 原始字节
-ctx.HTML("index.html", lark.H{"Name": "lark"})
-ctx.Redirect("/login")                   // 302
-ctx.Set("X-Request-Id", reqId)           // 自定义响应头
-ctx.Throw(http.StatusForbidden, "forbidden") // 设状态 + JSON 错误体
-```
-
-跨中间件共享数据：
-
-```go
-ctx.State["user"] = currentUser
-```
-
-设了 `ctx.Body` 但没有显式设置状态码时，框架会自动把默认的 404 修正为 200，与 Koa 行为一致。
-
-#### 中间件
-
-中间件签名：
-
-```go
-type Middleware func(ctx *Context, next func())
-```
-
-洋葱模型：在 `next()` 前的代码会在下游执行前运行，在 `next()` 后的代码会在下游返回后运行。
-
-```go
-app.Use(func(ctx *lark.Context, next func()) {
-    start := time.Now()
-    next()
-    log.Printf("%s %s -> %d (%v)", ctx.Method, ctx.Path, ctx.Status, time.Since(start))
-})
-```
-
-不调用 `next()` 即可短路后续中间件与处理器。
-
-由于响应是延迟的，下游中间件可以在 `next()` 之后修改 `ctx.Status` / `ctx.Body` / `ctx.Set(...)`，例如统一包裹返回值或统一脱敏。
-
-#### 路由
-
-支持的方法：`Get` / `Post` / `Put` / `Delete` / `Patch` / `Head` / `Options` / `All`。
-
-路径语法：
-
-- `:name` 匹配单个路径段：`/users/:id` 匹配 `/users/42`，`ctx.Param("id") == "42"`
-- `*name` 通配剩余路径：`/files/*filepath` 匹配 `/files/css/app.css`，`ctx.Param("filepath") == "css/app.css"`
-- 精确路由优先于通配：`/files/exact` 与 `/files/*filepath` 同时存在时，前者优先命中
-
-#### 路由分组
+Route groups with prefix and shared middleware:
 
 ```go
 api := app.Router("/api")
 api.Use(authMiddleware)
 
 v1 := api.Router("/v1")
-v1.Get("/users/:id", getUser)
-v1.Post("/users", createUser)
+v1.Get("/users/:id", getUser)    // GET /api/v1/users/:id
+v1.Post("/users", createUser)    // POST /api/v1/users
 
 v2 := api.Router("/v2")
 v2.Use(rateLimit)
-v2.Get("/users/:id", getUserV2)
+v2.Get("/users/:id", getUserV2)  // GET /api/v2/users/:id
 ```
 
-每个 Router 拥有独立的中间件栈，父分组的中间件会按声明顺序在子分组之前执行。路径边界精确判断，`/v1` 分组上的中间件不会误命中 `/v10`。
+Each Router holds its own middleware stack. Parent middleware runs before child middleware. Path boundary matching is exact -- `/v1` middleware won't fire for `/v10`.
 
-#### 静态文件
+## Middleware
+
+Signature: `func(ctx *lark.Context, next func())`
 
 ```go
-app.Static("/assets", "./public")
+func Timer() lark.Middleware {
+    return func(ctx *lark.Context, next func()) {
+        start := time.Now()
+        next()
+        log.Printf("%s %s -> %d (%v)", ctx.Method, ctx.Path, ctx.Status, time.Since(start))
+    }
+}
+
+app.Use(Timer())
 ```
 
-底层使用 `http.FileServer` + `StripPrefix`，自动处理 ETag、Range、目录索引。也可以挂在分组下：
+Not calling `next()` short-circuits the chain. Code after `next()` runs after downstream middleware completes (onion model). Because the response is deferred, post-`next()` code can still modify `ctx.Status` / `ctx.Body`.
+
+Built-in:
+
+- `Logger()` -- logs `[status] uri in duration`
+- `Recovery()` -- catches panics, prints stack trace, returns 500
+
+## Context
 
 ```go
-admin := app.Router("/admin")
-admin.Static("/static", "./admin/dist")
+// Request
+ctx.Request            // *http.Request
+ctx.Path               // request path
+ctx.Method             // HTTP method
+ctx.Query("key")       // query parameter
+ctx.Param("key")       // route parameter (:param or *wildcard)
+ctx.PostForm("key")    // form value
+ctx.Get("Header")      // request header
+ctx.BindJSON(&v)       // decode JSON body
+ctx.FormFile("key")    // uploaded file
+
+// Response (deferred -- written after middleware chain completes)
+ctx.Status = 200
+ctx.Set("X-Custom", "value")
+ctx.JSON(obj)                    // application/json
+ctx.String("hello %s", name)    // text/plain
+ctx.Data([]byte{...})           // raw bytes
+ctx.HTML("template", data)      // html/template
+ctx.Redirect("/other")          // 302
+ctx.Throw(400, "bad request")   // set status + JSON error body
+
+// State sharing between middleware
+ctx.State["user"] = currentUser
 ```
 
-#### HTML 模板
+When `ctx.Body` is set but `ctx.Status` is not explicitly set, the framework auto-corrects the default 404 to 200, matching Koa behavior.
+
+## WebSocket
+
+RFC 6455 implementation from scratch. No external dependencies.
+
+Two API styles: event-driven (Node.js ws style) and imperative (Go style).
+
+### Event-driven
 
 ```go
-app.SetFuncMap(template.FuncMap{
-    "upper": strings.ToUpper,
+app.Get("/ws", func(ctx *lark.Context, next func()) {
+    ws, err := ctx.Upgrade(&lark.UpgradeOptions{
+        CheckOrigin: func(r *http.Request) bool { return true },
+    })
+    if err != nil {
+        return
+    }
+
+    ws.OnMessage(func(mt int, data []byte) {
+        ws.Send("echo:" + string(data))
+    })
+    ws.OnClose(func(code int, reason string) {
+        log.Printf("closed: %d", code)
+    })
+    ws.OnError(func(err error) {
+        log.Printf("error: %v", err)
+    })
+    go ws.Listen()
 })
-app.LoadHTMLGlob("templates/*.tmpl")
+```
 
-app.Get("/", func(ctx *lark.Context, next func()) {
-    ctx.HTML("index.tmpl", lark.H{"Name": "lark"})
+### Imperative
+
+```go
+app.Get("/ws", func(ctx *lark.Context, next func()) {
+    ws, err := ctx.Upgrade(nil)
+    if err != nil {
+        return
+    }
+    go func() {
+        defer ws.Close()
+        for {
+            mt, data, err := ws.ReadMessage()
+            if err != nil {
+                break
+            }
+            ws.WriteMessage(mt, data)
+        }
+    }()
 })
 ```
 
-`SetFuncMap` 必须在 `LoadHTMLGlob` 之前调用，FuncMap 才能被模板感知。
+### With heartbeat
 
-### Server-Sent Events
+```go
+ws, _ := ctx.Upgrade(nil)
+stopHeartbeat := ws.Heartbeat(30 * time.Second)
+defer stopHeartbeat()
+```
 
-`ctx.SSE()` 返回 `*SSEWriter`，自动设置好 `text/event-stream` 等响应头，并把 `ctx.flushed` 置位以跳过延迟响应。所有写入方法都被互斥锁保护，可在多 goroutine 中安全使用。
+### WSConn API
 
-最小示例：
+Upgrade:
+
+```
+ctx.Upgrade(opts)         hijack connection, perform WebSocket handshake, return *WSConn
+```
+
+Event handlers (register before calling Listen):
+
+```
+ws.OnMessage(fn)          func(messageType int, data []byte)
+ws.OnClose(fn)            func(code int, reason string)
+ws.OnError(fn)            func(err error)
+ws.OnPing(fn)             func(data []byte)
+ws.OnPong(fn)             func(data []byte)
+ws.Listen()               blocking read loop, dispatches to handlers above
+```
+
+Read/Write:
+
+```
+ws.ReadMessage()          (messageType int, data []byte, err error)
+ws.ReadJSON(v)            read + JSON unmarshal
+ws.WriteMessage(mt, data) write a frame
+ws.WriteJSON(v)           JSON marshal + write
+ws.Send(text)             write text message
+ws.WriteText(text)        write text message
+ws.WriteBinary(data)      write binary message
+```
+
+Control:
+
+```
+ws.Ping()                 send ping frame
+ws.Heartbeat(interval)    periodic ping, returns stop function
+ws.Close()                send close frame + close connection
+ws.CloseWithMessage(c, t) close with specific code and reason
+ws.Closed()               <-chan struct{}, signals connection end
+ws.SetReadDeadline(t)     deadline on underlying connection
+ws.SetWriteDeadline(t)    deadline on underlying connection
+ws.NetConn()              access underlying net.Conn
+```
+
+## Server-Sent Events
 
 ```go
 app.Get("/events", func(ctx *lark.Context, next func()) {
     sse := ctx.SSE()
-    sse.Event("greeting", "hello")
-    sse.Data("world")
-    sse.Done()
+    sse.Event("greeting", "hello")   // named event
+    sse.Data("plain data")           // unnamed event
+    sse.JSON("update", obj)          // JSON event
+    sse.Done()                       // send [DONE] marker
 })
 ```
 
-LLM 流式转发样例：
+Long-lived streaming with heartbeat:
 
 ```go
 app.Post("/chat", func(ctx *lark.Context, next func()) {
@@ -216,175 +267,87 @@ app.Post("/chat", func(ctx *lark.Context, next func()) {
     stop := sse.Heartbeat(15 * time.Second)
     defer stop()
 
-    upstream := openAIStream(ctx.Request.Context(), payload)
-    for {
-        select {
-        case <-sse.Closed():
-            return
-        case chunk, ok := <-upstream:
-            if !ok {
-                sse.Done()
-                return
-            }
-            sse.JSON("delta", chunk)
-        }
-    }
+    ch := make(chan string)
+    go produceMessages(ch)
+    sse.Stream(ch)  // blocks until channel closes or client disconnects
 })
 ```
 
-可用方法：
+### SSEWriter API
 
-- `Event(event, data string)` 发送命名事件
-- `Data(data string)` 发送匿名数据，多行内容会自动按 `\n` 拆成多个 `data:` 行
-- `JSON(event string, obj interface{})` JSON 序列化后发送，`event` 为空则只发 data
-- `ID(id string)` 设置事件 ID
-- `Retry(ms int)` 通知客户端重连间隔
-- `Comment(text string)` 发送注释行（常用于保活）
-- `Heartbeat(interval time.Duration) func()` 启动后台 keepalive，返回 stop 函数
-- `Stream(ch <-chan string)` 消费 channel 直至关闭或客户端断连
-- `Closed() <-chan struct{}` 客户端断连信号
-- `Flush()` 手动刷盘
-- `Done()` 发送 `[DONE]` 终止标记，常用于 OpenAI 兼容协议
-
-### 内置中间件
-
-#### Logger
-
-```go
-app.Use(lark.Logger())
+```
+ctx.SSE()                 set event-stream headers, return *SSEWriter
+sse.Event(name, data)     send named event
+sse.Data(data)            send data event (multi-line safe)
+sse.JSON(name, obj)       send JSON event
+sse.ID(id)                set event ID
+sse.Retry(ms)             set reconnect interval
+sse.Comment(text)         comment line
+sse.Heartbeat(interval)   periodic keepalive, returns stop function
+sse.Stream(ch)            consume channel until closed or client disconnects
+sse.Closed()              client disconnect signal
+sse.Flush()               manual flush
+sse.Done()                send [DONE] marker
 ```
 
-在请求处理结束后输出 `[status] URI in duration`。`lark.Default()` 默认已启用。
-
-#### Recovery
-
-```go
-app.Use(lark.Recovery())
-```
-
-捕获处理器中的 panic，打印调用栈，并返回 500 加 `{"message":"Internal Server Error"}`。`lark.Default()` 默认已启用。
-
-### 完整示例
-
-一个典型的 AI 后端片段，组合了分组、鉴权中间件、JSON 接口与 SSE 流式：
-
-```go
-package main
-
-import (
-    "context"
-    "log"
-    "net/http"
-    "os/signal"
-    "syscall"
-    "time"
-
-    lark "github.com/hangtiancheng/lark-go/lark_http"
-)
-
-func main() {
-    app := lark.Default()
-
-    app.Get("/healthz", func(ctx *lark.Context, next func()) {
-        ctx.JSON(lark.H{"status": "ok"})
-    })
-
-    api := app.Router("/api")
-    api.Use(requireToken)
-
-    api.Get("/users/:id", func(ctx *lark.Context, next func()) {
-        ctx.JSON(lark.H{"id": ctx.Param("id"), "name": "lark"})
-    })
-
-    api.Post("/chat", func(ctx *lark.Context, next func()) {
-        var req struct {
-            Prompt string `json:"prompt"`
-        }
-        if err := ctx.BindJSON(&req); err != nil {
-            ctx.Throw(http.StatusBadRequest, "invalid payload")
-            return
-        }
-        sse := ctx.SSE()
-        defer sse.Done()
-        stop := sse.Heartbeat(15 * time.Second)
-        defer stop()
-        for _, token := range fakeStream(req.Prompt) {
-            select {
-            case <-sse.Closed():
-                return
-            default:
-                sse.Data(token)
-            }
-        }
-    })
-
-    go func() {
-        if err := app.Listen(":9999"); err != nil && err != http.ErrServerClosed {
-            log.Fatal(err)
-        }
-    }()
-
-    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-    defer stop()
-    <-ctx.Done()
-
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
-    _ = app.Shutdown(shutdownCtx)
-}
-
-func requireToken(ctx *lark.Context, next func()) {
-    if ctx.Get("Authorization") == "" {
-        ctx.Throw(http.StatusUnauthorized, "missing token")
-        return
-    }
-    next()
-}
-
-func fakeStream(prompt string) []string {
-    return []string{"hi, ", "this is ", prompt}
-}
-```
-
-### 目录结构
+## File Structure
 
 ```
 lark_http/
-├── lark.go         Application 与中间件组合器
-├── context.go      Context 与请求访问器
-├── response.go     延迟响应模型与渲染分支
-├── group.go        Router 分组、Static、路径边界
-├── router.go       内部 router 与调度
-├── trie.go         路由 Trie 节点
-├── sse.go          SSEWriter
-├── logger.go       Logger 中间件
-├── recovery.go     Recovery 中间件
-└── main.go         示例入口（带 //go:build ignore，不参与编译）
+  lark.go        Application, compose(), ServeHTTP
+  context.go     Context, request accessors, state
+  response.go    deferred response rendering
+  group.go       Router groups, Static, path boundary matching
+  router.go      internal router, dispatch
+  trie.go        Trie node for route matching
+  websocket.go   WebSocket (RFC 6455)
+  sse.go         Server-Sent Events
+  logger.go      Logger middleware
+  recovery.go    Recovery middleware
 ```
 
-### 设计要点
+## WebSocket Implementation Notes
 
-延迟响应：处理器与中间件不直接写 ResponseWriter，所有响应数据存在 `ctx.Body`、`ctx.Status`、`ctx.Type` 三个字段中，由 `respond` 在链路末尾统一渲染。这使得位于洋葱外层的中间件可以在 `next()` 返回后看到下游真实写入的响应，并按需修改，例如统一包裹返回结构、记录响应体、注入 trace header。
+This section documents the technical decisions and a pitfall encountered during implementation.
 
-中间件按 Router 收集：`ServeHTTP` 入口处遍历所有 Router，凡是 `matchRouterPath` 命中的，按声明顺序把其中间件追加进候选栈，再交给 `compose` 串成链。这保证了「父分组中间件先于子分组中间件」的执行约定。
+### Upgrade Process
 
-精确边界判断：`matchRouterPath` 不是用简单的 `strings.HasPrefix`，而是要求请求路径在前缀长度处要么结束，要么是 `/`，确保 `/v1` 分组上的中间件不会被 `/v10` 之类路径误命中。
+1. Validate WebSocket request headers (Connection: upgrade, Upgrade: websocket, Sec-WebSocket-Key)
+2. Call `http.NewResponseController(w).Hijack()` to take over the TCP connection from `http.Server`
+3. Clear all deadlines via `conn.SetDeadline(time.Time{})` -- the HTTP server may have set read/write deadlines that would expire on the long-lived WebSocket connection
+4. Reuse the hijacked `bufio.Reader` if its buffer is large enough; otherwise allocate a new one
+5. Compute `Sec-WebSocket-Accept` as `base64(sha1(key + GUID))` per RFC 6455 Section 4.2.2
+6. Write the 101 Switching Protocols response directly via `conn.Write()`, bypassing bufio.Writer
+7. Return `*WSConn` wrapping the raw `net.Conn`
 
-SSE 自动接管响应：调用 `ctx.SSE()` 时会把 `ctx.flushed` 置为 true，告知 `respond` 跳过常规渲染，由 `SSEWriter` 完全接管字节流，避免重复写头与响应体。
+### Frame I/O
 
-### 测试
+Reads go through `bufio.Reader` for efficiency -- small frame headers benefit from buffered reads. Writes go directly to `conn.Write()` following the Gorilla WebSocket pattern. Each write sends header + payload in a single `conn.Write()` call to avoid TCP fragmentation of partial frames.
 
-```bash
-cd lark_http
-go test ./...
+Server frames are unmasked (RFC 6455 Section 5.1). Client frames are masked and the server unmasks them on read.
+
+### The GUID Pitfall
+
+RFC 6455 defines a magic GUID used in the `Sec-WebSocket-Accept` calculation:
+
+```
+258EAFA5-E914-47DA-95CA-C5AB0DC85B11
 ```
 
-仓库自带覆盖路由、Context、响应、SSE、模板、静态文件、中间件顺序、Recovery 等多组测试用例，可作为使用示例参考。
+This is a fixed constant from the spec, not a value you generate. During initial development, a wrong GUID was used (`...5BBF24F4B947` instead of `...C5AB0DC85B11`). The symptom:
 
-### 鸣谢
+- Go test clients and curl connected successfully
+- Browsers (Chrome, Safari) rejected the connection with close code 1006
 
-灵感来源于 Node.js 的 [Koa](https://koajs.com/) 与 Go 社区中众多优秀的轻量框架。`lark_http` 不追求功能最全，只追求在 Koa 思想与 Go 习惯之间找到一种舒适的折中。
+The failure was silent on the server side: `conn.Write()` returned no error, the 101 response was byte-for-byte valid HTTP, and the frame encoding was correct. The only thing wrong was the Sec-WebSocket-Accept hash value.
 
-### 许可证
+Root cause: Go WebSocket client libraries and curl do not validate `Sec-WebSocket-Accept`. Browsers do, per RFC 6455 Section 4.1 step 5. This meant the server appeared to work in every test except the actual browser.
 
-详见仓库根目录 `LICENSE`。
+The debugging process went through increasingly lower abstraction levels -- custom framework, standard `http.Server`, raw TCP, manual HTTP parsing, `syscall.Write` on a blocking file descriptor -- all showing the same failure with browsers while succeeding with Go clients. A Python websockets server on the same machine worked with the same browsers, seemingly proving Go itself was broken. In the end, comparing the `computeAcceptKey` implementation against Gorilla WebSocket's source revealed the single wrong constant.
+
+Lessons:
+
+- Always verify cryptographic/protocol constants against the RFC, character by character
+- Test WebSocket implementations with an actual browser from the start, not just programmatic clients
+- When browsers reject WebSocket with code 1006 and no useful error, check the Sec-WebSocket-Accept computation first -- it's the most common cause
+- "Works with curl but not browsers" is a strong signal that the handshake response is subtly wrong, not that the networking stack is broken

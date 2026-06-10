@@ -8,6 +8,7 @@ import useWsStore from "@/store/ws";
 import { resolveAvatar } from "@/utils/avatar";
 import { showToast } from "@/utils/toast";
 import { BASE_URL } from "@/config";
+import { icons } from "@/icons";
 import type { ContactInfo, Message } from "@/types";
 
 function getFileSize(size: number): string {
@@ -31,6 +32,7 @@ export default defineView({
     this.observeLocation(["id"], true);
 
     this.updater.set({
+      icons,
       chatMessage: "",
       contactName: "",
       contactAvatar: "",

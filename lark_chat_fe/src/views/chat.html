@@ -102,7 +102,7 @@
             class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50 cursor-pointer"
           >
             <input type="file" class="hidden" @change="onFileSelect()" />
-            <span class="text-sm">📎</span>
+            <span class="w-4 h-4 [&>svg]:w-full [&>svg]:h-full">{{!icons.paperclip}}</span>
           </label>
         </div>
         <div class="tooltip tooltip-left" data-tip="Video Call">
@@ -110,7 +110,7 @@
             class="btn btn-ghost btn-xs btn-square text-green-600 hover:bg-green-200/50"
             @click="openVideoCall()"
           >
-            <span class="text-sm">📹</span>
+            <span class="w-4 h-4 [&>svg]:w-full [&>svg]:h-full">{{!icons.video}}</span>
           </button>
         </div>
       </div>

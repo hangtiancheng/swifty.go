@@ -69,9 +69,7 @@ function run(command, cwd = ROOT_DIR, env = process.env) {
   });
   if (result.status !== 0) {
     const err = /** @type {Error & { exitCode: number }} */ (
-      new Error(
-        `Command failed: ${command.join(" ")} (exit ${result.status ?? "?"})`,
-      )
+      new Error(`Command failed: ${command.join(" ")} (exit ${result.status ?? "?"})`)
     );
     err.exitCode = result.status ?? 1;
     throw err;
@@ -416,12 +414,9 @@ function parseCommonOptions(argv) {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--go") result.go = args[++i] ?? result.go;
     else if (args[i] === "--gowork") result.gowork = args[++i] ?? result.gowork;
-    else if (args[i] === "--coverprofile")
-      result.coverprofile = args[++i] ?? result.coverprofile;
-    else if (args[i] === "--timeout")
-      result.timeout = args[++i] ?? result.timeout;
-    else if (args[i] === "--mongo-uri")
-      result.mongoUri = args[++i] ?? result.mongoUri;
+    else if (args[i] === "--coverprofile") result.coverprofile = args[++i] ?? result.coverprofile;
+    else if (args[i] === "--timeout") result.timeout = args[++i] ?? result.timeout;
+    else if (args[i] === "--mongo-uri") result.mongoUri = args[++i] ?? result.mongoUri;
   }
   return result;
 }
@@ -471,10 +466,7 @@ function main(argv) {
   return 0;
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
-) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   process.exit(main(process.argv));
 }
 
