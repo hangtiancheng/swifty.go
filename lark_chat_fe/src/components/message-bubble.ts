@@ -6,8 +6,17 @@ export default View.extend({
   template,
   init() {
     this.updater
-      .set({ messageList: [], currentUserId: "", currentUserAvatar: "", currentUserName: "" })
+      .set({
+        messageList: [],
+        currentUserId: "",
+        currentUserAvatar: "",
+        currentUserName: "",
+      })
       .digest();
+  },
+
+  setData(data: Record<string, unknown>) {
+    this.updater.set(data).digest();
   },
 
   "downloadFile<click>"(e: Record<string, unknown>) {

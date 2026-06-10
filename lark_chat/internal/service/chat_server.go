@@ -130,6 +130,10 @@ func (s *Server) handleMessage(data []byte) {
 }
 
 func (s *Server) broadcastToReceiver(req ChatMessageRequest, msg model.Message) {
+	if msg.ReceiveId == "" {
+		log.Println("broadcastToReceiver: empty receive_id, skip")
+		return
+	}
 	rsp := MessageListItem{
 		SendId: msg.SendId, SendName: msg.SendName, SendAvatar: req.SendAvatar,
 		ReceiveId: msg.ReceiveId, Type: msg.Type, Content: msg.Content,

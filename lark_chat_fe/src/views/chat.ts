@@ -1,4 +1,4 @@
-import { Router, Framework, Frame, defineView } from "@lark.js/mvc";
+import { Router, Frame, defineView } from "@lark.js/mvc";
 import template from "./chat.html";
 import AppService from "@/service/index";
 import "@/service/endpoints";
@@ -59,6 +59,8 @@ export default defineView({
     const contactId = loc.get("id", "") as string;
     if (contactId) this.loadChat(contactId);
 
+    this.syncMessageBubble();
+
     useWsStore().setOnMessage((event: MessageEvent) => {
       this.handleWsMessage(event);
     });
@@ -68,21 +70,24 @@ export default defineView({
     });
   },
 
-  assign() {
-    this.updater.snapshot();
+  syncMessageBubble() {
     const chat = useChatStore();
     const auth = useAuthStore();
-    const msgBubbleFrame = Framework.Frame?.get?.("chat-messages");
-    if (msgBubbleFrame) {
-      msgBubbleFrame.invoke("updater.set", [
-        {
-          messageList: chat.messageList,
-          currentUserId: auth.userInfo.uuid,
-          currentUserAvatar: auth.userInfo.avatar,
-          currentUserName: auth.userInfo.nickname,
-        },
-      ]);
-    }
+    const f = Frame.get("message-bubble");
+    if (!f) return;
+    f.invoke("setData", [
+      {
+        messageList: chat.messageList,
+        currentUserId: auth.userInfo.uuid,
+        currentUserAvatar: auth.userInfo.avatar,
+        currentUserName: auth.userInfo.nickname,
+      },
+    ]);
+  },
+
+  assign() {
+    this.updater.snapshot();
+    this.syncMessageBubble();
     return this.updater.altered();
   },
 
@@ -160,13 +165,23 @@ export default defineView({
           m.send_avatar = resolveAvatar(m.send_avatar);
         });
         useChatStore().setMessageList(list);
-        this.updater.set({ messageList: list }).digest();
+        this.syncMessageBubble();
+        this.scrollToBottom();
       },
     );
   },
 
   handleWsMessage(event: MessageEvent) {
-    const message = JSON.parse(event.data) as Message;
+    const raw = event.data;
+    if (typeof raw !== "string" || raw.length === 0 || raw.charAt(0) !== "{") {
+      return;
+    }
+    let message: Message;
+    try {
+      message = JSON.parse(raw) as Message;
+    } catch {
+      return;
+    }
     const auth = useAuthStore();
     const chat = useChatStore();
 
@@ -190,7 +205,8 @@ export default defineView({
     if (isRelevant) {
       message.send_avatar = resolveAvatar(message.send_avatar);
       useChatStore().addMessage(message);
-      this.updater.set({ messageList: useChatStore().messageList }).digest();
+      this.syncMessageBubble();
+      this.scrollToBottom();
     }
   },
 
