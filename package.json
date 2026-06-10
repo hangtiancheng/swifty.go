@@ -1,6 +1,6 @@
 {
   "name": "lark-go",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "lark-go monorepo tooling",
   "keywords": [
     "cache",
