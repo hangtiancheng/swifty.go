@@ -118,7 +118,11 @@ export default defineView({
             isUserContact: isUser,
             isGroupContact: !isUser,
             isGroupOwner: info.contact_owner_id === auth.userInfo.uuid,
-            contactGenderText: isUser ? (info.contact_gender === 0 ? "Male" : "Female") : "",
+            contactGenderText: isUser
+              ? info.contact_gender === 0
+                ? "Male"
+                : "Female"
+              : "",
             contactPhone: info.contact_phone || "",
             contactEmail: info.contact_email || "",
             contactBirthday: info.contact_birthday || "",
@@ -155,7 +159,9 @@ export default defineView({
     const uid = useAuthStore().userInfo.uuid;
     const isUser = contactId.startsWith("U");
     const endpointName = isUser ? "getMessageList" : "getGroupMessageList";
-    const reqData = isUser ? { send_id: uid, receive_id: contactId } : { group_id: contactId };
+    const reqData = isUser
+      ? { send_id: uid, receive_id: contactId }
+      : { group_id: contactId };
 
     this.srv!.save(
       { name: endpointName, data: reqData },
@@ -186,7 +192,10 @@ export default defineView({
     const chat = useChatStore();
 
     if (message.type === 3) {
-      const avData = JSON.parse(message.av_data || "{}") as Record<string, unknown>;
+      const avData = JSON.parse(message.av_data || "{}") as Record<
+        string,
+        unknown
+      >;
       const vcFrames = Frame.getAll();
       for (const [, f] of vcFrames) {
         if (f.invoke) {
@@ -198,8 +207,10 @@ export default defineView({
     }
 
     const isRelevant =
-      (message.receive_id.startsWith("G") && message.receive_id === chat.contactInfo?.contact_id) ||
-      (message.receive_id.startsWith("U") && message.receive_id === auth.userInfo.uuid) ||
+      (message.receive_id.startsWith("G") &&
+        message.receive_id === chat.contactInfo?.contact_id) ||
+      (message.receive_id.startsWith("U") &&
+        message.receive_id === auth.userInfo.uuid) ||
       message.send_id === auth.userInfo.uuid;
 
     if (isRelevant) {
@@ -259,25 +270,36 @@ export default defineView({
     if (!file) return;
     const formData = new FormData();
     formData.append("file", file);
-    this.srv!.save({ name: "uploadFile", data: formData }, () => {
-      showToast("File uploaded successfully", "success");
-      const auth = useAuthStore();
-      const chat = useChatStore();
-      const msg = {
-        session_id: chat.sessionId,
-        type: 2,
-        content: "",
-        url: BASE_URL + "/static/files/" + file.name,
-        send_id: auth.userInfo.uuid,
-        send_name: auth.userInfo.nickname,
-        send_avatar: auth.userInfo.avatar,
-        receive_id: chat.contactInfo!.contact_id,
-        file_size: getFileSize(file.size),
-        file_name: file.name,
-        file_type: file.type,
-      };
-      useWsStore().send(msg);
-    });
+    this.srv!.save(
+      { name: "uploadFile", data: formData },
+      (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
+        const data =
+          (payload.get("data") as { url?: string; file_name?: string }) || {};
+        const uploadedUrl = data.url || "";
+        const uploadedName = data.file_name || file.name;
+        if (!uploadedUrl) {
+          showToast("File upload failed", "error");
+          return;
+        }
+        showToast("File uploaded successfully", "success");
+        const auth = useAuthStore();
+        const chat = useChatStore();
+        const msg = {
+          session_id: chat.sessionId,
+          type: 2,
+          content: "",
+          url: BASE_URL + uploadedUrl,
+          send_id: auth.userInfo.uuid,
+          send_name: auth.userInfo.nickname,
+          send_avatar: auth.userInfo.avatar,
+          receive_id: chat.contactInfo!.contact_id,
+          file_size: getFileSize(file.size),
+          file_name: uploadedName,
+          file_type: file.type,
+        };
+        useWsStore().send(msg);
+      },
+    );
     input.value = "";
   },
 
@@ -360,7 +382,9 @@ export default defineView({
 
   // -- User Info Modal --
   "showUserInfoModal<click>"() {
-    (document.getElementById("user-info-modal") as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById("user-info-modal") as HTMLDialogElement
+    )?.showModal();
   },
   "closeUserInfoModal<click>"() {
     (document.getElementById("user-info-modal") as HTMLDialogElement)?.close();
@@ -368,7 +392,9 @@ export default defineView({
 
   // -- Group Info Modal --
   "showGroupInfoModal<click>"() {
-    (document.getElementById("group-info-modal") as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById("group-info-modal") as HTMLDialogElement
+    )?.showModal();
   },
   "closeGroupInfoModal<click>"() {
     (document.getElementById("group-info-modal") as HTMLDialogElement)?.close();
@@ -378,7 +404,9 @@ export default defineView({
   "showEditGroupModal<click>"() {
     this.editGroupData = { name: "", notice: "", add_mode: -1, avatar: "" };
     this.groupAvatarFile = null;
-    (document.getElementById("edit-group-modal") as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById("edit-group-modal") as HTMLDialogElement
+    )?.showModal();
   },
   "onEditGroupName<input>"(e: Record<string, unknown>) {
     this.editGroupData.name = (e.eventTarget as HTMLInputElement).value;
@@ -387,10 +415,13 @@ export default defineView({
     this.editGroupData.notice = (e.eventTarget as HTMLTextAreaElement).value;
   },
   "onEditGroupAddMode<change>"(e: Record<string, unknown>) {
-    this.editGroupData.add_mode = Number((e.eventTarget as HTMLInputElement).value);
+    this.editGroupData.add_mode = Number(
+      (e.eventTarget as HTMLInputElement).value,
+    );
   },
   "onGroupAvatarSelect<change>"(e: Record<string, unknown>) {
-    this.groupAvatarFile = (e.eventTarget as HTMLInputElement).files?.[0] ?? null;
+    this.groupAvatarFile =
+      (e.eventTarget as HTMLInputElement).files?.[0] ?? null;
   },
   "saveGroupInfo<click>"() {
     const d = this.editGroupData;
@@ -422,7 +453,9 @@ export default defineView({
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
         if (payload.get("code") === 200) {
           showToast("Group updated", "success");
-          (document.getElementById("edit-group-modal") as HTMLDialogElement)?.close();
+          (
+            document.getElementById("edit-group-modal") as HTMLDialogElement
+          )?.close();
           this.loadChat(chat.contactInfo!.contact_id);
         } else {
           showToast(payload.get("message") as string, "error");
@@ -444,12 +477,15 @@ export default defineView({
         data: { group_id: chat.contactInfo!.contact_id },
       },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
-        const list = (payload.get("data") as Array<Record<string, string>> | null) || [];
+        const list =
+          (payload.get("data") as Array<Record<string, string>> | null) || [];
         list.forEach((m) => {
           m.avatar = resolveAvatar(m.avatar);
         });
         this.updater.set({ memberList: list }).digest();
-        (document.getElementById("remove-members-modal") as HTMLDialogElement)?.showModal();
+        (
+          document.getElementById("remove-members-modal") as HTMLDialogElement
+        )?.showModal();
       },
     );
   },
@@ -488,7 +524,9 @@ export default defineView({
     );
   },
   "closeRemoveMembersModal<click>"() {
-    (document.getElementById("remove-members-modal") as HTMLDialogElement)?.close();
+    (
+      document.getElementById("remove-members-modal") as HTMLDialogElement
+    )?.close();
   },
 
   // -- Join Requests Modal --
@@ -497,13 +535,16 @@ export default defineView({
     this.srv!.save(
       { name: "getAddGroupList", data: { user_id: uid } },
       (_errors: unknown[], payload: { get: (k: string) => unknown }) => {
-        const list = (payload.get("data") as Array<Record<string, string>> | null) || [];
+        const list =
+          (payload.get("data") as Array<Record<string, string>> | null) || [];
         if (list.length === 0) {
           showToast("No pending join requests", "info");
           return;
         }
         this.updater.set({ joinRequestList: list }).digest();
-        (document.getElementById("join-requests-modal") as HTMLDialogElement)?.showModal();
+        (
+          document.getElementById("join-requests-modal") as HTMLDialogElement
+        )?.showModal();
       },
     );
   },
@@ -542,6 +583,8 @@ export default defineView({
     );
   },
   "closeJoinRequestsModal<click>"() {
-    (document.getElementById("join-requests-modal") as HTMLDialogElement)?.close();
+    (
+      document.getElementById("join-requests-modal") as HTMLDialogElement
+    )?.close();
   },
 });

@@ -21,16 +21,28 @@ export default View.extend({
 
   "downloadFile<click>"(e: Record<string, unknown>) {
     const params = e.params as Record<string, string>;
-    const fileName = params.name;
-    fetch(BASE_URL + "/static/files/" + fileName)
-      .then((r) => r.blob())
+    const fileUrl = params.url
+      ? params.url.startsWith("http")
+        ? params.url
+        : BASE_URL + params.url
+      : BASE_URL + "/static/files/" + params.name;
+    const saveName = params.name || "download";
+    fetch(fileUrl)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
       .then((blob) => {
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = fileName;
+        link.download = saveName;
         document.body.appendChild(link);
         link.click();
         link.remove();
+        URL.revokeObjectURL(link.href);
+      })
+      .catch(() => {
+        // swallow: browser will already log the failed request
       });
   },
 });

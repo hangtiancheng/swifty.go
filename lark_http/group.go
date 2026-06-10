@@ -84,6 +84,12 @@ func (r *Router) createStaticHandler(relativePath string, fs http.FileSystem) Mi
 			ctx.Status = http.StatusNotFound
 			return
 		}
+		// flush deferred headers (e.g. CORS) before handing off to FileServer,
+		// otherwise headers set via ctx.Set in upstream middlewares are lost.
+		header := ctx.Writer.Header()
+		for k, v := range ctx.headers {
+			header.Set(k, v)
+		}
 		ctx.flushed = true
 		fileServer.ServeHTTP(ctx.Writer, ctx.Request)
 	}
