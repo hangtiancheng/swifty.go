@@ -23,9 +23,10 @@ type ContactInfoResponse struct {
 }
 
 type ContactApplyResponse struct {
-	Uuid        string `json:"uuid"`
+	ApplyId     string `json:"apply_id"`
 	UserId      string `json:"user_id"`
 	ContactId   string `json:"contact_id"`
+	ContactName string `json:"contact_name"`
 	ContactType int8   `json:"contact_type"`
 	Status      int8   `json:"status"`
 	Message     string `json:"message"`

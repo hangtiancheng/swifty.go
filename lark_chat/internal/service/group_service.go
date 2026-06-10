@@ -47,7 +47,7 @@ func CreateGroup(ctx context.Context, name, ownerId, avatar string) (string, *Gr
 		UpdatedAt: time.Now(),
 	}
 	if group.Avatar == "" {
-		group.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
+		group.Avatar = "https://vitejs.dev/logo.svg"
 	}
 	if _, err := dao.Engine.Model(&group).Insert(ctx, &group); err != nil {
 		log.Println(err)

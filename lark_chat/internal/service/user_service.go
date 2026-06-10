@@ -63,7 +63,7 @@ func Register(ctx context.Context, telephone, password, nickname string) (string
 		Telephone: telephone,
 		Password:  password,
 		Nickname:  nickname,
-		Avatar:    "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png",
+		Avatar:    "https://vitejs.dev/logo.svg",
 		CreatedAt: time.Now(),
 		IsAdmin:   0,
 		Status:    constant.UserStatusNormal,

@@ -13,6 +13,7 @@ $(COMMANDS):
 
 .PHONY: feat
 feat:
+	rm -rf ./.github
 	ln -s ./.claude ./.github
 	git add -A
 	git commit -m "feat: Introduce new features"
