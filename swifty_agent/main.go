@@ -1,0 +1,28 @@
+// Swifty Chatbot is an AI-powered intelligent operations assistant.
+// It provides chat-based interaction with RAG (Retrieval-Augmented Generation),
+// knowledge base indexing, and automated alert analysis capabilities.
+//
+// The application uses the swifty_http framework for HTTP serving and the
+// Eino framework for AI pipeline orchestration.
+package main
+
+import (
+	"log"
+
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/app"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
+)
+
+func main() {
+	cfg, err := config.Load("config.json")
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+
+	application := app.New(cfg)
+
+	log.Printf("swifty_agent listening on %s", cfg.ServerAddr)
+	if err := application.Engine().Listen(cfg.ServerAddr); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
+}

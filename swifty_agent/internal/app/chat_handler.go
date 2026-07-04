@@ -1,0 +1,122 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+
+	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/schema"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/ai/agent/chat_pipeline"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/log_callback"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/mem"
+	"github.com/hangtiancheng/swifty.go/swifty_http"
+)
+
+// chatRequest is the JSON body for chat and chat_stream endpoints.
+type chatRequest struct {
+	ID       string `json:"Id"`
+	Question string `json:"Question"`
+}
+
+// handleChat processes a synchronous chat request using the RAG-enhanced agent pipeline.
+// It invokes the agent, stores the conversation in memory, and returns the full response.
+func (a *App) handleChat(ctx *swifty_http.Context, next func()) {
+	var req chatRequest
+	if err := ctx.BindJSON(&req); err != nil {
+		ctx.Throw(http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	appCtx := ctx.Request.Context()
+	userMsg := &chat_pipeline.UserMessage{
+		ID:      req.ID,
+		Query:   req.Question,
+		History: mem.Get(req.ID).All(),
+	}
+
+	runner, err := chat_pipeline.BuildChatAgent(appCtx, a.cfg)
+	if err != nil {
+		ctx.Throw(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	out, err := runner.Invoke(appCtx, userMsg, compose.WithCallbacks(log_callback.NewHandler(nil)))
+	if err != nil {
+		ctx.Throw(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	mem.Get(req.ID).Append(schema.UserMessage(req.Question))
+	mem.Get(req.ID).Append(schema.SystemMessage(out.Content))
+
+	ctx.Status = http.StatusOK
+	ctx.JSON(swifty_http.H{
+		"message": "OK",
+		"data":    swifty_http.H{"answer": out.Content},
+	})
+}
+
+// handleChatStream processes a streaming chat request using Server-Sent Events.
+// It creates an SSE connection, streams the agent's response chunks, and stores
+// the complete response in conversation memory.
+func (a *App) handleChatStream(ctx *swifty_http.Context, next func()) {
+	var req chatRequest
+	if err := ctx.BindJSON(&req); err != nil {
+		ctx.Throw(http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	appCtx := context.WithValue(ctx.Request.Context(), "client_id", req.ID)
+	sse := ctx.SSE()
+	sse.ID(req.ID)
+	sse.Event("connected", `{"status":"connected","client_id":"`+req.ID+`"}`)
+
+	userMsg := &chat_pipeline.UserMessage{
+		ID:      req.ID,
+		Query:   req.Question,
+		History: mem.Get(req.ID).All(),
+	}
+
+	runner, err := chat_pipeline.BuildChatAgent(appCtx, a.cfg)
+	if err != nil {
+		sse.Event("error", err.Error())
+		sse.Done()
+		return
+	}
+
+	sr, err := runner.Stream(appCtx, userMsg, compose.WithCallbacks(log_callback.NewHandler(nil)))
+	if err != nil {
+		sse.Event("error", err.Error())
+		sse.Done()
+		return
+	}
+	defer sr.Close()
+
+	var fullResponse strings.Builder
+	defer func() {
+		resp := fullResponse.String()
+		if resp != "" {
+			mem.Get(req.ID).Append(schema.UserMessage(req.Question))
+			mem.Get(req.ID).Append(schema.SystemMessage(resp))
+		}
+	}()
+
+	for {
+		chunk, err := sr.Recv()
+		if errors.Is(err, io.EOF) {
+			sse.Event("done", "Stream completed")
+			sse.Done()
+			return
+		}
+		if err != nil {
+			sse.Event("error", err.Error())
+			sse.Done()
+			return
+		}
+		fullResponse.WriteString(chunk.Content)
+		sse.Event("message", chunk.Content)
+	}
+}

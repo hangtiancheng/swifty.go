@@ -1,0 +1,17 @@
+/swifty
+tmp/
+build-errors.log
+config.yaml
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+.idea/
+.vscode/
+.swifty/
+.claude/
+CLAUDE.md
+docs/

@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: swifty-light --default;
+}
+
+@plugin "daisyui/theme" {
+  name: "swifty-light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: oklch(99.5% 0.002 150);
+  --color-base-200: oklch(94% 0.025 150);
+  --color-base-300: oklch(87% 0.04 150);
+  --color-base-content: oklch(20% 0.015 150);
+
+  --color-primary: oklch(70% 0.18 148);
+  --color-primary-content: oklch(12% 0.02 150);
+
+  --color-secondary: oklch(70% 0.08 175);
+  --color-secondary-content: oklch(99% 0.003 175);
+
+  --color-accent: oklch(72% 0.1 140);
+  --color-accent-content: oklch(99% 0.003 140);
+
+  --color-neutral: oklch(45% 0.03 150);
+  --color-neutral-content: oklch(98% 0.005 150);
+
+  --color-info: oklch(70% 0.2 220);
+  --color-info-content: oklch(98% 0.01 220);
+
+  --color-success: oklch(65% 0.25 140);
+  --color-success-content: oklch(98% 0.01 140);
+
+  --color-warning: oklch(80% 0.25 80);
+  --color-warning-content: oklch(20% 0.05 80);
+
+  --color-error: oklch(65% 0.3 30);
+  --color-error-content: oklch(98% 0.01 30);
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 1rem;
+
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+
+  --border: 1px;
+
+  --depth: 1;
+  --noise: 0;
+}
+
+@theme {
+  --font-sans:
+    Iosevka, Maple Mono, Menlo, Cascadia Code, Sarasa Gothic SC, PingFang SC,
+    Microsoft YaHei;
+
+  --font-mono:
+    Iosevka, Maple Mono, Menlo, Cascadia Code, Sarasa Gothic SC, PingFang SC,
+    Microsoft YaHei;
+}
+
+/* Override daisyUI input/textarea focus styles to use 1px teal border */
+.input:focus,
+.input:focus-within,
+.textarea:focus,
+.textarea:focus-within {
+  @apply border-teal-400 shadow-none outline-none;
+}
