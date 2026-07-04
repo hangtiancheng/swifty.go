@@ -1,7 +1,7 @@
 {
-  "name": "swifty-go",
-  "version": "0.0.5",
-  "description": "swifty-go monorepo tooling",
+  "name": "swifty.go",
+  "version": "0.0.1",
+  "description": "swifty.go monorepo",
   "keywords": [
     "cache",
     "demo",
