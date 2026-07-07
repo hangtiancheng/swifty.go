@@ -260,7 +260,7 @@ func LoadConfig(path string) (*AppConfig, error) {
 	}
 
 	if merged == nil {
-		return nil, &ConfigError{Message: "No config file found. Expected .github.com/hangtiancheng/swifty.go/swifty_cliconfig.yaml in project or ~/.github.com/hangtiancheng/swifty.go/swifty_cliconfig.yaml"}
+		return nil, &ConfigError{Message: "No config file found. Expected .swifty/config.yaml in project or ~/.swifty/config.yaml"}
 	}
 
 	if err := validateProviders(merged); err != nil {
