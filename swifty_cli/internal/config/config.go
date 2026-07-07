@@ -238,9 +238,9 @@ func LoadConfig(path string) (*AppConfig, error) {
 
 	home, _ := os.UserHomeDir()
 	candidates := []string{
-		filepath.Join(home, ".larky", "config.yaml"),
-		filepath.Join(wd, ".larky", "config.yaml"),
-		filepath.Join(wd, ".larky", "config.local.yaml"),
+		filepath.Join(home, ".swifty", "config.yaml"),
+		filepath.Join(wd, ".swifty", "config.yaml"),
+		filepath.Join(wd, ".swifty", "config.local.yaml"),
 	}
 
 	var merged *AppConfig

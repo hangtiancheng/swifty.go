@@ -80,7 +80,7 @@ func NewClient(config ServerConfig) *Client {
 }
 
 func (c *Client) Connect(ctx context.Context) error {
-	impl := &mcp.Implementation{Name: "larky", Version: "0.1.0"}
+	impl := &mcp.Implementation{Name: "swifty", Version: "0.1.0"}
 	c.sdkClient = mcp.NewClient(impl, nil)
 
 	var transport mcp.Transport

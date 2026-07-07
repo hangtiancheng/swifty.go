@@ -134,7 +134,7 @@ func (t *Team) recordExternalMember(name, paneID string) {
 }
 
 // BuildTeammateCLI returns the shell command that, when run in a new terminal pane/tab, boots this
-// larky binary in teammate mode for the given team/member. The workdir argument controls where
+// swifty binary in teammate mode for the given team/member. The workdir argument controls where
 // the spawned process runs; passing "" falls back to the lead's current directory so the mailbox
 // path resolves identically. Worktree isolation is the expected use of a non-empty workdir.
 //
@@ -142,7 +142,7 @@ func (t *Team) recordExternalMember(name, paneID string) {
 func BuildTeammateCLI(teamName, memberName, workdir string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("locate larky binary: %w", err)
+		return "", fmt.Errorf("locate swifty binary: %w", err)
 	}
 	if workdir == "" {
 		workdir, _ = os.Getwd()

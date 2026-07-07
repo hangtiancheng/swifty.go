@@ -73,7 +73,7 @@ type AgentDefinition struct {
 	// InitialPrompt is prepended to the first user turn (slash commands work).
 	InitialPrompt string `yaml:"initialPrompt"`
 
-	// OmitSwiftyMd drops the LARKY.md hierarchy from this agent's user context. Read-only agents
+	// OmitSwiftyMd drops the SWIFTY.md hierarchy from this agent's user context. Read-only agents
 	// (Explore, Plan) save tokens by skipping it.
 	OmitSwiftyMd bool `yaml:"omitSwiftyMd"`
 

@@ -57,10 +57,10 @@ func LoadDir(dir string) []*Command {
 func LoadUserCommands(workDir string) []*Command {
 	var dirs []string
 	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".larky", "commands"))
+		dirs = append(dirs, filepath.Join(home, ".swifty", "commands"))
 	}
 	dirs = append(dirs,
-		filepath.Join(workDir, ".larky", "commands"),
+		filepath.Join(workDir, ".swifty", "commands"),
 	)
 
 	merged := map[string]*Command{}

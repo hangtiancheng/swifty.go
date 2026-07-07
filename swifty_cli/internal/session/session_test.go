@@ -75,7 +75,7 @@ func TestFileCreated(t *testing.T) {
 	dir := t.TempDir()
 	SaveMessage(dir, "test", Message{Role: "user", Content: "hi", Ts: 1})
 
-	path := filepath.Join(dir, ".larky", "sessions", "test.jsonl")
+	path := filepath.Join(dir, ".swifty", "sessions", "test.jsonl")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Fatal("session file was not created")
 	}

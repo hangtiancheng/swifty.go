@@ -12,7 +12,7 @@ type Store struct {
 
 func NewStore(dir, listID string) *Store {
 	return &Store{
-		path: filepath.Join(dir, ".larky", "tasks", listID+".json"),
+		path: filepath.Join(dir, ".swifty", "tasks", listID+".json"),
 	}
 }
 

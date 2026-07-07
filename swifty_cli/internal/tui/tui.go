@@ -420,7 +420,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ag.Checker = permissions.NewChecker(
 			permissions.NewPathSandbox(wd, sandboxAllow...),
 			&permissions.RuleEngine{
-				LocalPath: filepath.Join(wd, ".larky", "permissions.local.yaml"),
+				LocalPath: filepath.Join(wd, ".swifty", "permissions.local.yaml"),
 			},
 			permissions.ModeDefault,
 		)
@@ -768,7 +768,7 @@ func (m *Model) loadSkillsAndBuildPrompt(wd string) string {
 	catalog := skills.LoadCatalog(wd)
 	m.skillCatalog = catalog
 
-	skillsDir := filepath.Join(wd, ".larky", "skills")
+	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	skillSection := ""
 	if catalog != nil {
 		metas := catalog.List()
@@ -1224,7 +1224,7 @@ func (m Model) handleProviderSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ag.Checker = permissions.NewChecker(
 			permissions.NewPathSandbox(wd, sandboxAllow...),
 			&permissions.RuleEngine{
-				LocalPath: filepath.Join(wd, ".larky", "permissions.local.yaml"),
+				LocalPath: filepath.Join(wd, ".swifty", "permissions.local.yaml"),
 			},
 			permissions.ModeDefault,
 		)
@@ -1578,7 +1578,7 @@ func scanFiles(prefix string, limit int) []string {
 
 	skipDirs := map[string]bool{
 		".git": true, "node_modules": true, ".venv": true,
-		"__pycache__": true, ".larky": true, "vendor": true,
+		"__pycache__": true, ".swifty": true, "vendor": true,
 	}
 
 	var matches []string

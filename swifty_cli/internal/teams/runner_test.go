@@ -13,11 +13,11 @@ import (
 // running the suite doesn't litter the repo with .github.com/hangtiancheng/swifty.go/swifty_cliteams/
 // directories.
 func TestMain(m *testing.M) {
-	tmp, err := os.MkdirTemp("", "larky-teams-test-")
+	tmp, err := os.MkdirTemp("", "swifty-teams-test-")
 	if err != nil {
 		panic(err)
 	}
-	_ = os.Setenv("LARKY_TEAMS_DIR", filepath.Join(tmp, "teams"))
+	_ = os.Setenv("SWIFTY_TEAMS_DIR", filepath.Join(tmp, "teams"))
 	code := m.Run()
 	_ = os.RemoveAll(tmp)
 	os.Exit(code)

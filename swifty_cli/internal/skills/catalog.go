@@ -106,11 +106,11 @@ func LoadCatalog(workDir string) *Catalog {
 
 	// Tier 2: user global
 	if home, err := os.UserHomeDir(); err == nil {
-		loadTierInto(c, filepath.Join(home, ".larky", "skills"), "user")
+		loadTierInto(c, filepath.Join(home, ".swifty", "skills"), "user")
 	}
 
 	// Tier 3: project
-	loadTierInto(c, filepath.Join(workDir, ".larky", "skills"), "project")
+	loadTierInto(c, filepath.Join(workDir, ".swifty", "skills"), "project")
 
 	return c
 }
@@ -132,9 +132,9 @@ func LoadSkills(workDir string) *Catalog {
 	c := NewCatalog()
 	c.workDir = workDir
 	if home, err := os.UserHomeDir(); err == nil {
-		loadTierEager(c, filepath.Join(home, ".larky", "skills"), "user")
+		loadTierEager(c, filepath.Join(home, ".swifty", "skills"), "user")
 	}
-	loadTierEager(c, filepath.Join(workDir, ".larky", "skills"), "project")
+	loadTierEager(c, filepath.Join(workDir, ".swifty", "skills"), "project")
 	return c
 }
 

@@ -34,7 +34,9 @@
     "singleflight",
     "swifty",
     "swifty-light",
-    "topbar"
+    "topbar",
+    "Worktree",
+    "worktrees"
   ],
   "css.validate": false
 }

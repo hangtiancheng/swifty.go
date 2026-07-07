@@ -117,7 +117,7 @@ func NewID() string {
 }
 
 func sessionsDir(workDir string) string {
-	return filepath.Join(workDir, ".larky", "sessions")
+	return filepath.Join(workDir, ".swifty", "sessions")
 }
 
 func SessionFilePath(workDir, id string) string {

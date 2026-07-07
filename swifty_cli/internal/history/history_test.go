@@ -59,7 +59,7 @@ func TestFileCreated(t *testing.T) {
 
 	Append(dir, "test")
 
-	path := filepath.Join(dir, ".larky", "prompt_history.jsonl")
+	path := filepath.Join(dir, ".swifty", "prompt_history.jsonl")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Fatal("history file was not created")
 	}

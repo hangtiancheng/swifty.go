@@ -16,14 +16,14 @@ func TestCopySettingsLocal(t *testing.T) {
 	copySettingsLocal(repo, wt)
 
 	// Create settings file
-	srcDir := filepath.Join(repo, ".larky")
+	srcDir := filepath.Join(repo, ".swifty")
 	os.MkdirAll(srcDir, 0o755)
 	srcFile := filepath.Join(srcDir, "settings.local.json")
 	os.WriteFile(srcFile, []byte(`{"key":"value"}`), 0o644)
 
 	copySettingsLocal(repo, wt)
 
-	dst := filepath.Join(wt, ".larky", "settings.local.json")
+	dst := filepath.Join(wt, ".swifty", "settings.local.json")
 	data, err := os.ReadFile(dst)
 	if err != nil {
 		t.Fatalf("settings not copied: %v", err)

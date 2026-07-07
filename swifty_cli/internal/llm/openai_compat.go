@@ -37,7 +37,7 @@ func newOpenAICompatClient(cfg *config.ProviderConfig, systemPrompt string) (*op
 		option.WithAPIKey(apiKey),
 		option.WithBaseURL(cfg.BaseURL),
 	}
-	if os.Getenv("LARKY_LLM_DEBUG") != "" {
+	if os.Getenv("SWIFTY_LLM_DEBUG") != "" {
 		opts = append(opts, option.WithDebugLog(log.New(os.Stderr, "[llm] ", log.LstdFlags)))
 	}
 	client := openai.NewClient(opts...)

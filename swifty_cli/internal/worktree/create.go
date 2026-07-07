@@ -10,7 +10,7 @@ import (
 // WorktreesDir is where all Swifty-managed worktrees live: a single directory inside the repo root
 // that's already in .gitignore.
 func WorktreesDir(repoRoot string) string {
-	return filepath.Join(repoRoot, ".larky", "worktrees")
+	return filepath.Join(repoRoot, ".swifty", "worktrees")
 }
 
 // WorktreePathFor returns the worktree directory path for slug, after flattening nested slugs

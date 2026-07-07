@@ -205,7 +205,7 @@ type SubAgentSpec struct {
 	// InitialPrompt is prepended to the first user turn.
 	InitialPrompt string
 
-	// OmitSwiftyMd drops the LARKY.md hierarchy from this agent's userContext.
+	// OmitSwiftyMd drops the SWIFTY.md hierarchy from this agent's userContext.
 	OmitSwiftyMd bool
 
 	// Skills are skill names to preload when the sub-agent starts.

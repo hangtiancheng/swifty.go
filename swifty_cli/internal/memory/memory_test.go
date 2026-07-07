@@ -8,11 +8,11 @@ import (
 )
 
 func TestGetAutoMemPath(t *testing.T) {
-	t.Setenv("LARKY_REMOTE_MEMORY_DIR", "")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "")
 	root := "/tmp/foo/project"
 	path := GetAutoMemPath(root)
-	if !strings.HasSuffix(path, "/.github.com/hangtiancheng/swifty.go/swifty_climemory/") {
-		t.Errorf("expected suffix /.github.com/hangtiancheng/swifty.go/swifty_climemory/, got: %s", path)
+	if !strings.HasSuffix(path, "/.swifty/memory/") {
+		t.Errorf("expected suffix /.swifty/memory/, got: %s", path)
 	}
 	if !strings.HasPrefix(path, root) {
 		t.Errorf("expected path under project root %s, got: %s", root, path)
@@ -20,7 +20,7 @@ func TestGetAutoMemPath(t *testing.T) {
 }
 
 func TestGetAutoMemPathRespectsOverride(t *testing.T) {
-	t.Setenv("LARKY_REMOTE_MEMORY_DIR", "/custom/memdir")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "/custom/memdir")
 	path := GetAutoMemPath("/tmp/anything")
 	if path != "/custom/memdir/" {
 		t.Errorf("override not honored: %s", path)
@@ -28,7 +28,7 @@ func TestGetAutoMemPathRespectsOverride(t *testing.T) {
 }
 
 func TestIsAutoMemPath(t *testing.T) {
-	t.Setenv("LARKY_REMOTE_MEMORY_DIR", "")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "")
 	root := "/tmp/p"
 	dir := GetAutoMemPath(root)
 	cases := map[string]bool{
@@ -103,7 +103,7 @@ func TestTruncateEntrypointContent(t *testing.T) {
 }
 
 func TestLoadAutoMemoryPrompt(t *testing.T) {
-	t.Setenv("LARKY_REMOTE_MEMORY_DIR", "")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "")
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	prompt := LoadAutoMemoryPrompt(root)
@@ -125,7 +125,7 @@ func TestLoadAutoMemoryPrompt(t *testing.T) {
 }
 
 func TestManagerLoadAll(t *testing.T) {
-	t.Setenv("LARKY_REMOTE_MEMORY_DIR", "")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "")
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	mgr := NewManager(root)
@@ -161,7 +161,7 @@ Body content.
 }
 
 func TestManagerClear(t *testing.T) {
-	t.Setenv("LARKY_REMOTE_MEMORY_DIR", "")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "")
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	mgr := NewManager(root)
@@ -184,7 +184,7 @@ func TestManagerClear(t *testing.T) {
 }
 
 func TestBuildSystemReminderIncludesExistingIndex(t *testing.T) {
-	t.Setenv("LARKY_REMOTE_MEMORY_DIR", "")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "")
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	mgr := NewManager(root)

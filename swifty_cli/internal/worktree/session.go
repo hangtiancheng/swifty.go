@@ -45,7 +45,7 @@ func RestoreWorktreeSession(session *WorktreeSession) {
 
 // sessionFilePath returns the path to the session persistence file.
 func sessionFilePath(repoRoot string) string {
-	return filepath.Join(repoRoot, ".larky", "worktree_session.json")
+	return filepath.Join(repoRoot, ".swifty", "worktree_session.json")
 }
 
 // SaveWorktreeSession persists session state to disk. Pass nil to clear.

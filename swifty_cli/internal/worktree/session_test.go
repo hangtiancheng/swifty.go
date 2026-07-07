@@ -60,7 +60,7 @@ func TestSaveLoadWorktreeSession(t *testing.T) {
 	}
 
 	// Verify file exists
-	path := filepath.Join(dir, ".larky", "worktree_session.json")
+	path := filepath.Join(dir, ".swifty", "worktree_session.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("session file not created: %v", err)
 	}

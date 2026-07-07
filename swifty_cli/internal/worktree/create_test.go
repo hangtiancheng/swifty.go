@@ -11,7 +11,7 @@ import (
 
 func TestWorktreesDir(t *testing.T) {
 	got := WorktreesDir("/tmp/repo")
-	want := filepath.Join("/tmp/repo", ".larky", "worktrees")
+	want := filepath.Join("/tmp/repo", ".swifty", "worktrees")
 	if got != want {
 		t.Errorf("WorktreesDir = %q, want %q", got, want)
 	}
@@ -19,7 +19,7 @@ func TestWorktreesDir(t *testing.T) {
 
 func TestWorktreePathFor_FlattensNestedSlugs(t *testing.T) {
 	got := WorktreePathFor("/tmp/repo", "team/alice")
-	want := filepath.Join("/tmp/repo", ".larky", "worktrees", "team+alice")
+	want := filepath.Join("/tmp/repo", ".swifty", "worktrees", "team+alice")
 	if got != want {
 		t.Errorf("WorktreePathFor(team/alice) = %q, want %q", got, want)
 	}
@@ -45,7 +45,7 @@ func TestGetOrCreateWorktree_RoundTrip(t *testing.T) {
 	if r1.WorktreeBranch != "worktree-feature-x" {
 		t.Errorf("WorktreeBranch = %q, want worktree-feature-x", r1.WorktreeBranch)
 	}
-	if !strings.HasSuffix(r1.WorktreePath, filepath.Join(".larky", "worktrees", "feature-x")) {
+	if !strings.HasSuffix(r1.WorktreePath, filepath.Join(".swifty", "worktrees", "feature-x")) {
 		t.Errorf("WorktreePath = %q, missing expected suffix", r1.WorktreePath)
 	}
 	if !IsValidGitSha(r1.HeadCommit) {
@@ -94,7 +94,7 @@ func TestGetOrCreateWorktree_NestedSlug(t *testing.T) {
 	if r.WorktreeBranch != "worktree-team-refactor+alice" {
 		t.Errorf("WorktreeBranch = %q, want worktree-team-refactor+alice", r.WorktreeBranch)
 	}
-	if !strings.HasSuffix(r.WorktreePath, filepath.Join(".larky", "worktrees", "team-refactor+alice")) {
+	if !strings.HasSuffix(r.WorktreePath, filepath.Join(".swifty", "worktrees", "team-refactor+alice")) {
 		t.Errorf("WorktreePath flatten mismatch: %q", r.WorktreePath)
 	}
 }

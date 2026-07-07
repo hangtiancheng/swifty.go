@@ -138,7 +138,7 @@ func TestLoaderRecordsFailedFilesAndWarns(t *testing.T) {
 	// user-edited definition broke. Failed files must now show up in
 	// FailedFiles and on ErrorWriter.
 	dir := t.TempDir()
-	agentsDir := filepath.Join(dir, ".larky", "agents")
+	agentsDir := filepath.Join(dir, ".swifty", "agents")
 	os.MkdirAll(agentsDir, 0o755)
 
 	good := `---
@@ -267,7 +267,7 @@ func TestHasRequiredMcpServers(t *testing.T) {
 
 func TestLoaderProjectOverridesBuiltin(t *testing.T) {
 	dir := t.TempDir()
-	agentsDir := filepath.Join(dir, ".larky", "agents")
+	agentsDir := filepath.Join(dir, ".swifty", "agents")
 	os.MkdirAll(agentsDir, 0755)
 
 	content := `---

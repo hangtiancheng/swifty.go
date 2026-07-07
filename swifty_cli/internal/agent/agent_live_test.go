@@ -48,12 +48,12 @@ func loadRealSkills(t *testing.T) (*skills.Catalog, string) {
 	t.Helper()
 	wd, _ := os.Getwd()
 	for wd != "/" {
-		if _, err := os.Stat(filepath.Join(wd, ".larky", "skills")); err == nil {
+		if _, err := os.Stat(filepath.Join(wd, ".swifty", "skills")); err == nil {
 			break
 		}
 		wd = filepath.Dir(wd)
 	}
-	skillsDir := filepath.Join(wd, ".larky", "skills")
+	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	catalog, err := skills.LoadFromDirectory(skillsDir)
 	if err != nil {
 		t.Skipf("Cannot load skills: %v", err)
@@ -263,7 +263,7 @@ func TestLiveSkillCreatorOutputPath(t *testing.T) {
 
 	// Use a temp dir to simulate a project with .github.com/hangtiancheng/swifty.go/swifty_cliskills/
 	workDir := t.TempDir()
-	testSkillsDir := filepath.Join(workDir, ".larky", "skills")
+	testSkillsDir := filepath.Join(workDir, ".swifty", "skills")
 	os.MkdirAll(testSkillsDir, 0o755)
 
 	systemPrompt := buildSkillSystemPrompt(testSkillsDir, catalog)
@@ -356,10 +356,10 @@ func TestLiveSimpleChat(t *testing.T) {
 	conv := conversation.NewManager()
 
 	// Simple smoke test: just verify the API works
-	text, _ := liveRound(t, ag, conv, "Reply with exactly: LARKY_OK")
+	text, _ := liveRound(t, ag, conv, "Reply with exactly: SWIFTY_OK")
 
-	if !strings.Contains(text, "LARKY_OK") {
-		t.Errorf("expected LARKY_OK in response, got: %s", truncate(text, 200))
+	if !strings.Contains(text, "SWIFTY_OK") {
+		t.Errorf("expected SWIFTY_OK in response, got: %s", truncate(text, 200))
 	}
 }
 

@@ -268,7 +268,7 @@ func (s *Server) initAgent() error {
 	ag.Checker = permissions.NewChecker(
 		permissions.NewPathSandbox(wd, sandboxAllow...),
 		&permissions.RuleEngine{
-			LocalPath: filepath.Join(wd, ".larky", "permissions.local.yaml"),
+			LocalPath: filepath.Join(wd, ".swifty", "permissions.local.yaml"),
 		},
 		permissions.ModeDefault,
 	)
@@ -949,7 +949,7 @@ func (s *Server) ToolRegistry() *tools.Registry {
 
 func loadCustomInstructions(wd string) string {
 	paths := []string{
-		filepath.Join(wd, ".larky", "instructions.md"),
+		filepath.Join(wd, ".swifty", "instructions.md"),
 		filepath.Join(wd, "CLAUDE.md"),
 	}
 	var parts []string
@@ -970,7 +970,7 @@ func buildSkillSection(catalog *skills.Catalog, wd string) string {
 	if len(metas) == 0 {
 		return ""
 	}
-	skillsDir := filepath.Join(wd, ".larky", "skills")
+	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	var sb strings.Builder
 	sb.WriteString("## Available Skills\n\n")
 	fmt.Fprintf(&sb, "Skills are installed at: %s\n", skillsDir)

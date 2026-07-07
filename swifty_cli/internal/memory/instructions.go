@@ -20,11 +20,11 @@ type InstructionSource struct {
 // LoadInstructions discovers and concatenates project & user instruction files.
 //
 // Discovery order (each later layer is appended later, so model attention prioritises it):
-//  1. User global: ~/.github.com/hangtiancheng/swifty.go/swifty_cliLARKY.md, ~/.github.com/hangtiancheng/swifty.go/swifty_cliAGENTS.md
-//  2. Project: walk from git root down to workDir, picking up LARKY.md
+//  1. User global: ~/.github.com/hangtiancheng/swifty.go/swifty_cliSWIFTY.md, ~/.github.com/hangtiancheng/swifty.go/swifty_cliAGENTS.md
+//  2. Project: walk from git root down to workDir, picking up SWIFTY.md
 //     and AGENTS.md in each directory (so the file closest to cwd wins)
 //  3. workDir/.github.com/hangtiancheng/swifty.go/swifty_cliINSTRUCTIONS.md (legacy)
-//  4. workDir/LARKY.local.md (private local override)
+//  4. workDir/SWIFTY.local.md (private local override)
 //
 // @-include directives:
 //   - @./relative/path, @~/home/path, or @/absolute/path
@@ -61,15 +61,15 @@ func DiscoverInstructions(workDir string) []InstructionSource {
 	}
 
 	if home, err := os.UserHomeDir(); err == nil {
-		add(&sources, seen, filepath.Join(home, ".larky", "LARKY.md"), projectRoot)
-		add(&sources, seen, filepath.Join(home, ".larky", "AGENTS.md"), projectRoot)
+		add(&sources, seen, filepath.Join(home, ".swifty", "SWIFTY.md"), projectRoot)
+		add(&sources, seen, filepath.Join(home, ".swifty", "AGENTS.md"), projectRoot)
 	}
 	for _, dir := range projectInstructionDirs(workDir) {
-		add(&sources, seen, filepath.Join(dir, "LARKY.md"), projectRoot)
+		add(&sources, seen, filepath.Join(dir, "SWIFTY.md"), projectRoot)
 		add(&sources, seen, filepath.Join(dir, "AGENTS.md"), projectRoot)
 	}
-	add(&sources, seen, filepath.Join(workDir, ".larky", "INSTRUCTIONS.md"), projectRoot)
-	add(&sources, seen, filepath.Join(workDir, "LARKY.local.md"), projectRoot)
+	add(&sources, seen, filepath.Join(workDir, ".swifty", "INSTRUCTIONS.md"), projectRoot)
+	add(&sources, seen, filepath.Join(workDir, "SWIFTY.local.md"), projectRoot)
 	return sources
 }
 
@@ -146,8 +146,8 @@ func isIncludeAllowed(absPath, projectRoot string) bool {
 	}
 	// The .github.com/hangtiancheng/swifty.go/swifty_cli directory under user home is also allowed (for global instruction file includes)
 	if home, err := os.UserHomeDir(); err == nil {
-		larkyDir := filepath.Join(home, ".larky")
-		if strings.HasPrefix(absPath, larkyDir+string(filepath.Separator)) {
+		swiftyDir := filepath.Join(home, ".swifty")
+		if strings.HasPrefix(absPath, swiftyDir+string(filepath.Separator)) {
 			return true
 		}
 	}

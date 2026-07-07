@@ -22,7 +22,7 @@ func writeSkillDir(t *testing.T, root, name, frontmatter, body string) string {
 
 func TestLoadCatalogPhase1EmptyBody(t *testing.T) {
 	work := t.TempDir()
-	writeSkillDir(t, filepath.Join(work, ".larky", "skills"), "demo",
+	writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "demo",
 		"name: demo\ndescription: a phase-1 demo\nmode: inline",
 		"# Body\n\nFull SOP here.")
 
@@ -44,7 +44,7 @@ func TestLoadCatalogPhase1EmptyBody(t *testing.T) {
 
 func TestCatalogGetFullHotReload(t *testing.T) {
 	work := t.TempDir()
-	dir := writeSkillDir(t, filepath.Join(work, ".larky", "skills"), "hot",
+	dir := writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "hot",
 		"name: hot\ndescription: hot reload demo",
 		"version 1")
 
@@ -87,7 +87,7 @@ func TestLoadCatalogBuiltinsPresent(t *testing.T) {
 
 func TestLoadCatalogProjectOverridesBuiltin(t *testing.T) {
 	work := t.TempDir()
-	writeSkillDir(t, filepath.Join(work, ".larky", "skills"), "commit",
+	writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "commit",
 		"name: commit\ndescription: project override",
 		"project body")
 

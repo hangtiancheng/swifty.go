@@ -49,13 +49,13 @@ func TestLoadSwiftySkills(t *testing.T) {
 	wd, _ := os.Getwd()
 	// Walk up to find project root
 	for wd != "/" {
-		if _, err := os.Stat(filepath.Join(wd, ".larky", "skills")); err == nil {
+		if _, err := os.Stat(filepath.Join(wd, ".swifty", "skills")); err == nil {
 			break
 		}
 		wd = filepath.Dir(wd)
 	}
 
-	skillsDir := filepath.Join(wd, ".larky", "skills")
+	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
 		t.Skip("No .github.com/hangtiancheng/swifty.go/swifty_cliskills directory found")
 	}
@@ -112,29 +112,29 @@ func TestSkillRenderNoArgsReturnsBody(t *testing.T) {
 
 func TestLoadSkillsMergesPriority(t *testing.T) {
 	work := t.TempDir()
-	larkyDir := filepath.Join(work, ".larky", "skills", "shared")
-	if err := os.MkdirAll(larkyDir, 0o755); err != nil {
+	swiftyDir := filepath.Join(work, ".swifty", "skills", "shared")
+	if err := os.MkdirAll(swiftyDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(larkyDir, "SKILL.md"), []byte(`---
+	os.WriteFile(filepath.Join(swiftyDir, "SKILL.md"), []byte(`---
 name: shared
-description: project skill from .larky
+description: project skill from .swifty
 ---
-larky body`), 0o644)
+swifty body`), 0o644)
 
 	catalog := LoadSkills(work)
 	got := catalog.Get("shared")
 	if got == nil {
 		t.Fatal("merged catalog missing 'shared'")
 	}
-	if !strings.Contains(got.PromptBody, "larky body") {
-		t.Errorf("expected larky body; got body=%q", got.PromptBody)
+	if !strings.Contains(got.PromptBody, "swifty body") {
+		t.Errorf("expected swifty body; got body=%q", got.PromptBody)
 	}
 }
 
 func TestLoadSkillsAllowedTools(t *testing.T) {
 	dir := t.TempDir()
-	skillDir := filepath.Join(dir, ".larky", "skills", "limited")
+	skillDir := filepath.Join(dir, ".swifty", "skills", "limited")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
 name: limited
@@ -193,7 +193,7 @@ func TestSkillRenderInlineNoForkWrapper(t *testing.T) {
 
 func TestLoadSkillsContextFork(t *testing.T) {
 	dir := t.TempDir()
-	skillDir := filepath.Join(dir, ".larky", "skills", "forky")
+	skillDir := filepath.Join(dir, ".swifty", "skills", "forky")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
 name: forky

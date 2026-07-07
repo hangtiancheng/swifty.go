@@ -16,6 +16,10 @@ func TestCreateAgentWorktree(t *testing.T) {
 	repo := t.TempDir()
 	initTestRepo(t, repo)
 
+	// Resolve symlinks so paths match what os.Getwd() returns (matters on
+	// macOS where /var -> /private/var and /tmp -> /private/tmp).
+	repo, _ = filepath.EvalSymlinks(repo)
+
 	// CreateAgentWorktree needs to be called from within a git repo
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)
@@ -26,7 +30,7 @@ func TestCreateAgentWorktree(t *testing.T) {
 		t.Fatalf("CreateAgentWorktree failed: %v", err)
 	}
 
-	expectedPath := filepath.Join(repo, ".larky", "worktrees", "agent-a1234567")
+	expectedPath := filepath.Join(repo, ".swifty", "worktrees", "agent-a1234567")
 	if result.WorktreePath != expectedPath {
 		t.Fatalf("expected path %q, got %q", expectedPath, result.WorktreePath)
 	}

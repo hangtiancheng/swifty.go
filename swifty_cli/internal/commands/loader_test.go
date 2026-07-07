@@ -125,8 +125,8 @@ body
 
 func TestLoadUserCommandsMergesAndOverrides(t *testing.T) {
 	work := t.TempDir()
-	mewProj := filepath.Join(work, ".larky", "commands")
-	mustWrite(t, filepath.Join(mewProj, "shared.md"), `from larky`)
+	mewProj := filepath.Join(work, ".swifty", "commands")
+	mustWrite(t, filepath.Join(mewProj, "shared.md"), `from swifty`)
 	mustWrite(t, filepath.Join(mewProj, "only-mew.md"), `mew only`)
 
 	cmds := LoadUserCommands(work)
@@ -134,8 +134,8 @@ func TestLoadUserCommandsMergesAndOverrides(t *testing.T) {
 	for _, c := range cmds {
 		names[c.Name] = c.Handler(&Context{})
 	}
-	if !strings.Contains(names["shared"], "from larky") {
-		t.Errorf("expected 'from larky'; got %q", names["shared"])
+	if !strings.Contains(names["shared"], "from swifty") {
+		t.Errorf("expected 'from swifty'; got %q", names["shared"])
 	}
 	if !strings.Contains(names["only-mew"], "mew only") {
 		t.Errorf("only-mew lost: %v", names)

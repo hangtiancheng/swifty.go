@@ -107,7 +107,7 @@ func (m *Manager) InjectLongTermMemory(instructions, memories string) {
 	}
 	var sections []string
 	if instructions != "" {
-		sections = append(sections, "# larkyMd\nCodebase and user instructions are shown below. Be sure to adhere to these instructions. IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.\n\n"+instructions)
+		sections = append(sections, "# swiftyMd\nCodebase and user instructions are shown below. Be sure to adhere to these instructions. IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.\n\n"+instructions)
 	}
 	if memories != "" {
 		sections = append(sections, "# autoMemory\n"+memories)

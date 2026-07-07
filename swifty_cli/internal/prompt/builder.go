@@ -27,7 +27,7 @@ type EnvironmentContext struct {
 }
 
 type BuildOptions struct {
-	// CustomInstructions holds custom instruction content loaded from LARKY.md and similar instruction files
+	// CustomInstructions holds custom instruction content loaded from SWIFTY.md and similar instruction files
 	CustomInstructions string
 	// MemorySection holds persistent memory content loaded from auto-memory
 	MemorySection string

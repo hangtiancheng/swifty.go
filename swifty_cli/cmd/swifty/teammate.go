@@ -30,7 +30,7 @@ type teammateArgs struct {
 //
 // Format produced by teams.BuildTeammateCLI:
 //
-//	larky --teammate --team-name <t> --agent-name <n>
+//	swifty --teammate --team-name <t> --agent-name <n>
 //
 // The parsing is intentionally minimal: only the three flags this
 // worker needs are recognised, and they must come as separate tokens.

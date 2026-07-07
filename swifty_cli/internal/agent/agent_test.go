@@ -532,7 +532,7 @@ func TestSkillCreatorOutputsToCorrectDirectory(t *testing.T) {
 	// agent creates the new skill → verify it lands in .github.com/hangtiancheng/swifty.go/swifty_cliskills/, not root
 
 	workDir := t.TempDir()
-	skillsDir := filepath.Join(workDir, ".larky", "skills")
+	skillsDir := filepath.Join(workDir, ".swifty", "skills")
 	os.MkdirAll(skillsDir, 0o755)
 
 	// Set up skill-creator skill
@@ -819,12 +819,12 @@ func TestRealSkillsLoadAndRunSimulation(t *testing.T) {
 	// Load the actual installed skills and verify end-to-end simulation works
 	wd, _ := os.Getwd()
 	for wd != "/" {
-		if _, err := os.Stat(filepath.Join(wd, ".larky", "skills")); err == nil {
+		if _, err := os.Stat(filepath.Join(wd, ".swifty", "skills")); err == nil {
 			break
 		}
 		wd = filepath.Dir(wd)
 	}
-	skillsDir := filepath.Join(wd, ".larky", "skills")
+	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
 		t.Skip("No .github.com/hangtiancheng/swifty.go/swifty_cliskills directory")
 	}

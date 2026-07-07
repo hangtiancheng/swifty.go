@@ -16,7 +16,7 @@ type entry struct {
 }
 
 func historyFilePath(dir string) string {
-	return filepath.Join(dir, ".larky", "prompt_history.jsonl")
+	return filepath.Join(dir, ".swifty", "prompt_history.jsonl")
 }
 
 func Load(dir string) []string {

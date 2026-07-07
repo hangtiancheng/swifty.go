@@ -20,18 +20,18 @@ const AutoMemEntrypointName = "MEMORY.md"
 // so records show up in the IDE and editors can open them directly.
 //
 // Resolution order:
-//  1. LARKY_REMOTE_MEMORY_DIR env var — used as-is (escape hatch for
+//  1. SWIFTY_REMOTE_MEMORY_DIR env var — used as-is (escape hatch for
 //     CI/container scenarios where memory should live elsewhere)
 //  2. <projectRoot>/.github.com/hangtiancheng/swifty.go/swifty_climemory
 func GetAutoMemPath(projectRoot string) string {
-	if override := os.Getenv("LARKY_REMOTE_MEMORY_DIR"); override != "" {
+	if override := os.Getenv("SWIFTY_REMOTE_MEMORY_DIR"); override != "" {
 		return strings.TrimRight(override, string(filepath.Separator)) + string(filepath.Separator)
 	}
 	abs, err := filepath.Abs(projectRoot)
 	if err != nil {
 		abs = projectRoot
 	}
-	return filepath.Join(abs, ".larky", "memory") + string(filepath.Separator)
+	return filepath.Join(abs, ".swifty", "memory") + string(filepath.Separator)
 }
 
 // GetAutoMemEntrypoint returns the path to the MEMORY.md inside the
@@ -73,7 +73,7 @@ func GetUserAutoMemPath() string {
 	if err != nil || home == "" {
 		return ""
 	}
-	return filepath.Join(home, ".larky", "memory") + string(filepath.Separator)
+	return filepath.Join(home, ".swifty", "memory") + string(filepath.Separator)
 }
 
 // GetUserAutoMemEntrypoint returns the path to ~/.github.com/hangtiancheng/swifty.go/swifty_climemory/MEMORY.md.

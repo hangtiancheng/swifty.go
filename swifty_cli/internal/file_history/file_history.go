@@ -33,7 +33,7 @@ type History struct {
 }
 
 func New(baseDir, sessionID string) *History {
-	dir := filepath.Join(baseDir, ".larky", "file-history", sessionID)
+	dir := filepath.Join(baseDir, ".swifty", "file-history", sessionID)
 	_ = os.MkdirAll(dir, 0o755)
 	return &History{
 		sessionDir:   dir,

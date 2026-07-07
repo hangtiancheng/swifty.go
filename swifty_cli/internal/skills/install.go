@@ -144,7 +144,7 @@ func (f *fetcher) listContents(src *SkillSource, subpath string) ([]contentEntry
 		f.apiBase, src.Owner, src.Repo, subpath, url.QueryEscape(src.Ref))
 	req, _ := http.NewRequest("GET", endpoint, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "larky-install-skill")
+	req.Header.Set("User-Agent", "swifty-install-skill")
 	resp, err := f.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("contents API: %w", err)
@@ -202,7 +202,7 @@ func (f *fetcher) fetchBlob(e contentEntry) ([]byte, error) {
 		return nil, fmt.Errorf("no download_url for %s", e.Path)
 	}
 	req, _ := http.NewRequest("GET", e.DownloadURL, nil)
-	req.Header.Set("User-Agent", "larky-install-skill")
+	req.Header.Set("User-Agent", "swifty-install-skill")
 	resp, err := f.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -366,7 +366,7 @@ func UserSkillsRoot() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locate home dir: %w", err)
 	}
-	root := filepath.Join(home, ".larky", "skills")
+	root := filepath.Join(home, ".swifty", "skills")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return "", err
 	}

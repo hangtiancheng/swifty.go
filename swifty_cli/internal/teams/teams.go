@@ -22,11 +22,11 @@ const (
 )
 
 func teamsBaseDir() string {
-	if dir := os.Getenv("LARKY_TEAMS_DIR"); dir != "" {
+	if dir := os.Getenv("SWIFTY_TEAMS_DIR"); dir != "" {
 		return dir
 	}
 	wd, _ := os.Getwd()
-	return filepath.Join(wd, ".larky", "teams")
+	return filepath.Join(wd, ".swifty", "teams")
 }
 
 type Member struct {

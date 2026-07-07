@@ -27,7 +27,7 @@ func performPostCreationSetup(ctx context.Context, repoRoot, worktreePath string
 // copySettingsLocal copies .github.com/hangtiancheng/swifty.go/swifty_clisettings.local.json from the main repo to the worktree. This
 // propagates local settings (which may contain secrets).
 func copySettingsLocal(repoRoot, worktreePath string) {
-	relPath := filepath.Join(".larky", "settings.local.json")
+	relPath := filepath.Join(".swifty", "settings.local.json")
 	src := filepath.Join(repoRoot, relPath)
 	dst := filepath.Join(worktreePath, relPath)
 

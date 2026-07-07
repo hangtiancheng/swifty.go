@@ -430,9 +430,9 @@ func runCommand(h Hook, ctx HookContext) HookResult {
 
 	cmd := exec.CommandContext(execCtx, "bash", "-c", h.Action.Command)
 	cmd.Env = append(cmd.Environ(),
-		"LARKY_EVENT="+string(ctx.EventName),
-		"LARKY_TOOL="+ctx.ToolName,
-		"LARKY_FILE_PATH="+ctx.FilePath,
+		"SWIFTY_EVENT="+string(ctx.EventName),
+		"SWIFTY_TOOL="+ctx.ToolName,
+		"SWIFTY_FILE_PATH="+ctx.FilePath,
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
