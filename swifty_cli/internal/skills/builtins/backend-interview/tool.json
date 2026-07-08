@@ -7,7 +7,7 @@
       "properties": {
         "file_path": {
           "type": "string",
-          "description": "Absolute path to the resume file (txt / md / pdf-as-text)."
+          "description": "Absolute path to the resume file (json / txt / md)."
         }
       },
       "required": ["file_path"]

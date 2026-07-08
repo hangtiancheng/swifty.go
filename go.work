@@ -6,7 +6,6 @@ use (
 	./swifty_chat
 	./swifty_chatbot
 	./swifty_cli
-	./swifty_code
 	./swifty_http
 	./swifty_orm
 	./swifty_rpc
