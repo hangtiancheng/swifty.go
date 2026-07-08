@@ -189,4 +189,8 @@ rules.ninja
 *_cpp/
 
 .claude/skills/langchaingo
-SuperBiz*
+
+*.local.yml
+*.local.yaml
+**/*.local.yml
+**/*.local.yaml

@@ -22,9 +22,9 @@
     "build": "node main.js build",
     "test": "node main.js test",
     "clean": "node main.js clean",
-    "rm:ds_store": "node scripts/rm_ds_store.js",
     "rename": "node scripts/rename.js",
     "add:license": "node scripts/add_licenses.js",
+    "build:swifty": "node scripts/build_swifty.js",
     "git:precommit": "rm -rf ./.claude && ln -s ./.github ./.claude",
     "git:commit": "pnpm git:precommit && git add -A && git commit -m \"feat: Introduce new features\"",
     "git:push": "pnpm git:commit && git push origin main"

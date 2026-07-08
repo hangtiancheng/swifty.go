@@ -73,7 +73,7 @@ func TestCatalogGetFullHotReload(t *testing.T) {
 
 func TestLoadCatalogBuiltinsPresent(t *testing.T) {
 	cat := LoadCatalog(t.TempDir())
-	wantNames := []string{"commit", "test", "fullstack-interview"}
+	wantNames := []string{"commit", "test", "fullstack-interview", "teach-me"}
 	for _, name := range wantNames {
 		s := cat.Get(name)
 		if s == nil {

@@ -1,6 +1,12 @@
 ---
 name: teach-me
 description: "Personalized 1-on-1 AI tutor. Diagnoses level, builds learning path, teaches via guided questions, tracks misconceptions. Use when user wants to learn/study/understand a topic, says 'teach me', 'help me understand', or invokes /teach-me."
+mode: inline
+allowed_tools:
+  - AskUserQuestion
+  - ReadFile
+  - WriteFile
+  - Glob
 ---
 
 # Teach Me
