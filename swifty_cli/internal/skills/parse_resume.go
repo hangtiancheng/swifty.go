@@ -73,34 +73,11 @@ type resumeSignal struct {
 // check presence, not frequency.
 var (
 	frontendKeywords = []string{
-		"JavaScript", "TypeScript", "React", "Vue", "Angular", "Svelte",
-		"Next.js", "Nuxt", "Webpack", "Vite", "Rollup", "esbuild",
-		"CSS", "Sass", "Less", "Tailwind", "styled-components", "CSS Modules",
-		"HTML", "DOM", "BOM", "Web Components", "Shadow DOM",
-		"Redux", "Zustand", "MobX", "Recoil", "Jotai",
-		"Jest", "Vitest", "Cypress", "Playwright", "Testing Library",
-		"Node", "Node.js", "Express", "Koa", "Fastify", "Hono",
-		"SSR", "SSG", "SPA", "PWA", "Web Workers", "Service Worker",
-		"Responsive", "Accessibility", "a11y", "SEO",
-		"REST API", "GraphQL", "WebSocket", "SSE",
+		"BOM", "CSS", "CSS Modules", "DOM", "Express", "GraphQL", "HTML", "Hono", "JavaScript", "Jest", "Jotai", "Koa", "MobX", "Next.js", "Node", "Node.js", "PWA", "Playwright", "REST API", "React", "Rollup", "SEO", "SPA", "SSE", "SSG", "SSR", "Sass", "Service Worker", "Shadow DOM", "TailwindCSS", "Testing Library", "TypeScript", "Vite", "Vitest", "Vue", "Web Components", "Web Workers", "WebSocket", "Webpack", "Zustand", "esbuild", "styled-components",
 	}
 
 	backendKeywords = []string{
-		"Go", "Golang", "Java", "Python", "Rust", "C++", "C#",
-		"Kotlin", "Scala", "Ruby", "PHP", "Erlang", "Elixir",
-		"MySQL", "PostgreSQL", "MongoDB", "Redis", "Cassandra",
-		"Elasticsearch", "ClickHouse", "TiDB", "CockroachDB",
-		"Kafka", "RabbitMQ", "RocketMQ", "NATS", "Pulsar",
-		"gRPC", "Protobuf", "Thrift",
-		"Docker", "Kubernetes", "Helm", "Istio", "Envoy",
-		"AWS", "GCP", "Azure", "Terraform", "Pulumi",
-		"Prometheus", "Grafana", "OpenTelemetry", "Jaeger",
-		"Nginx", "HAProxy", "Traefik", "Envoy",
-		"Linux", "Shell", "Bash", "systemd",
-		"MySQL Tuning", "Query Optimization", "Index Design",
-		"Cache", "CDN", "Rate Limiting", "Circuit Breaker",
-		"Distributed", "Consensus", "Raft", "Paxos",
-		"Microservices", "Service Mesh",
+		"Bash", "C++", "CDN", "Cache", "Circuit Breaker", "ClickHouse", "Consensus", "Distributed", "Docker", "Elasticsearch", "Go", "Golang", "Grafana", "Index Design", "Kafka", "Kubernetes", "Linux", "Microservices", "MongoDB", "MySQL", "MySQL Tuning", "Nginx", "OpenTelemetry", "PostgreSQL", "Prometheus", "Protobuf", "Query Optimization", "Raft", "Rate Limiting", "Redis", "Service Mesh", "Shell", "Thrift", "gRPC", "systemd",
 	}
 
 	// generalKeywords appear in both tracks and do not influence
