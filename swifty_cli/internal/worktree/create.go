@@ -31,7 +31,7 @@ type CreateResult struct {
 }
 
 // getOrCreateWorktree creates a new git worktree for the given slug under
-// <repoRoot>/.github.com/hangtiancheng/swifty.go/swifty_cliworktrees/, or resumes it if it already exists.
+// <repoRoot>/.swifty/worktrees/, or resumes it if it already exists.
 //
 // Fast-resume path: ReadWorktreeHeadSha reads the .git pointer file directly (no subprocess, no
 // upward walk). On a 16M-object repo this saves ~6-8s of `git fetch` commit-graph scan that runs on

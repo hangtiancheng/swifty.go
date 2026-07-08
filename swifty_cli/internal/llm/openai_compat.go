@@ -29,7 +29,7 @@ func newOpenAICompatClient(cfg *config.ProviderConfig, systemPrompt string) (*op
 	apiKey := cfg.ResolveAPIKey()
 	if apiKey == "" {
 		return nil, &AuthenticationError{
-			Message: "OpenAI-compatible API key not found. Set it in .github.com/hangtiancheng/swifty.go/swifty_cliconfig.yaml or via OPENAI_API_KEY env var.",
+			Message: "OpenAI-compatible API key not found. Set it in .swifty/config.yaml or via OPENAI_API_KEY env var.",
 		}
 	}
 

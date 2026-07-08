@@ -73,7 +73,7 @@ func TestCatalogGetFullHotReload(t *testing.T) {
 
 func TestLoadCatalogBuiltinsPresent(t *testing.T) {
 	cat := LoadCatalog(t.TempDir())
-	wantNames := []string{"commit", "test", "backend-interview"}
+	wantNames := []string{"commit", "test", "fullstack-interview"}
 	for _, name := range wantNames {
 		s := cat.Get(name)
 		if s == nil {
@@ -100,14 +100,14 @@ func TestLoadCatalogProjectOverridesBuiltin(t *testing.T) {
 	}
 }
 
-func TestBuiltinBackendInterviewIsDirectory(t *testing.T) {
+func TestBuiltinFullstackInterviewIsDirectory(t *testing.T) {
 	cat := LoadCatalog(t.TempDir())
-	skill := cat.Get("backend-interview")
+	skill := cat.Get("fullstack-interview")
 	if skill == nil {
-		t.Fatal("backend-interview builtin missing")
+		t.Fatal("fullstack-interview builtin missing")
 	}
 	if !skill.IsDirectory {
-		t.Errorf("backend-interview should be IsDirectory (has tool.json)")
+		t.Errorf("fullstack-interview should be IsDirectory (has tool.json)")
 	}
 	schemas, err := parseToolJSON(skill)
 	if err != nil {

@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildWorktreeNotice(t *testing.T) {
-	notice := BuildWorktreeNotice("/home/user/project", "/home/user/project/.github.com/hangtiancheng/swifty.go/swifty_cliworktrees/agent-a1234567")
+	notice := BuildWorktreeNotice("/home/user/project", "/home/user/project/.swifty/worktrees/agent-a1234567")
 
 	// Must contain both paths
 	if !strings.Contains(notice, "/home/user/project") {

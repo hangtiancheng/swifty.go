@@ -261,7 +261,7 @@ func TestLiveSkillCreatorOutputPath(t *testing.T) {
 		t.Skip("skill-creator skill not installed")
 	}
 
-	// Use a temp dir to simulate a project with .github.com/hangtiancheng/swifty.go/swifty_cliskills/
+	// Use a temp dir to simulate a project with .swifty/skills
 	workDir := t.TempDir()
 	testSkillsDir := filepath.Join(workDir, ".swifty", "skills")
 	os.MkdirAll(testSkillsDir, 0o755)
@@ -309,8 +309,8 @@ func TestLiveSkillCreatorOutputPath(t *testing.T) {
 
 		wrongLocation := false
 		for _, f := range allFiles {
-			if strings.Contains(f, "SKILL.md") && !strings.Contains(f, ".github.com/hangtiancheng/swifty.go/swifty_cliskills/") {
-				t.Errorf("SKILL.md created at WRONG location: %s (should be under .github.com/hangtiancheng/swifty.go/swifty_cliskills/)", f)
+			if strings.Contains(f, "SKILL.md") && !strings.Contains(f, ".swifty/skills/") {
+				t.Errorf("SKILL.md created at WRONG location: %s (should be under .swifty/skills/)", f)
 				wrongLocation = true
 			}
 		}

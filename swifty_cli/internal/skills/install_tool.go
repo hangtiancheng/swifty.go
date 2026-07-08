@@ -18,7 +18,7 @@ import (
 type InstallSkillTool struct {
 	Catalog     *Catalog
 	OnInstalled func(name string)
-	// InstallRoot overrides ~/.github.com/hangtiancheng/swifty.go/swifty_cliskills for tests. Empty = derive
+	// InstallRoot overrides ~/.swifty/skills for tests. Empty = derive
 	// from UserSkillsRoot at call time.
 	InstallRoot string
 }
@@ -29,7 +29,7 @@ func (t *InstallSkillTool) Category() tools.ToolCategory { return tools.Category
 
 func (t *InstallSkillTool) Description() string {
 	return "Download and install a Skill from a URL into the user-global skills directory " +
-		"(~/.github.com/hangtiancheng/swifty.go/swifty_cliskills/). Supports skills.sh URLs (https://www.skills.sh/<owner>/<repo>/<name>), " +
+		"(~/.swifty/skills/). Supports skills.sh URLs (https://www.skills.sh/<owner>/<repo>/<name>), " +
 		"GitHub tree URLs (https://github.com/<owner>/<repo>/tree/<ref>/<path>), and raw " +
 		"SKILL.md URLs. After install the Skill becomes available via /<name> and LoadSkill. " +
 		"Call this when the user pastes a Skill URL and asks to install it."

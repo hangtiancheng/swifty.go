@@ -1,6 +1,8 @@
 {
   "cSpell.words": [
     "alertname",
+    "bubbletea",
+    "charmbracelet",
     "cloudwego",
     "coverprofile",
     "daisyui",
@@ -10,6 +12,8 @@
     "duckduckgo",
     "eino",
     "embedder",
+    "evals",
+    "frontmatter",
     "GOPATH",
     "gorm",
     "gowork",
@@ -38,6 +42,7 @@
     "swifty-light",
     "topbar",
     "worktree",
+    "worktreeinclude",
     "worktrees"
   ],
   "css.validate": false

@@ -10,7 +10,7 @@ import (
 )
 
 // TestMain points every teams test at a throwaway mailbox root so
-// running the suite doesn't litter the repo with .github.com/hangtiancheng/swifty.go/swifty_cliteams/
+// running the suite doesn't litter the repo with .swifty/teams/
 // directories.
 func TestMain(m *testing.M) {
 	tmp, err := os.MkdirTemp("", "swifty-teams-test-")

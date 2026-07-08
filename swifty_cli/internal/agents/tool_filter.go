@@ -85,7 +85,7 @@ func FilterToolsForAgent(reg *tools.Registry, allowedTools, disallowedTools []st
 // disallowedTools — definition-level blacklist 6. Agent definition tools — definition-level
 // whitelist intersection ("*" disables this).
 //
-// isCustom: agent loaded from .github.com/hangtiancheng/swifty.go/swifty_cliagents/, not a built-in. isInProcessTeammate: spawned via
+// isCustom: agent loaded from .swifty/agents/, not a built-in. isInProcessTeammate: spawned via
 // TeamCreate / SpawnTeammate in ch15.
 func FilterToolsForAgentEx(reg *tools.Registry, allowedTools, disallowedTools []string, isAsync, isCustom, isInProcessTeammate bool) *tools.Registry {
 	disallowed := make(map[string]bool, len(disallowedTools))

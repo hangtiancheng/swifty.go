@@ -16,8 +16,8 @@ import (
 // `/memory` slash command (list / clear).
 type Manager struct {
 	projectRoot string
-	userMemDir  string // ~/.github.com/hangtiancheng/swifty.go/swifty_climemory/ — user/feedback type memories
-	memDir      string // <projectRoot>/.github.com/hangtiancheng/swifty.go/swifty_climemory/ — project/reference type memories
+	userMemDir  string // ~/.swifty/memory/ — user/feedback type memories
+	memDir      string // <projectRoot>/.swifty/memory/ — project/reference type memories
 }
 
 // NewManager creates a Manager for the given project root. Resolves both

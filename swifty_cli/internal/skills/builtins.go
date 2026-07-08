@@ -41,7 +41,7 @@ func LoadBuiltins() []*Skill {
 }
 
 // builtinHasToolJSON peeks the embedded tree for a tool.json under the
-// skill's dir. Used to flag directory-type builtins (e.g. backend-interview).
+// skill's dir. Used to flag directory-type builtins (e.g. fullstack-interview).
 func builtinHasToolJSON(skillName string) bool {
 	_, err := builtinsFS.ReadFile(filepath.Join("builtins", skillName, "tool.json"))
 	return err == nil

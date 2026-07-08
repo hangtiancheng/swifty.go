@@ -81,7 +81,7 @@ func TestParseSkillURLRejects(t *testing.T) {
 }
 
 func TestValidateSkillName(t *testing.T) {
-	ok := []string{"frontend-design", "pdf", "backend_interview", "x1y2"}
+	ok := []string{"frontend-design", "pdf", "fullstack_interview", "x1y2"}
 	for _, n := range ok {
 		if err := validateSkillName(n); err != nil {
 			t.Errorf("validateSkillName(%q): %v", n, err)

@@ -1,0 +1,16 @@
+[
+  {
+    "name": "parse_resume",
+    "description": "Extract structured fullstack interview signal from a resume file. Returns JSON with primary_role, frontend_stack, backend_stack, projects, years_of_experience. Supports JSON, txt, Markdown, YAML, and TOML resume formats.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "description": "Absolute path to the resume file (json / txt / md / yaml / yml / toml)."
+        }
+      },
+      "required": ["file_path"]
+    }
+  }
+]

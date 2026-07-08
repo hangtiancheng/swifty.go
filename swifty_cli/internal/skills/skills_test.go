@@ -57,7 +57,7 @@ func TestLoadSwiftySkills(t *testing.T) {
 
 	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		t.Skip("No .github.com/hangtiancheng/swifty.go/swifty_cliskills directory found")
+		t.Skip("No .swifty/skills directory found")
 	}
 
 	catalog, err := LoadFromDirectory(skillsDir)
@@ -269,7 +269,9 @@ Provide a concise summary of the given text.
 	// Simulate system prompt building (same logic as tui.go)
 	var sb strings.Builder
 	sb.WriteString("## Available Skills\n\n")
-	sb.WriteString("Skills are installed at: " + dir + "\n")
+	sb.WriteString("Skills are installed at: ")
+	sb.WriteString(dir)
+	sb.WriteString("\n")
 	sb.WriteString("When creating new skills, always place them under this directory as <skill-name>/SKILL.md.\n\n")
 	sb.WriteString("The following skills are available. When the user invokes /<name>, follow that skill's instructions.\n\n")
 	for _, meta := range metas {
@@ -277,7 +279,11 @@ Provide a concise summary of the given text.
 		if len(desc) > 200 {
 			desc = desc[:200] + "…"
 		}
-		sb.WriteString("- /" + meta.Name + ": " + desc + "\n")
+		sb.WriteString("- /")
+		sb.WriteString(meta.Name)
+		sb.WriteString(": ")
+		sb.WriteString(desc)
+		sb.WriteString("\n")
 	}
 	prompt := sb.String()
 

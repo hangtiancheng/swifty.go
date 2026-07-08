@@ -224,7 +224,7 @@ type InstallReport struct {
 }
 
 // Install pulls the skill at src into installRoot/<src.Name>/. installRoot
-// is expected to be the user-global skills tier (~/.github.com/hangtiancheng/swifty.go/swifty_cliskills/) so
+// is expected to be the user-global skills tier (~/.swifty/skills/) so
 // installs are reused across projects.
 //
 // Writes are atomic at the directory level: we first stage into a sibling
@@ -359,7 +359,7 @@ func validateSkillName(name string) error {
 	return nil
 }
 
-// UserSkillsRoot returns ~/.github.com/hangtiancheng/swifty.go/swifty_cliskills, creating the parent if needed
+// UserSkillsRoot returns ~/.swifty/skills, creating the parent if needed
 // so callers don't have to repeat the dance.
 func UserSkillsRoot() (string, error) {
 	home, err := os.UserHomeDir()

@@ -50,8 +50,8 @@ func LoadDir(dir string) []*Command {
 	return cmds
 }
 
-// LoadUserCommands merges file-based commands from two search paths: 1. ~/.github.com/hangtiancheng/swifty.go/swifty_clicommands/ (user
-// global) 2. $workDir/.github.com/hangtiancheng/swifty.go/swifty_clicommands/ (project).
+// LoadUserCommands merges file-based commands from two search paths: 1. ~/.swifty/commands/ (user
+// global) 2. $workDir/.swifty/commands/ (project).
 //
 // Later sources override earlier ones on name collision.
 func LoadUserCommands(workDir string) []*Command {

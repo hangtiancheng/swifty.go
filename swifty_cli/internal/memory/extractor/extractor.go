@@ -34,8 +34,8 @@ import (
 // AppendSystem is the conduit for the "Memory saved: foo.md" notice that the user sees after a
 // successful extraction.
 type Deps struct {
-	MemoryDir     string                           // <wd>/.github.com/hangtiancheng/swifty.go/swifty_climemory/ — project/reference (trailing sep)
-	UserMemoryDir string                           // ~/.github.com/hangtiancheng/swifty.go/swifty_climemory/ — user/feedback (trailing sep); may be "" if $HOME unresolved
+	MemoryDir     string                           // <wd>/.swifty/memory/ — project/reference (trailing sep)
+	UserMemoryDir string                           // ~/.swifty/memory/ — user/feedback (trailing sep); may be "" if $HOME unresolved
 	ProjectRoot   string                           // absolute project root
 	Client        llm.Client                       // forked extraction agent's LLM client
 	ToolRegistry  *tools.Registry                  // parent tool registry (will be filtered)

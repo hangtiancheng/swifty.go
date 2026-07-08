@@ -32,11 +32,11 @@ func TestIsAutoMemPath(t *testing.T) {
 	root := "/tmp/p"
 	dir := GetAutoMemPath(root)
 	cases := map[string]bool{
-		dir + "MEMORY.md":  true,
-		dir + "foo.md":     true,
-		dir + "sub/foo.md": true,
-		"/tmp/p/.github.com/hangtiancheng/swifty.go/swifty_climemoryx": false,
-		"/other/path/foo.md": false,
+		dir + "MEMORY.md":        true,
+		dir + "foo.md":           true,
+		dir + "sub/foo.md":       true,
+		"/tmp/p/.swifty/memoryx": false,
+		"/other/path/foo.md":     false,
 	}
 	for path, want := range cases {
 		if got := IsAutoMemPath(path, root); got != want {

@@ -89,7 +89,7 @@ func transcriptDir(teamName string) string {
 }
 
 // SaveTranscript persists a teammate's conversation history to disk for debugging and troubleshooting.
-// File path: .github.com/hangtiancheng/swifty.go/swifty_cliteams/<team>/transcripts/<agentID>.json.
+// File path: .swifty/teams/<team>/transcripts/<agentID>.json.
 func SaveTranscript(teamName, agentID string, conv *conversation.Manager) (string, error) {
 	dir := transcriptDir(teamName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

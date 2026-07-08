@@ -34,7 +34,7 @@ const (
 	KeepRecentTurns = 10
 
 	// SpillSubdir lives under the agent's workdir.
-	SpillSubdir = ".github.com/hangtiancheng/swifty.go/swifty_clitool_results"
+	SpillSubdir = ".swifty/tool_results"
 )
 
 const (

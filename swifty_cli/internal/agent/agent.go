@@ -595,13 +595,13 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 	}
 
 	if a.Hooks != nil {
-		hctx := hooks.HookContext{
+		hookCtx := hooks.HookContext{
 			EventName: hooks.EventPreToolUse,
 			ToolName:  tc.ToolName,
 			ToolArgs:  tc.Arguments,
 			FilePath:  extractFilePath(tc.Arguments),
 		}
-		if rejected, msg := a.Hooks.RunPreToolHooks(hctx); rejected {
+		if rejected, msg := a.Hooks.RunPreToolHooks(hookCtx); rejected {
 			return toolExecResult{
 				toolID:   tc.ToolID,
 				toolName: tc.ToolName,

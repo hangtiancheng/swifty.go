@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildExtractAutoOnlyPromptMarkers(t *testing.T) {
-	got := BuildExtractAutoOnlyPrompt(7, "", false, "/home/test/.github.com/hangtiancheng/swifty.go/swifty_climemory/", "/tmp/proj/.github.com/hangtiancheng/swifty.go/swifty_climemory/")
+	got := BuildExtractAutoOnlyPrompt(7, "", false, "/home/test/.swifty/memory/", "/tmp/proj/.swifty/memory/")
 	for _, expect := range []string{
 		"memory extraction subagent",
 		"most recent ~7 messages",
@@ -26,7 +26,7 @@ func TestBuildExtractAutoOnlyPromptMarkers(t *testing.T) {
 }
 
 func TestBuildExtractAutoOnlyPromptSkipIndex(t *testing.T) {
-	got := BuildExtractAutoOnlyPrompt(5, "", true, "/home/test/.github.com/hangtiancheng/swifty.go/swifty_climemory/", "/tmp/proj/.github.com/hangtiancheng/swifty.go/swifty_climemory/")
+	got := BuildExtractAutoOnlyPrompt(5, "", true, "/home/test/.swifty/memory/", "/tmp/proj/.swifty/memory/")
 	if strings.Contains(got, "**Step 2** — add a pointer") {
 		t.Errorf("skipIndex=true should remove Step 2 / MEMORY.md update section")
 	}
@@ -37,7 +37,7 @@ func TestBuildExtractAutoOnlyPromptSkipIndex(t *testing.T) {
 
 func TestBuildExtractAutoOnlyPromptIncludesExistingManifest(t *testing.T) {
 	manifest := "- [user] foo.md (2026-05-22T01:00:00.000Z): existing note"
-	got := BuildExtractAutoOnlyPrompt(3, manifest, false, "/home/test/.github.com/hangtiancheng/swifty.go/swifty_climemory/", "/tmp/proj/.github.com/hangtiancheng/swifty.go/swifty_climemory/")
+	got := BuildExtractAutoOnlyPrompt(3, manifest, false, "/home/test/.swifty/memory/", "/tmp/proj/.swifty/memory/")
 	if !strings.Contains(got, "## Existing memory files") {
 		t.Errorf("manifest section header missing")
 	}
@@ -53,7 +53,7 @@ func TestBuildExtractAutoOnlyPromptNoTeamSection(t *testing.T) {
 	// Dual-path mode uses <scope> tags for user-level / project-level routing, but the
 	// "team memory" / "private or team" guidance from the Claude Code COMBINED variant
 	// must still never appear — Swifty keeps the user/project split simple.
-	got := BuildExtractAutoOnlyPrompt(3, "", false, "/home/test/.github.com/hangtiancheng/swifty.go/swifty_climemory/", "/tmp/proj/.github.com/hangtiancheng/swifty.go/swifty_climemory/")
+	got := BuildExtractAutoOnlyPrompt(3, "", false, "/home/test/.swifty/memory/", "/tmp/proj/.swifty/memory/")
 	for _, banned := range []string{
 		"team memor",
 		"private or team",
@@ -65,7 +65,7 @@ func TestBuildExtractAutoOnlyPromptNoTeamSection(t *testing.T) {
 }
 
 func TestBuildExtractAutoOnlyPromptIncludesGuardrails(t *testing.T) {
-	got := BuildExtractAutoOnlyPrompt(3, "", false, "/home/test/.github.com/hangtiancheng/swifty.go/swifty_climemory/", "/tmp/proj/.github.com/hangtiancheng/swifty.go/swifty_climemory/")
+	got := BuildExtractAutoOnlyPrompt(3, "", false, "/home/test/.swifty/memory/", "/tmp/proj/.swifty/memory/")
 	for _, expect := range []string{
 		"MCP, Agent, write-capable Bash, etc — will be denied",
 		"Do not interleave reads and writes",

@@ -18,11 +18,11 @@ func init() {
 }
 
 // parseResumeTool is the compiled-in implementation of the parse_resume tool
-// declared in backend-interview/tool.json. It does a light pass over a
-// resume file and extracts a structured signal blob: tech stack, projects,
-// years of experience. The output is fed back to the backend-interview
-// SOP so the sub-agent can tailor questions without re-reading the raw
-// resume on every turn.
+// declared in fullstack-interview/tool.json. It does a light pass over a
+// resume file and extracts structured signal: primary role, frontend stack,
+// backend stack, projects, and years of experience. The output is fed back
+// to the fullstack-interview SOP so the model can tailor questions without
+// re-reading the raw resume on every turn.
 type parseResumeTool struct {
 	schema ToolSchema
 }
@@ -50,42 +50,115 @@ func (t *parseResumeTool) Execute(_ context.Context, args map[string]any) tools.
 	if err != nil {
 		return tools.ToolResult{Output: fmt.Sprintf("read resume: %v", err), IsError: true}
 	}
-	signal := extractResumeSignal(string(raw))
+	signal := extractResumeSignals(string(raw))
 	out, _ := json.MarshalIndent(signal, "", "  ")
 	return tools.ToolResult{Output: string(out)}
 }
 
+// resumeSignal carries the structured extraction result used by the
+// fullstack-interview SOP. primary_role is one of "frontend", "backend",
+// or "fullstack" and drives which question pools the interviewer draws from.
 type resumeSignal struct {
-	TechStack         []string `json:"tech_stack"`
+	PrimaryRole       string   `json:"primary_role"`
+	FrontendStack     []string `json:"frontend_stack"`
+	BackendStack      []string `json:"backend_stack"`
+	GeneralStack      []string `json:"general_stack"`
 	Projects          []string `json:"projects"`
 	YearsOfExperience int      `json:"years_of_experience"`
 }
 
+// frontendKeywords and backendKeywords are the detection pools. A keyword
+// match pushes the candidate's score toward that track; the dominant track
+// becomes primary_role. Ordering within each list does not matter -- we
+// check presence, not frequency.
 var (
-	techKeywords = []string{
-		"Go", "Golang", "Java", "Python", "Rust", "TypeScript", "JavaScript",
-		"Node", "Node.js", "React", "Vue", "Angular", "Kotlin", "Scala", "C++",
-		"PostgreSQL", "MySQL", "MongoDB", "Redis", "Cassandra", "Elasticsearch",
-		"Kafka", "RabbitMQ", "gRPC", "GraphQL", "REST",
-		"Docker", "Kubernetes", "AWS", "GCP", "Azure", "Terraform",
-		"Prometheus", "Grafana", "OpenTelemetry",
+	frontendKeywords = []string{
+		"JavaScript", "TypeScript", "React", "Vue", "Angular", "Svelte",
+		"Next.js", "Nuxt", "Webpack", "Vite", "Rollup", "esbuild",
+		"CSS", "Sass", "Less", "Tailwind", "styled-components", "CSS Modules",
+		"HTML", "DOM", "BOM", "Web Components", "Shadow DOM",
+		"Redux", "Zustand", "MobX", "Recoil", "Jotai",
+		"Jest", "Vitest", "Cypress", "Playwright", "Testing Library",
+		"Node", "Node.js", "Express", "Koa", "Fastify", "Hono",
+		"SSR", "SSG", "SPA", "PWA", "Web Workers", "Service Worker",
+		"Responsive", "Accessibility", "a11y", "SEO",
+		"REST API", "GraphQL", "WebSocket", "SSE",
 	}
+
+	backendKeywords = []string{
+		"Go", "Golang", "Java", "Python", "Rust", "C++", "C#",
+		"Kotlin", "Scala", "Ruby", "PHP", "Erlang", "Elixir",
+		"MySQL", "PostgreSQL", "MongoDB", "Redis", "Cassandra",
+		"Elasticsearch", "ClickHouse", "TiDB", "CockroachDB",
+		"Kafka", "RabbitMQ", "RocketMQ", "NATS", "Pulsar",
+		"gRPC", "Protobuf", "Thrift",
+		"Docker", "Kubernetes", "Helm", "Istio", "Envoy",
+		"AWS", "GCP", "Azure", "Terraform", "Pulumi",
+		"Prometheus", "Grafana", "OpenTelemetry", "Jaeger",
+		"Nginx", "HAProxy", "Traefik", "Envoy",
+		"Linux", "Shell", "Bash", "systemd",
+		"MySQL Tuning", "Query Optimization", "Index Design",
+		"Cache", "CDN", "Rate Limiting", "Circuit Breaker",
+		"Distributed", "Consensus", "Raft", "Paxos",
+		"Microservices", "Service Mesh",
+	}
+
+	// generalKeywords appear in both tracks and do not influence
+	// primary_role scoring but are still surfaced for question tailoring.
+	generalKeywords = []string{
+		"REST", "GraphQL", "WebSocket", "CI/CD", "Git",
+		"Agile", "Scrum", "TDD", "BDD", "DDD",
+		"System Design", "Architecture",
+	}
+
 	yoeRegex     = regexp.MustCompile(`(?i)(\d{1,2})\s*\+?\s*(years?|yrs?)`)
 	projectRegex = regexp.MustCompile(`(?im)^\s*(?:[-*•·]|\d+\.)\s+(.{8,140})$`)
 )
 
-// extractResumeSignal does a naive single-pass extraction. The interview SOP
-// only needs rough signal (which techs to ask about, which projects look
-// substantial); we don't aim for full NER here.
-func extractResumeSignal(text string) resumeSignal {
-	var sig resumeSignal
+// extractResumeSignals does a naive single-pass extraction. The interview
+// SOP only needs rough signal (which techs to ask about, which projects
+// look substantial, what the candidate's primary track is); we don't aim
+// for full NER here.
+func extractResumeSignals(text string) resumeSignal {
+	lower := strings.ToLower(text)
 
+	var sig resumeSignal
 	seen := map[string]bool{}
-	for _, kw := range techKeywords {
-		if strings.Contains(strings.ToLower(text), strings.ToLower(kw)) && !seen[kw] {
-			sig.TechStack = append(sig.TechStack, kw)
+
+	var feScore, beScore int
+
+	for _, kw := range frontendKeywords {
+		if !seen[kw] && strings.Contains(lower, strings.ToLower(kw)) {
+			sig.FrontendStack = append(sig.FrontendStack, kw)
+			seen[kw] = true
+			feScore++
+		}
+	}
+
+	for _, kw := range backendKeywords {
+		if !seen[kw] && strings.Contains(lower, strings.ToLower(kw)) {
+			sig.BackendStack = append(sig.BackendStack, kw)
+			seen[kw] = true
+			beScore++
+		}
+	}
+
+	for _, kw := range generalKeywords {
+		if !seen[kw] && strings.Contains(lower, strings.ToLower(kw)) {
+			sig.GeneralStack = append(sig.GeneralStack, kw)
 			seen[kw] = true
 		}
+	}
+
+	switch {
+	case feScore > 0 && beScore > 0 && feScore >= beScore/2 && beScore >= feScore/2:
+		sig.PrimaryRole = "fullstack"
+	case feScore > beScore:
+		sig.PrimaryRole = "frontend"
+	case beScore > 0:
+		sig.PrimaryRole = "backend"
+	default:
+		sig.PrimaryRole = "fullstack"
 	}
 
 	if m := yoeRegex.FindStringSubmatch(text); len(m) >= 2 {

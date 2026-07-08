@@ -13,7 +13,7 @@ const MaxWorktreeSlugLength = 64
 var validWorktreeSlugSegment = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 // ValidateWorktreeSlug validates a worktree slug to prevent path traversal and directory escape.
-// The slug is joined into `.github.com/hangtiancheng/swifty.go/swifty_cliworktrees/<slug>` via filepath.Join, which normalizes `.`
+// The slug is joined into `.swifty/worktrees/<slug>` via filepath.Join, which normalizes `.`
 // segments — so `./././target` would escape the worktrees directory. Similarly, an absolute path
 // (leading `/` or `C:\`) would discard the prefix entirely.
 //
@@ -55,7 +55,7 @@ func ValidateWorktreeSlug(slug string) error {
 // unsafe:
 // git refs: `worktree-user` (file) vs `worktree-user/feature` (needs dir)
 // is a D/F conflict that git rejects.
-// directory: `.github.com/hangtiancheng/swifty.go/swifty_cliworktrees/user/feature/` lives inside the `user`
+// directory: `.swifty/worktrees/user/feature/` lives inside the `user`
 // worktree; `git worktree remove` on the parent deletes children with
 // uncommitted work.
 //

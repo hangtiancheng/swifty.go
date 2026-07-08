@@ -33,7 +33,7 @@ type teammateArgs struct {
 //	swifty --teammate --team-name <t> --agent-name <n>
 //
 // The parsing is intentionally minimal: only the three flags this
-// worker needs are recognised, and they must come as separate tokens.
+// worker needs are recognized, and they must come as separate tokens.
 func parseTeammateFlags(args []string) (teammateArgs, bool) {
 	var out teammateArgs
 	if len(args) == 0 || args[0] != "--teammate" {

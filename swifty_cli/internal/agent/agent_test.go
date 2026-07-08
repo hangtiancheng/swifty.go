@@ -529,7 +529,7 @@ Output files directly using WriteFile.
 
 func TestSkillCreatorOutputsToCorrectDirectory(t *testing.T) {
 	// Simulates: user invokes /skill-creator → provides details →
-	// agent creates the new skill → verify it lands in .github.com/hangtiancheng/swifty.go/swifty_cliskills/, not root
+	// agent creates the new skill → verify it lands in .swifty/skills/, not root
 
 	workDir := t.TempDir()
 	skillsDir := filepath.Join(workDir, ".swifty", "skills")
@@ -545,8 +545,8 @@ description: Create new skills
 
 # Skill Creator
 
-New skills MUST be created under the .github.com/hangtiancheng/swifty.go/swifty_cliskills/ directory.
-The full path should be .github.com/hangtiancheng/swifty.go/swifty_cliskills/<skill-name>/SKILL.md.
+New skills MUST be created under the .swifty/skills/ directory.
+The full path should be .swifty/skills/<skill-name>/SKILL.md.
 `), 0o644)
 
 	catalog, _ := skills.LoadFromDirectory(skillsDir)
@@ -564,7 +564,7 @@ The full path should be .github.com/hangtiancheng/swifty.go/swifty_cliskills/<sk
 				llm.StreamEnd{StopReason: "end_turn"},
 			}
 		},
-		// Round 2: user describes, agent creates the skill in .github.com/hangtiancheng/swifty.go/swifty_cliskills/
+		// Round 2: user describes, agent creates the skill in .swifty/skills/
 		func(msgs []conversation.Message) []llm.StreamEvent {
 			last := msgs[len(msgs)-1]
 			if !strings.Contains(last.Content, "git") {
@@ -635,7 +635,7 @@ Help the user with git operations:
 	text2, _ := runConversationRound(ag, conv, "a git helper that helps with branching, rebasing and conflicts")
 	t.Logf("Agent (round 2): %s", text2)
 
-	// THE KEY CHECK: new skill was created inside .github.com/hangtiancheng/swifty.go/swifty_cliskills/, NOT in project root
+	// THE KEY CHECK: new skill was created inside .swifty/skills/, NOT in project root
 	if _, err := os.Stat(newSkillFile); os.IsNotExist(err) {
 		t.Fatalf("skill file not created at expected path: %s", newSkillFile)
 	}
@@ -826,7 +826,7 @@ func TestRealSkillsLoadAndRunSimulation(t *testing.T) {
 	}
 	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		t.Skip("No .github.com/hangtiancheng/swifty.go/swifty_cliskills directory")
+		t.Skip("No .swifty/skills directory")
 	}
 
 	catalog, _ := skills.LoadFromDirectory(skillsDir)

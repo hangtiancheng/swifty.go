@@ -20,10 +20,10 @@ type InstructionSource struct {
 // LoadInstructions discovers and concatenates project & user instruction files.
 //
 // Discovery order (each later layer is appended later, so model attention prioritises it):
-//  1. User global: ~/.github.com/hangtiancheng/swifty.go/swifty_cliSWIFTY.md, ~/.github.com/hangtiancheng/swifty.go/swifty_cliAGENTS.md
+//  1. User global: ~/.swifty/SWIFTY.md, ~/.swifty/AGENTS.md
 //  2. Project: walk from git root down to workDir, picking up SWIFTY.md
 //     and AGENTS.md in each directory (so the file closest to cwd wins)
-//  3. workDir/.github.com/hangtiancheng/swifty.go/swifty_cliINSTRUCTIONS.md (legacy)
+//  3. workDir/.swifty/INSTRUCTIONS.md (legacy)
 //  4. workDir/SWIFTY.local.md (private local override)
 //
 // @-include directives:
@@ -134,7 +134,7 @@ func expandIncludes(content, baseDir, projectRoot string, seen map[string]bool, 
 }
 
 // isIncludeAllowed checks whether the resolved absolute path of an @include is within the allowed scope.
-// Allowed scope: the project directory (projectRoot) and its subdirectories, plus ~/.github.com/hangtiancheng/swifty.go/swifty_cli under the user home.
+// Allowed scope: the project directory (projectRoot) and its subdirectories, plus ~/.swifty under the user home.
 // This prevents escaping to arbitrary locations via paths like @../../etc/passwd.
 func isIncludeAllowed(absPath, projectRoot string) bool {
 	// Paths within the project directory are always allowed
@@ -144,7 +144,7 @@ func isIncludeAllowed(absPath, projectRoot string) bool {
 	if absPath == projectRoot {
 		return true
 	}
-	// The .github.com/hangtiancheng/swifty.go/swifty_cli directory under user home is also allowed (for global instruction file includes)
+	// The .swifty/ directory under user home is also allowed (for global instruction file includes)
 	if home, err := os.UserHomeDir(); err == nil {
 		swiftyDir := filepath.Join(home, ".swifty")
 		if strings.HasPrefix(absPath, swiftyDir+string(filepath.Separator)) {

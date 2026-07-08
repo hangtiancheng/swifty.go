@@ -10,19 +10,19 @@ import (
 const AutoMemEntrypointName = "MEMORY.md"
 
 // GetAutoMemPath returns the auto-memory directory path for the given
-// project root. Shape: <projectRoot>/.github.com/hangtiancheng/swifty.go/swifty_climemory/
+// project root. Shape: <projectRoot>/.swifty/memory/
 //
 // The trailing separator is preserved so prefix-based path matching (e.g.,
 // sandbox `HasPrefix` checks) work correctly without falsely matching
 // `…/memoryxyz`.
 //
-// Swifty colocates memory with other project-local state under .github.com/hangtiancheng/swifty.go/swifty_cli
+// Swifty colocates memory with other project-local state under .swifty/
 // so records show up in the IDE and editors can open them directly.
 //
 // Resolution order:
 //  1. SWIFTY_REMOTE_MEMORY_DIR env var — used as-is (escape hatch for
 //     CI/container scenarios where memory should live elsewhere)
-//  2. <projectRoot>/.github.com/hangtiancheng/swifty.go/swifty_climemory
+//  2. <projectRoot>/.swifty/memory
 func GetAutoMemPath(projectRoot string) string {
 	if override := os.Getenv("SWIFTY_REMOTE_MEMORY_DIR"); override != "" {
 		return strings.TrimRight(override, string(filepath.Separator)) + string(filepath.Separator)
@@ -63,7 +63,7 @@ func IsAutoMemPath(absolutePath, projectRoot string) bool {
 }
 
 // GetUserAutoMemPath returns the user-level auto-memory directory:
-// ~/.github.com/hangtiancheng/swifty.go/swifty_climemory/. Used for type=user / type=feedback memories that
+// ~/.swifty/memory/. Used for type=user / type=feedback memories that
 // follow the human across projects (e.g. coding preferences). Returns ""
 // if the home directory cannot be resolved.
 //
@@ -76,7 +76,7 @@ func GetUserAutoMemPath() string {
 	return filepath.Join(home, ".swifty", "memory") + string(filepath.Separator)
 }
 
-// GetUserAutoMemEntrypoint returns the path to ~/.github.com/hangtiancheng/swifty.go/swifty_climemory/MEMORY.md.
+// GetUserAutoMemEntrypoint returns the path to ~/.swifty/memory/MEMORY.md.
 func GetUserAutoMemEntrypoint() string {
 	dir := GetUserAutoMemPath()
 	if dir == "" {

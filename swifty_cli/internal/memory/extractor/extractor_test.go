@@ -139,7 +139,7 @@ func TestCountModelVisibleMessagesSince(t *testing.T) {
 
 func TestHasMemoryWritesSince(t *testing.T) {
 	tmp := t.TempDir()
-	memDir := memory.GetAutoMemPath(tmp) // <tmp>/.github.com/hangtiancheng/swifty.go/swifty_climemory/
+	memDir := memory.GetAutoMemPath(tmp) // <tmp>/.swifty/memory/
 	memFile := memDir + "user_role.md"
 	outsideFile := filepath.Join(tmp, "other.md")
 

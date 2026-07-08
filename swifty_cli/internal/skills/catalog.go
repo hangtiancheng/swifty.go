@@ -89,8 +89,8 @@ func (c *Catalog) Reload(workDir string) {
 // sources overriding earlier ones by name (project wins over user wins over
 // builtin):
 //  1. internal/skills/builtins/* (embedded via go:embed, lowest priority)
-//  2. ~/.github.com/hangtiancheng/swifty.go/swifty_cliskills/         (user global)
-//  3. $workDir/.github.com/hangtiancheng/swifty.go/swifty_cliskills/  (project, highest priority)
+//  2. ~/.swifty/skills/         (user global)
+//  3. $workDir/.swifty/skills/  (project, highest priority)
 //
 // Only frontmatter is read at this stage; PromptBody stays empty until
 // GetFull is called. Parse failures on individual skills are silently

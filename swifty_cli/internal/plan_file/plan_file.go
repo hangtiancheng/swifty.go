@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const PlansDir = ".github.com/hangtiancheng/swifty.go/swifty_cliplans"
+const PlansDir = ".swifty/plans"
 
 var currentPlanPath string
 

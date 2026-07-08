@@ -45,7 +45,7 @@ func newAnthropicClient(cfg *config.ProviderConfig, systemPrompt string) (*anthr
 	apiKey := cfg.ResolveAPIKey()
 	if apiKey == "" {
 		return nil, &AuthenticationError{
-			Message: "Anthropic API key not found. Set it in .github.com/hangtiancheng/swifty.go/swifty_cliconfig.yaml or via ANTHROPIC_API_KEY env var.",
+			Message: "Anthropic API key not found. Set it in .swifty/config.yaml or via ANTHROPIC_API_KEY env var.",
 		}
 	}
 

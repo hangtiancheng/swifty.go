@@ -20,7 +20,7 @@ type ToolSchema struct {
 
 // builtinToolFactory builds a fully-functional Tool from a declared schema.
 // Used to wire up tool.json declarations to compiled-in Go implementations
-// for embedded skills (e.g. backend-interview → parse_resume).
+// for embedded skills (e.g. fullstack-interview → parse_resume).
 type builtinToolFactory func(schema ToolSchema) tools.Tool
 
 // builtinToolFactories maps a tool name to its compiled-in implementation
