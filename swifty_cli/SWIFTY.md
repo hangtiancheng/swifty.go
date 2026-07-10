@@ -5,7 +5,7 @@
 - Language: Go 1.25+
 - LLM: Anthropic Claude API, OpenAI-compatible APIs
 - TUI: Bubble Tea
-- WebSocket: gorilla/websocket
+- WebSocket: swifty_http (internal)
 
 ## Code Standards
 

@@ -8,10 +8,12 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	"golang.org/x/text/width"
 
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agent"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agents"
@@ -42,8 +44,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
-	"github.com/rivo/uniseg"
 )
 
 type appState int
@@ -1453,6 +1453,28 @@ func (m Model) handleChat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// stringWidth returns the approximate display width of s in terminal cells.
+// Wide characters (CJK, fullwidth) count as 2, combining marks and control
+// characters as 0, everything else as 1. This is used only for textarea height
+// estimation, so minor inaccuracy on complex emoji sequences is acceptable.
+func stringWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		switch {
+		case unicode.IsControl(r):
+			// control characters have no visible width
+		case unicode.Is(unicode.Mn, r), unicode.Is(unicode.Me, r):
+			// nonspacing and enclosing marks attach to the previous rune
+		case width.EastAsianWide == width.LookupRune(r).Kind(),
+			width.EastAsianFullwidth == width.LookupRune(r).Kind():
+			w += 2
+		default:
+			w += 1
+		}
+	}
+	return w
+}
+
 func (m *Model) resizeTextarea() {
 	content := m.textarea.Value()
 	textWidth := m.textarea.Width()
@@ -1461,7 +1483,7 @@ func (m *Model) resizeTextarea() {
 	}
 	total := 0
 	for _, line := range strings.Split(content, "\n") {
-		w := uniseg.StringWidth(line)
+		w := stringWidth(line)
 		if w <= textWidth {
 			total++
 		} else {
@@ -3587,12 +3609,10 @@ func (m Model) renderRewindOptionsDialog() string {
 func (m Model) renderMarkdown(content string) string {
 	// Don't use WithAutoStyle — it queries the terminal background via OSC 11
 	// every time, and the response leaks into stdin and pollutes the input.
-	// Force TrueColor explicitly: without a profile, glamour delegates to
-	// termenv auto-detection, which fails under bubbletea's stdin takeover
-	// and falls back to the no-color "notty" style — markdown then prints raw.
+	// glamour's NewTermRenderer defaults ColorProfile to termenv.TrueColor,
+	// so we don't need to set it explicitly.
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("dark"),
-		glamour.WithColorProfile(termenv.TrueColor),
 		glamour.WithWordWrap(m.width-6),
 	)
 	if err != nil {

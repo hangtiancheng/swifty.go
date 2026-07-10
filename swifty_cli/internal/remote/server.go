@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	swifty "github.com/hangtiancheng/swifty.go/swifty_http"
 
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agent"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agents"
@@ -63,10 +64,6 @@ type askUserResponseData struct {
 	Answers map[string]string `json:"answers"`
 }
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
 // Server is the core of Remote Control, bridging Agent events and WebSocket clients
 type Server struct {
 	providers  []config.ProviderConfig
@@ -75,7 +72,7 @@ type Server struct {
 	addr       string
 
 	mu    sync.Mutex
-	conns map[*websocket.Conn]struct{}
+	conns map[*swifty.WSConn]struct{}
 
 	ag           *agent.Agent
 	conv         *conversation.Manager
@@ -118,7 +115,7 @@ func NewServer(providers []config.ProviderConfig, mcpConfigs []config.MCPServerC
 		mcpConfigs:   mcpConfigs,
 		hookCfgs:     hookCfgs,
 		addr:         addr,
-		conns:        make(map[*websocket.Conn]struct{}),
+		conns:        make(map[*swifty.WSConn]struct{}),
 		pendingPerms: make(map[string]chan<- agent.PermissionResponse),
 		pendingAsks:  make(map[string]chan tools.QuestionResponse),
 	}
@@ -131,38 +128,38 @@ func (s *Server) Run() error {
 
 	s.initMCPServers()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleIndex)
-	mux.HandleFunc("/ws", s.handleWS)
+	app := swifty.New()
+	app.Get("/", s.handleIndex)
+	app.Get("/ws", s.handleWS)
 
 	fmt.Printf("\n  🌐 Remote UI: http://localhost%s\n\n", s.addr)
-	return http.ListenAndServe(s.addr, mux)
+	return app.Listen(s.addr)
 }
 
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(indexHTML))
+func (s *Server) handleIndex(ctx *swifty.Context, next func()) {
+	ctx.Type = "text/html; charset=utf-8"
+	ctx.Body = indexHTML
 }
 
-func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+func (s *Server) handleWS(ctx *swifty.Context, next func()) {
+	ws, err := ctx.Upgrade(&swifty.UpgradeOptions{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	})
 	if err != nil {
 		log.Printf("WebSocket upgrade failed: %v", err)
 		return
 	}
 
 	s.mu.Lock()
-	s.conns[conn] = struct{}{}
+	s.conns[ws] = struct{}{}
 	s.mu.Unlock()
 
 	defer func() {
-		conn.Close()
+		ws.Close()
 		s.mu.Lock()
-		delete(s.conns, conn)
+		delete(s.conns, ws)
 		s.mu.Unlock()
 	}()
-
-	conn.SetReadLimit(4 << 20) // 4MB
 
 	s.send(wsMessage{Type: "connected", Data: map[string]string{
 		"session": s.sessionID,
@@ -173,9 +170,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	s.send(wsMessage{Type: "commands", Data: s.buildCommandList()})
 
 	for {
-		_, raw, err := conn.ReadMessage()
+		_, raw, err := ws.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+			if !errors.Is(err, swifty.ErrWSClosed) {
 				log.Printf("WebSocket read error: %v", err)
 			}
 			return
@@ -906,7 +903,7 @@ func (s *Server) send(msg wsMessage) {
 	}
 	data, _ := json.Marshal(msg)
 	for conn := range s.conns {
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		if err := conn.WriteMessage(swifty.TextMessage, data); err != nil {
 			log.Printf("[ws] write error: type=%s err=%v", msg.Type, err)
 		}
 	}
