@@ -185,7 +185,7 @@ permissionMode: acceptEdits
 background: true
 isolation: worktree
 memory: project
-omitMewcodeMd: true
+omitSwiftyMd: true
 initialPrompt: "kick off with this"
 skills: ["lint", "test"]
 requiredMcpServers: ["github"]
@@ -211,8 +211,8 @@ body`
 	if def.Memory != AgentMemoryScopeProject {
 		t.Errorf("Memory = %q, want %q", def.Memory, AgentMemoryScopeProject)
 	}
-	if !def.OmitMewcodeMd {
-		t.Error("OmitMewcodeMd should be true")
+	if !def.OmitSwiftyMd {
+		t.Error("OmitSwiftyMd should be true")
 	}
 	if def.InitialPrompt != "kick off with this" {
 		t.Errorf("InitialPrompt = %q", def.InitialPrompt)

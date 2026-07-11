@@ -45,7 +45,7 @@ Do the thing.
 	t.Logf("Skill body: %s", skill.PromptBody)
 }
 
-func TestLoadMewcodeSkills(t *testing.T) {
+func TestLoadSwiftySkills(t *testing.T) {
 	wd, _ := os.Getwd()
 	// Walk up to find project root
 	for wd != "/" {

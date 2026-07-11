@@ -27,7 +27,7 @@ const (
 )
 
 // AgentDefinition Fields with no runtime usage yet (Effort, Skills, McpServers, Hooks, Memory,
-// InitialPrompt, OmitMewcodeMd, RequiredMcpServers) are still parsed so user definitions don't lose
+// InitialPrompt, OmitSwiftyMd, RequiredMcpServers) are still parsed so user definitions don't lose
 // data on the round-trip and so future channels can pick them up without another schema migration.
 type AgentDefinition struct {
 	AgentType       string   `yaml:"name"`
@@ -73,9 +73,9 @@ type AgentDefinition struct {
 	// InitialPrompt is prepended to the first user turn (slash commands work).
 	InitialPrompt string `yaml:"initialPrompt"`
 
-	// OmitMewcodeMd drops the SWIFTY.md hierarchy from this agent's user context. Read-only agents
+	// OmitSwiftyMd drops the SWIFTY.md hierarchy from this agent's user context. Read-only agents
 	// (Explore, Plan) save tokens by skipping it.
-	OmitMewcodeMd bool `yaml:"omitMewcodeMd"`
+	OmitSwiftyMd bool `yaml:"omitSwiftyMd"`
 
 	// SystemPrompt is the Markdown body of the definition file.
 	SystemPrompt string `yaml:"-"`
@@ -174,7 +174,7 @@ func (d *AgentDefinition) ToSpec() SubAgentSpec {
 		Background:           d.Background,
 		Isolation:            d.Isolation,
 		InitialPrompt:        d.InitialPrompt,
-		OmitMewcodeMd:        d.OmitMewcodeMd,
+		OmitSwiftyMd:         d.OmitSwiftyMd,
 		Skills:               d.Skills,
 		Memory:               d.Memory,
 		McpServers:           d.McpServers,
