@@ -925,7 +925,7 @@ func (m *Model) buildSkillSection(wd string) string {
 	if len(metas) == 0 {
 		return ""
 	}
-	skillsDir := filepath.Join(wd, ".mewcode", "skills")
+	skillsDir := filepath.Join(wd, ".swifty", "skills")
 	var sb strings.Builder
 	sb.WriteString("## Available Skills\n\n")
 	sb.WriteString(fmt.Sprintf("Skills are installed at: %s\n", skillsDir))

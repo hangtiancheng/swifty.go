@@ -356,7 +356,7 @@ func CreateDefaultRegistry() *Registry {
 			}
 			skills := ctx.SkillList()
 			if len(skills) == 0 {
-				return "No skills installed.\n\nAdd skills to .mewcode/skills/<skill-name>/SKILL.md"
+				return "No skills installed.\n\nAdd skills to .swifty/skills/<skill-name>/SKILL.md"
 			}
 			var sb strings.Builder
 			sb.WriteString(fmt.Sprintf("Available skills (%d):\n\n", len(skills)))

@@ -23,7 +23,7 @@ func writeSkillDir(t *testing.T, root, name, frontmatter, body string) string {
 
 func TestLoadCatalogPhase1EmptyBody(t *testing.T) {
 	work := t.TempDir()
-	writeSkillDir(t, filepath.Join(work, ".mewcode", "skills"), "demo",
+	writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "demo",
 		"name: demo\ndescription: a phase-1 demo\nmode: inline",
 		"# Body\n\nFull SOP here.")
 
@@ -45,7 +45,7 @@ func TestLoadCatalogPhase1EmptyBody(t *testing.T) {
 
 func TestCatalogGetFullHotReload(t *testing.T) {
 	work := t.TempDir()
-	dir := writeSkillDir(t, filepath.Join(work, ".mewcode", "skills"), "hot",
+	dir := writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "hot",
 		"name: hot\ndescription: hot reload demo",
 		"version 1")
 
@@ -74,7 +74,7 @@ func TestCatalogGetFullHotReload(t *testing.T) {
 
 func TestCatalogNeedsReload(t *testing.T) {
 	work := t.TempDir()
-	skillsDir := filepath.Join(work, ".mewcode", "skills")
+	skillsDir := filepath.Join(work, ".swifty", "skills")
 	writeSkillDir(t, skillsDir, "alpha",
 		"name: alpha\ndescription: first skill", "body alpha")
 

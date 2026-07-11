@@ -135,10 +135,10 @@ func (c *Catalog) snapshotDirModTimes() {
 func skillDirPaths(workDir string) []string {
 	var dirs []string
 	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".mewcode", "skills"))
+		dirs = append(dirs, filepath.Join(home, ".swifty", "skills"))
 	}
 	if workDir != "" {
-		dirs = append(dirs, filepath.Join(workDir, ".mewcode", "skills"))
+		dirs = append(dirs, filepath.Join(workDir, ".swifty", "skills"))
 	}
 	return dirs
 }
@@ -147,8 +147,8 @@ func skillDirPaths(workDir string) []string {
 // sources overriding earlier ones by name (project wins over user wins over
 // builtin):
 //  1. internal/skills/builtins/* (embedded via go:embed, lowest priority)
-//  2. ~/.mewcode/skills/         (user global)
-//  3. $workDir/.mewcode/skills/  (project, highest priority)
+//  2. ~/.swifty/skills/         (user global)
+//  3. $workDir/.swifty/skills/  (project, highest priority)
 //
 // Only frontmatter is read at this stage; PromptBody stays empty until
 // GetFull is called. Parse failures on individual skills are silently
@@ -164,11 +164,11 @@ func LoadCatalog(workDir string) *Catalog {
 
 	// Tier 2: user global
 	if home, err := os.UserHomeDir(); err == nil {
-		loadTierInto(c, filepath.Join(home, ".mewcode", "skills"), "user")
+		loadTierInto(c, filepath.Join(home, ".swifty", "skills"), "user")
 	}
 
 	// Tier 3: project
-	loadTierInto(c, filepath.Join(workDir, ".mewcode", "skills"), "project")
+	loadTierInto(c, filepath.Join(workDir, ".swifty", "skills"), "project")
 
 	c.snapshotDirModTimes()
 	return c
@@ -191,9 +191,9 @@ func LoadSkills(workDir string) *Catalog {
 	c := NewCatalog()
 	c.workDir = workDir
 	if home, err := os.UserHomeDir(); err == nil {
-		loadTierEager(c, filepath.Join(home, ".mewcode", "skills"), "user")
+		loadTierEager(c, filepath.Join(home, ".swifty", "skills"), "user")
 	}
-	loadTierEager(c, filepath.Join(workDir, ".mewcode", "skills"), "project")
+	loadTierEager(c, filepath.Join(workDir, ".swifty", "skills"), "project")
 	return c
 }
 
