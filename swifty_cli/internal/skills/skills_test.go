@@ -45,19 +45,19 @@ Do the thing.
 	t.Logf("Skill body: %s", skill.PromptBody)
 }
 
-func TestLoadSwiftySkills(t *testing.T) {
+func TestLoadMewcodeSkills(t *testing.T) {
 	wd, _ := os.Getwd()
 	// Walk up to find project root
 	for wd != "/" {
-		if _, err := os.Stat(filepath.Join(wd, ".swifty", "skills")); err == nil {
+		if _, err := os.Stat(filepath.Join(wd, ".mewcode", "skills")); err == nil {
 			break
 		}
 		wd = filepath.Dir(wd)
 	}
 
-	skillsDir := filepath.Join(wd, ".swifty", "skills")
+	skillsDir := filepath.Join(wd, ".mewcode", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		t.Skip("No .swifty/skills directory found")
+		t.Skip("No .mewcode/skills directory found")
 	}
 
 	catalog, err := LoadFromDirectory(skillsDir)
@@ -112,55 +112,56 @@ func TestSkillRenderNoArgsReturnsBody(t *testing.T) {
 
 func TestLoadSkillsMergesPriority(t *testing.T) {
 	work := t.TempDir()
-	swiftyDir := filepath.Join(work, ".swifty", "skills", "shared")
-	if err := os.MkdirAll(swiftyDir, 0o755); err != nil {
+	mewcodeDir := filepath.Join(work, ".mewcode", "skills", "shared")
+	if err := os.MkdirAll(mewcodeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(swiftyDir, "SKILL.md"), []byte(`---
+	os.WriteFile(filepath.Join(mewcodeDir, "SKILL.md"), []byte(`---
 name: shared
-description: project skill from .swifty
+description: project skill from .mewcode
 ---
-swifty body`), 0o644)
+mewcode body`), 0o644)
 
 	catalog := LoadSkills(work)
 	got := catalog.Get("shared")
 	if got == nil {
 		t.Fatal("merged catalog missing 'shared'")
 	}
-	if !strings.Contains(got.PromptBody, "swifty body") {
-		t.Errorf("expected swifty body; got body=%q", got.PromptBody)
+	if !strings.Contains(got.PromptBody, "mewcode body") {
+		t.Errorf("expected mewcode body; got body=%q", got.PromptBody)
 	}
 }
 
-func TestLoadSkillsAllowedTools(t *testing.T) {
+func TestLoadSkillsForkMode(t *testing.T) {
 	dir := t.TempDir()
-	skillDir := filepath.Join(dir, ".swifty", "skills", "limited")
+	skillDir := filepath.Join(dir, ".mewcode", "skills", "reviewer")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: limited
-description: skill that lists allowed_tools
-allowed_tools:
-  - ReadFile
-  - Grep
+name: reviewer
+description: skill that runs in fork mode
+mode: fork
+fork_context: recent
 ---
 body`), 0o644)
 
 	catalog := LoadSkills(dir)
-	s := catalog.Get("limited")
+	s := catalog.Get("reviewer")
 	if s == nil {
 		t.Fatal("skill not loaded")
 	}
-	if len(s.Meta.AllowedTools) != 2 || s.Meta.AllowedTools[0] != "ReadFile" || s.Meta.AllowedTools[1] != "Grep" {
-		t.Errorf("AllowedTools parse failed: %#v", s.Meta.AllowedTools)
+	if !s.Meta.IsFork() {
+		t.Errorf("expected fork mode")
+	}
+	if s.Meta.ForkContext != "recent" {
+		t.Errorf("ForkContext = %q, want recent", s.Meta.ForkContext)
 	}
 }
 
 func TestSkillRenderForkContextWrapsAsDirective(t *testing.T) {
 	s := &Skill{
 		Meta: SkillMeta{
-			Name:         "audit-deps",
-			Context:      "fork",
-			AllowedTools: []string{"ReadFile", "Grep"},
+			Name:    "audit-deps",
+			Context: "fork",
 		},
 		PromptBody: "Inspect go.mod and flag risky pins.",
 	}
@@ -168,7 +169,6 @@ func TestSkillRenderForkContextWrapsAsDirective(t *testing.T) {
 	for _, want := range []string{
 		"forked sub-agent",
 		"audit-deps",
-		"ReadFile, Grep",
 		"Inspect go.mod and flag risky pins.",
 	} {
 		if !strings.Contains(got, want) {
@@ -193,14 +193,12 @@ func TestSkillRenderInlineNoForkWrapper(t *testing.T) {
 
 func TestLoadSkillsContextFork(t *testing.T) {
 	dir := t.TempDir()
-	skillDir := filepath.Join(dir, ".swifty", "skills", "forky")
+	skillDir := filepath.Join(dir, ".mewcode", "skills", "forky")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
 name: forky
 description: skill that runs in a subagent
 context: fork
-allowed_tools:
-  - ReadFile
 ---
 body content`), 0o644)
 
@@ -269,9 +267,7 @@ Provide a concise summary of the given text.
 	// Simulate system prompt building (same logic as tui.go)
 	var sb strings.Builder
 	sb.WriteString("## Available Skills\n\n")
-	sb.WriteString("Skills are installed at: ")
-	sb.WriteString(dir)
-	sb.WriteString("\n")
+	sb.WriteString("Skills are installed at: " + dir + "\n")
 	sb.WriteString("When creating new skills, always place them under this directory as <skill-name>/SKILL.md.\n\n")
 	sb.WriteString("The following skills are available. When the user invokes /<name>, follow that skill's instructions.\n\n")
 	for _, meta := range metas {
@@ -279,11 +275,7 @@ Provide a concise summary of the given text.
 		if len(desc) > 200 {
 			desc = desc[:200] + "…"
 		}
-		sb.WriteString("- /")
-		sb.WriteString(meta.Name)
-		sb.WriteString(": ")
-		sb.WriteString(desc)
-		sb.WriteString("\n")
+		sb.WriteString("- /" + meta.Name + ": " + desc + "\n")
 	}
 	prompt := sb.String()
 

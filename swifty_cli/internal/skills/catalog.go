@@ -4,22 +4,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Catalog is the in-memory registry of all loaded skills. Phase-1 entries
 // contain only frontmatter (PromptBody empty, BodyLoaded false); GetFull
 // triggers a phase-2 read of the body on each call (hot reload).
 type Catalog struct {
-	skills    map[string]*Skill
-	sources   map[string]string // skill name → "builtin" | "user" | "project" | absolute path
-	workDir   string            // remembered so Reload can re-scan the same three tiers
-	hasReload bool
+	skills      map[string]*Skill
+	sources     map[string]string // skill name → "builtin" | "user" | "project" | absolute path
+	workDir     string            // remembered so Reload can re-scan the same three tiers
+	hasReload   bool
+	dirModTimes map[string]time.Time // skill directory path → last known modtime
 }
 
 func NewCatalog() *Catalog {
 	return &Catalog{
-		skills:  make(map[string]*Skill),
-		sources: make(map[string]string),
+		skills:      make(map[string]*Skill),
+		sources:     make(map[string]string),
+		dirModTimes: make(map[string]time.Time),
 	}
 }
 
@@ -83,14 +86,69 @@ func (c *Catalog) Reload(workDir string) {
 	c.skills = fresh.skills
 	c.sources = fresh.sources
 	c.workDir = fresh.workDir
+	c.dirModTimes = fresh.dirModTimes
+}
+
+// NeedsReload checks whether the skill directories' modtimes have changed
+// since the catalog was last loaded. A changed modtime indicates a skill was
+// added or removed (file edits within existing skills are already handled by
+// GetFull's per-call re-read).
+func (c *Catalog) NeedsReload() bool {
+	for dir, recorded := range c.dirModTimes {
+		info, err := os.Stat(dir)
+		if err != nil {
+			if recorded.IsZero() {
+				continue
+			}
+			return true // directory disappeared
+		}
+		if !info.ModTime().Equal(recorded) {
+			return true
+		}
+	}
+	// Check if directories were created since last load
+	dirs := skillDirPaths(c.workDir)
+	for _, dir := range dirs {
+		if _, tracked := c.dirModTimes[dir]; !tracked {
+			if info, err := os.Stat(dir); err == nil && !info.ModTime().IsZero() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// snapshotDirModTimes records current modtimes of all skill directories.
+func (c *Catalog) snapshotDirModTimes() {
+	c.dirModTimes = make(map[string]time.Time)
+	for _, dir := range skillDirPaths(c.workDir) {
+		info, err := os.Stat(dir)
+		if err != nil {
+			c.dirModTimes[dir] = time.Time{}
+			continue
+		}
+		c.dirModTimes[dir] = info.ModTime()
+	}
+}
+
+// skillDirPaths returns the user-global and project skill directory paths.
+func skillDirPaths(workDir string) []string {
+	var dirs []string
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".mewcode", "skills"))
+	}
+	if workDir != "" {
+		dirs = append(dirs, filepath.Join(workDir, ".mewcode", "skills"))
+	}
+	return dirs
 }
 
 // LoadCatalog builds a phase-1 catalog by merging three tiers, with later
 // sources overriding earlier ones by name (project wins over user wins over
 // builtin):
 //  1. internal/skills/builtins/* (embedded via go:embed, lowest priority)
-//  2. ~/.swifty/skills/         (user global)
-//  3. $workDir/.swifty/skills/  (project, highest priority)
+//  2. ~/.mewcode/skills/         (user global)
+//  3. $workDir/.mewcode/skills/  (project, highest priority)
 //
 // Only frontmatter is read at this stage; PromptBody stays empty until
 // GetFull is called. Parse failures on individual skills are silently
@@ -106,12 +164,13 @@ func LoadCatalog(workDir string) *Catalog {
 
 	// Tier 2: user global
 	if home, err := os.UserHomeDir(); err == nil {
-		loadTierInto(c, filepath.Join(home, ".swifty", "skills"), "user")
+		loadTierInto(c, filepath.Join(home, ".mewcode", "skills"), "user")
 	}
 
 	// Tier 3: project
-	loadTierInto(c, filepath.Join(workDir, ".swifty", "skills"), "project")
+	loadTierInto(c, filepath.Join(workDir, ".mewcode", "skills"), "project")
 
+	c.snapshotDirModTimes()
 	return c
 }
 
@@ -132,9 +191,9 @@ func LoadSkills(workDir string) *Catalog {
 	c := NewCatalog()
 	c.workDir = workDir
 	if home, err := os.UserHomeDir(); err == nil {
-		loadTierEager(c, filepath.Join(home, ".swifty", "skills"), "user")
+		loadTierEager(c, filepath.Join(home, ".mewcode", "skills"), "user")
 	}
-	loadTierEager(c, filepath.Join(workDir, ".swifty", "skills"), "project")
+	loadTierEager(c, filepath.Join(workDir, ".mewcode", "skills"), "project")
 	return c
 }
 

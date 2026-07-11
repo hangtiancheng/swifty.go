@@ -51,6 +51,7 @@ type Agent struct {
 	// Mode on or off (e.g., when a team is created/torn down) without restarting the agent.
 	Instructions   string
 	MemoryContent  string
+	MemoryRecallCh <-chan string
 	ToolNameFilter func(name string) bool
 	// OnLoopComplete, when non-nil, is invoked fire-and-forget after the agent reaches LoopComplete
 	// (final assistant message, no tool calls remaining). Used by ch09 background memory extraction.
@@ -103,9 +104,8 @@ func (a *Agent) GetActiveSkills() map[string]string {
 }
 
 // SetToolFilter installs a tool visibility filter for the current conversation. The filter is
-// consulted at the top of every iteration so callers can flip skill-imposed allowedTools on or off
-// without restarting the agent. Passing nil clears any previous filter. Implements one half of the
-// skills.SkillHost interface.
+// consulted at the top of every iteration so callers can flip Coordinator mode on or off without
+// restarting the agent. Passing nil clears any previous filter.
 func (a *Agent) SetToolFilter(allow func(name string) bool) {
 	a.ToolNameFilter = allow
 }
@@ -138,9 +138,10 @@ func New(client llm.Client, registry *tools.Registry, protocol string) *Agent {
 func (a *Agent) SetSessionID(id string) { a.SessionID = id }
 
 // currentToolSchemas builds the schema list the next API call will use,
-// honouring any active skill's allowed-tools filter. Shared between the
-// recovery attachment (which lists what's still available after compact)
-// and the actual Stream call so both views stay consistent.
+// honouring any active ToolNameFilter (e.g. Teams coordinator mode).
+// Shared between the recovery attachment (which lists what's still
+// available after compact) and the actual Stream call so both views
+// stay consistent.
 func (a *Agent) currentToolSchemas() []map[string]any {
 	schemas := a.Registry.GetAllSchemas(a.Protocol)
 	if a.ToolNameFilter == nil {
@@ -192,20 +193,9 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			// iterations, never within one.
 			toolSchemas := a.currentToolSchemas()
 
-			// Two-layer context management: spill+snip always, autocompact when needed.
-			if msg, err := compact.ManageContext(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.MaxOutputTokens, &a.compactTracking, a.RecoveryState, toolSchemas, usageAnchor); err == nil && msg != "" {
-				ch <- CompactEvent{Message: msg}
-				// A compaction rewrote the conversation, so the prior anchor's
-				// AnchorCount no longer maps to the new transcript. Drop it and
-				// fall back to a full estimate until the next real usage lands.
-				usageAnchor = compact.UsageAnchor{}
-			}
-
 			// Plan mode: inject structured workflow reminder.
 			if a.Checker != nil && a.Checker.Mode == permissions.ModePlan {
 				planPath := plan_file.GetOrCreatePlanPath(a.WorkDir)
-				// Sync PlanFilePath onto the Checker on every turn so the Layer 0 plan-file write exception
-				// works regardless of how Plan Mode was entered (Shift+Tab, SetPermissionMode, /plan).
 				a.Checker.PlanFilePath = planPath
 				planExists := plan_file.PlanExists(a.WorkDir)
 				reminder := prompt.BuildPlanModeReminder(planPath, planExists, iteration)
@@ -219,10 +209,6 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			}
 
 			a.emitHook(hooks.EventTurnStart, "", nil)
-
-			// Active-skill SOPs live in the conversation as regular messages (injected once when loaded).
-			// No per-turn re-injection — they drift naturally and get compacted like any other message.
-
 			// Inject deferred tool names into system-reminder so the model knows what's available via
 			// ToolSearch.
 			if deferredNames := a.Registry.GetDeferredToolNames(); len(deferredNames) > 0 {
@@ -232,21 +218,21 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 
 			a.emitHook(hooks.EventPreSend, "", nil)
 
-			// Layer 1: apply tool-result budget against ReplacementState.
-			// Returns a fresh *conversation.Manager with replacements
-			// baked in; `conv` is never mutated. All writes that happened
-			// earlier in this iteration (system reminders, plan-mode hints,
-			// active-skill SOPs) are reflected in apiConv because Apply
-			// runs after them and rebuilds the manager from conv.GetMessages().
-			apiConv, newRecords, _ := tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
+			// Layer 1: apply tool-result budget
+			newRecords, _ := tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
 			if len(newRecords) > 0 {
-				// Best-effort persistence; failure is non-fatal because the
-				// in-memory state already has the canonical decisions for
-				// this process lifetime.
 				_ = tool_result.AppendRecords(a.WorkDir, newRecords)
 			}
 
-			events, errs := a.Client.Stream(ctx, apiConv, toolSchemas)
+			// Layer 2: auto-compact
+			if msg, err := compact.ManageContext(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.MaxOutputTokens, &a.compactTracking, a.RecoveryState, toolSchemas, usageAnchor, nil); err == nil && msg != "" {
+				ch <- CompactEvent{Message: msg}
+				usageAnchor = compact.UsageAnchor{}
+				conv.InjectLongTermMemory(a.Instructions, a.MemoryContent)
+				tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
+			}
+
+			events, errs := a.Client.Stream(ctx, conv, toolSchemas)
 
 			var text string
 			var toolCalls []llm.ToolCallComplete
@@ -298,6 +284,7 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 							// anchor's AnchorCount no longer maps to it. Drop it
 							// so the next check falls back to a full estimate.
 							usageAnchor = compact.UsageAnchor{}
+							conv.InjectLongTermMemory(a.Instructions, a.MemoryContent)
 						}
 						continue // retry the turn
 					}
@@ -432,6 +419,18 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 				}
 			}
 			conv.AddToolResultsMessage(toolResults)
+
+			if a.MemoryRecallCh != nil {
+				select {
+				case recall := <-a.MemoryRecallCh:
+					if recall != "" {
+						conv.AddSystemReminder(recall)
+					}
+					a.MemoryRecallCh = nil
+				default:
+				}
+			}
+
 			if exitPlanCalled {
 				ch <- TurnComplete{Turn: iteration}
 				ch <- LoopComplete{TotalTurns: iteration}
@@ -479,7 +478,7 @@ func filterSchemasByName(schemas []map[string]any, allow func(name string) bool)
 func (a *Agent) handleStreamError(ctx context.Context, ch chan AgentEvent, conv *conversation.Manager, err error) (retry, compacted bool) {
 	var ctxErr *llm.ContextTooLongError
 	if errors.As(err, &ctxErr) {
-		msg, compactErr := compact.ForceCompact(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.RecoveryState, a.currentToolSchemas())
+		msg, compactErr := compact.ForceCompact(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.RecoveryState, a.currentToolSchemas(), nil)
 		if compactErr == nil && msg != "" {
 			ch <- CompactEvent{Message: "Auto-compacted due to context length: " + msg}
 			return true, true // retry, and the anchor is now stale

@@ -30,3 +30,15 @@ var CoordinatorAllowedTools = map[string]bool{
 func IsCoordinatorTool(name string) bool {
 	return CoordinatorAllowedTools[name]
 }
+
+func CoordinatorToolFilter(teamMgr *TeamManager, enabled bool) func(name string) bool {
+	if teamMgr == nil || !enabled {
+		return nil
+	}
+	return func(name string) bool {
+		if len(teamMgr.ListTeams()) == 0 {
+			return true
+		}
+		return IsCoordinatorTool(name)
+	}
+}

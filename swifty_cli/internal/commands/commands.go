@@ -30,6 +30,7 @@ type Context struct {
 	ToolCount         func() int
 	SessionInfo       func() string
 	SkillList         func() []SkillInfo
+	SkillReload       func() int // reload catalog + prompt, returns new skill count
 	MCPInfo           func() string
 	WorkDir           string
 	Model             string
@@ -343,12 +344,19 @@ func CreateDefaultRegistry() *Registry {
 
 	r.Register(&Command{
 		Name:        "skills",
-		Description: "List available skills",
+		Description: "List available skills (use '/skills reload' to hot-reload)",
 		Type:        TypeLocal,
 		Handler: func(ctx *Context) string {
+			if strings.TrimSpace(ctx.Args) == "reload" {
+				if ctx.SkillReload == nil {
+					return "Skill reload not available."
+				}
+				count := ctx.SkillReload()
+				return fmt.Sprintf("Skills reloaded. %d skill(s) available.", count)
+			}
 			skills := ctx.SkillList()
 			if len(skills) == 0 {
-				return "No skills installed.\n\nAdd skills to .swifty/skills/<skill-name>/SKILL.md"
+				return "No skills installed.\n\nAdd skills to .mewcode/skills/<skill-name>/SKILL.md"
 			}
 			var sb strings.Builder
 			sb.WriteString(fmt.Sprintf("Available skills (%d):\n\n", len(skills)))
@@ -359,9 +367,16 @@ func CreateDefaultRegistry() *Registry {
 				}
 				sb.WriteString(fmt.Sprintf("  /%s\n    %s\n\n", s.Name, desc))
 			}
-			sb.WriteString("Type /<skill-name> to invoke a skill.")
+			sb.WriteString("Type /<skill-name> to invoke a skill.\n")
+			sb.WriteString("Type /skills reload to hot-reload skills from disk.")
 			return sb.String()
 		},
+	})
+
+	r.Register(&Command{
+		Name:        "sandbox",
+		Description: "Configure OS-level sandbox for command execution",
+		Type:        TypeLocalUI,
 	})
 
 	r.Register(&Command{

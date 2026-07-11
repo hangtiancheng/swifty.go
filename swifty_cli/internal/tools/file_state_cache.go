@@ -7,7 +7,7 @@ import (
 )
 
 // FileStateCache tracks which files have been read and their modification
-// times, enforcing a "read-before-edit" discipline identical to Claude Code.
+// times, enforcing a "read-before-edit" discipline  to prevent blind overwrites.
 type FileStateCache struct {
 	mu      sync.Mutex
 	entries map[string]*fileStateEntry

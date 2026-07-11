@@ -1,7 +1,6 @@
 package tool_result
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
@@ -17,34 +16,22 @@ func oneToolResultMsg(results ...conversation.ToolResultBlock) *conversation.Man
 	return conv
 }
 
-func TestApplyDoesNotMutateConv(t *testing.T) {
+func TestApplyMutatesConvInPlace(t *testing.T) {
 	big := strings.Repeat("x", SingleResultLimit+100)
 	conv := oneToolResultMsg(conversation.ToolResultBlock{ToolUseID: "t1", Content: big})
 	state := New()
 
-	origSnapshot := conv.GetMessages() // GetMessages returns a copy
-	origContent := conv.GetMessages()[0].ToolResults[0].Content
-
-	apiConv, _, err := Apply(conv, t.TempDir(), state)
+	records, err := Apply(conv, t.TempDir(), state)
 	if err != nil {
 		t.Fatalf("Apply error: %v", err)
 	}
-	if apiConv == conv {
-		t.Fatal("Apply returned the same *Manager — Design B requires a new one")
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
 	}
 
-	// Original conv must still hold raw content.
-	if got := conv.GetMessages()[0].ToolResults[0].Content; got != origContent {
-		t.Fatalf("original conv mutated: got=%q want=%q", got[:50], origContent[:50])
-	}
-	if !reflect.DeepEqual(conv.GetMessages(), origSnapshot) {
-		t.Fatal("original conv history shape mutated")
-	}
-
-	// api_conv carries the replacement.
-	apiContent := apiConv.GetMessages()[0].ToolResults[0].Content
-	if !strings.HasPrefix(apiContent, "<persisted-output>") {
-		t.Fatalf("apiConv tool_result not replaced: %q", apiContent)
+	got := conv.GetMessages()[0].ToolResults[0].Content
+	if !strings.HasPrefix(got, "<persisted-output>") {
+		t.Fatalf("conv tool_result not replaced in-place: %q", got)
 	}
 }
 
@@ -53,7 +40,7 @@ func TestFirstCallFreezesUnreplaced(t *testing.T) {
 	conv := oneToolResultMsg(conversation.ToolResultBlock{ToolUseID: "t1", Content: small})
 	state := New()
 
-	_, records, err := Apply(conv, t.TempDir(), state)
+	_, err := Apply(conv, t.TempDir(), state)
 	if err != nil {
 		t.Fatalf("Apply error: %v", err)
 	}
@@ -63,28 +50,32 @@ func TestFirstCallFreezesUnreplaced(t *testing.T) {
 	if _, ok := state.Replacements["t1"]; ok {
 		t.Fatal("t1 should not be in Replacements when under budget")
 	}
-	if len(records) != 0 {
-		t.Fatalf("expected no records, got %d", len(records))
+	got := conv.GetMessages()[0].ToolResults[0].Content
+	if got != small {
+		t.Fatalf("conv mutated unexpectedly: got %q", got)
 	}
 }
 
 func TestReplacementByteIdentical(t *testing.T) {
 	big := strings.Repeat("z", SingleResultLimit+200)
-	conv := oneToolResultMsg(conversation.ToolResultBlock{ToolUseID: "t_big", Content: big})
-	state := New()
 	dir := t.TempDir()
 
-	api1, recs1, err1 := Apply(conv, dir, state)
+	conv1 := oneToolResultMsg(conversation.ToolResultBlock{ToolUseID: "t_big", Content: big})
+	state := New()
+
+	recs1, err1 := Apply(conv1, dir, state)
 	if err1 != nil {
 		t.Fatalf("Apply 1: %v", err1)
 	}
-	api2, recs2, err2 := Apply(conv, dir, state)
+	c1 := conv1.GetMessages()[0].ToolResults[0].Content
+
+	conv2 := oneToolResultMsg(conversation.ToolResultBlock{ToolUseID: "t_big", Content: big})
+	recs2, err2 := Apply(conv2, dir, state)
 	if err2 != nil {
 		t.Fatalf("Apply 2: %v", err2)
 	}
+	c2 := conv2.GetMessages()[0].ToolResults[0].Content
 
-	c1 := api1.GetMessages()[0].ToolResults[0].Content
-	c2 := api2.GetMessages()[0].ToolResults[0].Content
 	if c1 != c2 {
 		t.Fatalf("byte mismatch between calls:\n  first: %q\n second: %q", c1, c2)
 	}
@@ -95,7 +86,7 @@ func TestReplacementByteIdentical(t *testing.T) {
 		t.Fatalf("second call should record 0 (pure re-apply), got %d", len(recs2))
 	}
 	if state.Replacements["t_big"] != c1 {
-		t.Fatal("state.Replacements out of sync with api_conv content")
+		t.Fatal("state.Replacements out of sync with conv content")
 	}
 }
 
@@ -109,7 +100,7 @@ func TestFrozenNeverReplaced(t *testing.T) {
 	state := New()
 	dir := t.TempDir()
 
-	if _, _, err := Apply(conv, dir, state); err != nil {
+	if _, err := Apply(conv, dir, state); err != nil {
 		t.Fatalf("turn 1 Apply: %v", err)
 	}
 	if _, ok := state.Replacements["t1"]; ok {
@@ -126,14 +117,13 @@ func TestFrozenNeverReplaced(t *testing.T) {
 	}
 	convT2 := oneToolResultMsg(first, huge)
 
-	api, _, err := Apply(convT2, dir, state)
-	if err != nil {
+	if _, err := Apply(convT2, dir, state); err != nil {
 		t.Fatalf("turn 2 Apply: %v", err)
 	}
 
 	// t1 must remain raw — its decision was frozen at turn 1.
 	var t1Got string
-	for _, tr := range api.GetMessages()[0].ToolResults {
+	for _, tr := range convT2.GetMessages()[0].ToolResults {
 		if tr.ToolUseID == "t1" {
 			t1Got = tr.Content
 		}
@@ -159,17 +149,17 @@ func TestAggregateOnlyPicksFresh(t *testing.T) {
 	conv.AddToolResultsMessage(rs)
 	state := New()
 
-	api, recs, err := Apply(conv, t.TempDir(), state)
+	recs, err := Apply(conv, t.TempDir(), state)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
 	total := 0
-	for _, tr := range api.GetMessages()[0].ToolResults {
+	for _, tr := range conv.GetMessages()[0].ToolResults {
 		total += len(tr.Content)
 	}
 	if total > MessageAggregateLimit {
-		t.Fatalf("api_conv aggregate %d still over limit %d", total, MessageAggregateLimit)
+		t.Fatalf("conv aggregate %d still over limit %d", total, MessageAggregateLimit)
 	}
 	if len(recs) < 1 {
 		t.Fatal("expected at least one replacement record")

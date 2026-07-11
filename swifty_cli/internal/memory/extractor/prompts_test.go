@@ -26,6 +26,10 @@ func TestBuildExtractAutoOnlyPromptMarkers(t *testing.T) {
 }
 
 func TestBuildExtractAutoOnlyPromptSkipIndex(t *testing.T) {
+	// Dual-path mode uses <scope> tags for user-level / project-level routing, but the
+	// "team memory" / "private or team" guidance must never appear in the auto-only
+	// prompt — MewCode keeps the user/project split simple, no team memory concept.
+
 	got := BuildExtractAutoOnlyPrompt(5, "", true, "/home/test/.swifty/memory/", "/tmp/proj/.swifty/memory/")
 	if strings.Contains(got, "**Step 2** — add a pointer") {
 		t.Errorf("skipIndex=true should remove Step 2 / MEMORY.md update section")

@@ -13,11 +13,6 @@ import (
 // skill's name + description in the system prompt, and calls LoadSkill
 // with the chosen name. The full SOP body is returned as the tool result
 // so it enters the conversation as a regular message.
-//
-// Marked as a system tool — it operates on the agent's own state, not on
-// external resources, so per-skill allowed_tools whitelists never hide it.
-// Without that exemption a `commit` skill that allowed only Bash would
-// strand the model with no way to load a sibling skill mid-conversation.
 type LoadSkillTool struct {
 	Catalog *Catalog
 	Host    SkillHost
@@ -31,9 +26,8 @@ func (t *LoadSkillTool) IsSystemTool() bool { return true }
 
 func (t *LoadSkillTool) Description() string {
 	return "Activate a Skill by name. Returns the full SOP body so you can follow its " +
-		"instructions. Any tools the Skill declares get registered in the current session. " +
-		"Call this when the user's request matches one of the available Skills listed in " +
-		"the system prompt. Pass the Skill name without a leading slash."
+		"instructions. Call this when the user's request matches one of the available " +
+		"Skills listed in the system prompt. Pass the Skill name without a leading slash."
 }
 
 func (t *LoadSkillTool) Schema() map[string]any {
@@ -71,14 +65,7 @@ func (t *LoadSkillTool) Execute(_ context.Context, args map[string]any) tools.To
 
 	t.Host.ActivateSkill(skill.Meta.Name, skill.PromptBody)
 
-	registered := 0
-	if skill.IsDirectory {
-		if n, regErr := RegisterDirectoryTools(skill, t.Host.ToolRegistry()); regErr == nil {
-			registered = n
-		}
-	}
-
-	header := fmt.Sprintf("# Skill: %s (%d specialized tools registered)\n\n", skill.Meta.Name, registered)
+	header := fmt.Sprintf("# Skill: %s\n\n", skill.Meta.Name)
 	return tools.ToolResult{
 		Output: header + skill.PromptBody,
 	}

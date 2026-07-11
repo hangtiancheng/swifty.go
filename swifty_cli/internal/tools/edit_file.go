@@ -83,5 +83,11 @@ func (t *EditFileTool) Execute(_ context.Context, args map[string]any) ToolResul
 		t.FileStateCache.Update(filePath, newContent)
 	}
 
-	return ToolResult{Output: fmt.Sprintf("Successfully edited %s", filePath)}
+	diff := BuildDiff(content, newContent)
+	// Include the specific diff instead of just reporting "done": both the model and the TUI need to know exactly which lines were changed.
+	summary := fmt.Sprintf(
+		"Updated %s with %d addition%s and %d removal%s",
+		filePath, diff.Additions, plural(diff.Additions), diff.Removals, plural(diff.Removals),
+	)
+	return ToolResult{Output: summary + "\n" + diff.Text}
 }

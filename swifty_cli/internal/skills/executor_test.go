@@ -15,12 +15,10 @@ import (
 // so the same fixture covers RunInline and RunFork.
 type stubHost struct {
 	activated     map[string]string
-	filterAllow   func(string) bool
 	registry      *tools.Registry
 	parentMsgs    []conversation.Message
 	subAgentBody  string
 	subAgentSeed  []conversation.Message
-	subAgentTools []string
 	subAgentReply string
 	subAgentErr   error
 }
@@ -29,33 +27,27 @@ func newStubHost(reg *tools.Registry) *stubHost {
 	return &stubHost{activated: map[string]string{}, registry: reg}
 }
 
-func (s *stubHost) ActivateSkill(name, body string)   { s.activated[name] = body }
-func (s *stubHost) SetToolFilter(f func(string) bool) { s.filterAllow = f }
-func (s *stubHost) ToolRegistry() *tools.Registry     { return s.registry }
+func (s *stubHost) ActivateSkill(name, body string) { s.activated[name] = body }
+func (s *stubHost) ToolRegistry() *tools.Registry   { return s.registry }
 func (s *stubHost) SnapshotParentMessages() []conversation.Message {
 	out := make([]conversation.Message, len(s.parentMsgs))
 	copy(out, s.parentMsgs)
 	return out
 }
 
-func (s *stubHost) RunSubAgent(_ context.Context, body string, seed []conversation.Message, tools []string, _ string) (string, error) {
+func (s *stubHost) RunSubAgent(_ context.Context, body string, seed []conversation.Message, _ string) (string, error) {
 	s.subAgentBody = body
 	s.subAgentSeed = seed
-	s.subAgentTools = tools
 	return s.subAgentReply, s.subAgentErr
 }
 
-func TestRunInlineActivatesAndFilters(t *testing.T) {
+func TestRunInlineActivates(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(&tools.ReadFileTool{})
-	reg.Register(&tools.BashTool{})
-
 	host := newStubHost(reg)
 	skill := &Skill{
 		Meta: SkillMeta{
-			Name:         "commit",
-			Mode:         "inline",
-			AllowedTools: []string{"ReadFile", "Bash"},
+			Name: "commit",
+			Mode: "inline",
 		},
 		PromptBody: "Body with $ARGUMENTS",
 		BodyLoaded: true,
@@ -71,40 +63,10 @@ func TestRunInlineActivatesAndFilters(t *testing.T) {
 	if host.activated["commit"] == "" {
 		t.Errorf("ActivateSkill was not called")
 	}
-	if host.filterAllow == nil {
-		t.Fatalf("SetToolFilter was not invoked")
-	}
-	if !host.filterAllow("ReadFile") || !host.filterAllow("Bash") {
-		t.Errorf("filter must allow listed tools")
-	}
-	if host.filterAllow("Grep") {
-		t.Errorf("filter must reject unlisted tools")
-	}
 }
 
-func TestRunInlineFailsFastOnMissingTool(t *testing.T) {
+func TestRunForkPassesSeed(t *testing.T) {
 	reg := tools.NewRegistry()
-	host := newStubHost(reg)
-	skill := &Skill{
-		Meta:       SkillMeta{Name: "demo", AllowedTools: []string{"NonExistent"}},
-		PromptBody: "body",
-	}
-	_, err := RunInline(context.Background(), skill, "", host)
-	if err == nil {
-		t.Fatal("expected fail-fast error for missing tool")
-	}
-	if !strings.Contains(err.Error(), "NonExistent") {
-		t.Errorf("error should name the missing tool, got: %v", err)
-	}
-	if host.activated["demo"] != "" {
-		t.Errorf("ActivateSkill must not fire when fail-fast trips")
-	}
-}
-
-func TestRunForkPassesSeedAndAllowedTools(t *testing.T) {
-	reg := tools.NewRegistry()
-	reg.Register(&tools.BashTool{})
-
 	host := newStubHost(reg)
 	host.parentMsgs = []conversation.Message{
 		{Role: "user", Content: "msg1"},
@@ -118,10 +80,9 @@ func TestRunForkPassesSeedAndAllowedTools(t *testing.T) {
 
 	skill := &Skill{
 		Meta: SkillMeta{
-			Name:         "review",
-			Mode:         "fork",
-			ForkContext:  "recent",
-			AllowedTools: []string{"Bash"},
+			Name:        "review",
+			Mode:        "fork",
+			ForkContext: "recent",
 		},
 		PromptBody: "Review this: $ARGUMENTS",
 	}
@@ -141,9 +102,6 @@ func TestRunForkPassesSeedAndAllowedTools(t *testing.T) {
 	}
 	if host.subAgentSeed[0].Content != "msg2" {
 		t.Errorf("seed should start at msg2 (last-5 window), got %q", host.subAgentSeed[0].Content)
-	}
-	if len(host.subAgentTools) != 1 || host.subAgentTools[0] != "Bash" {
-		t.Errorf("allowedTools not threaded through: %v", host.subAgentTools)
 	}
 }
 
@@ -166,13 +124,12 @@ func TestRunForkContextNone(t *testing.T) {
 	}
 }
 
-func TestRunForkFailFastPropagatesAgentError(t *testing.T) {
+func TestRunForkPropagatesAgentError(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(&tools.BashTool{})
 	host := newStubHost(reg)
 	host.subAgentErr = errors.New("upstream failure")
 
-	skill := &Skill{Meta: SkillMeta{Name: "review", Mode: "fork", AllowedTools: []string{"Bash"}}}
+	skill := &Skill{Meta: SkillMeta{Name: "review", Mode: "fork"}}
 	_, err := RunFork(context.Background(), skill, "", host)
 	if err == nil || !strings.Contains(err.Error(), "upstream") {
 		t.Fatalf("expected upstream failure, got %v", err)

@@ -206,7 +206,7 @@ func CreateDefaultRegistry() *Registry {
 	return dt.Registry
 }
 
-func CreateDefaultTools() DefaultTools {
+func CreateDefaultToolsWithWorkDir(workDir string) DefaultTools {
 	fsc := NewFileStateCache()
 	wf := &WriteFileTool{FileStateCache: fsc}
 	ef := &EditFileTool{FileStateCache: fsc}
@@ -214,8 +214,12 @@ func CreateDefaultTools() DefaultTools {
 	reg.Register(&ReadFileTool{FileStateCache: fsc})
 	reg.Register(wf)
 	reg.Register(ef)
-	reg.Register(&BashTool{})
+	reg.Register(&BashTool{WorkDir: workDir})
 	reg.Register(&GlobTool{})
 	reg.Register(&GrepTool{})
 	return DefaultTools{Registry: reg, WriteFile: wf, EditFile: ef}
+}
+
+func CreateDefaultTools() DefaultTools {
+	return CreateDefaultToolsWithWorkDir("")
 }

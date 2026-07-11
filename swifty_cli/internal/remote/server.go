@@ -104,20 +104,22 @@ type Server struct {
 	teamMgr         *teams.TeamManager
 	mcpMgr          *mcp.Manager
 
-	instructionsContent string
-	memoryContent       string
-	mcpInstructions     string
+	instructionsContent   string
+	memoryContent         string
+	mcpInstructions       string
+	enableCoordinatorMode bool
 }
 
-func NewServer(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig, hookCfgs []hooks.Hook, addr string) *Server {
+func NewServer(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig, hookCfgs []hooks.Hook, addr string, enableCoordinatorMode bool) *Server {
 	return &Server{
-		providers:    providers,
-		mcpConfigs:   mcpConfigs,
-		hookCfgs:     hookCfgs,
-		addr:         addr,
-		conns:        make(map[*swifty.WSConn]struct{}),
-		pendingPerms: make(map[string]chan<- agent.PermissionResponse),
-		pendingAsks:  make(map[string]chan tools.QuestionResponse),
+		providers:             providers,
+		mcpConfigs:            mcpConfigs,
+		hookCfgs:              hookCfgs,
+		addr:                  addr,
+		conns:                 make(map[*swifty.WSConn]struct{}),
+		pendingPerms:          make(map[string]chan<- agent.PermissionResponse),
+		pendingAsks:           make(map[string]chan tools.QuestionResponse),
+		enableCoordinatorMode: enableCoordinatorMode,
 	}
 }
 
@@ -217,7 +219,7 @@ func (s *Server) initAgent() error {
 	wd, _ := os.Getwd()
 
 	s.askUserCh = make(chan tools.AskUserRequest, 1)
-	s.defaultTools = tools.CreateDefaultTools()
+	s.defaultTools = tools.CreateDefaultToolsWithWorkDir(wd)
 	s.registry = s.defaultTools.Registry
 	s.registry.Register(&tools.AskUserQuestionTool{RequestCh: s.askUserCh})
 
@@ -278,7 +280,7 @@ func (s *Server) initAgent() error {
 	}
 
 	ag.NotificationFn = func() []string { return nil }
-	ag.ToolNameFilter = func(name string) bool { return true }
+	ag.ToolNameFilter = teams.CoordinatorToolFilter(s.teamMgr, s.enableCoordinatorMode)
 
 	s.ag = ag
 
@@ -599,7 +601,7 @@ func (s *Server) handleCompact() {
 		recovery = s.ag.RecoveryState
 		schemas = s.ag.Registry.GetAllSchemas(s.ag.Protocol)
 	}
-	msg, err := compact.ForceCompact(context.Background(), s.conv, s.client, wd, s.sessionID, window, recovery, schemas)
+	msg, err := compact.ForceCompact(context.Background(), s.conv, s.client, wd, s.sessionID, window, recovery, schemas, nil)
 	if err != nil {
 		s.send(wsMessage{Type: "error", Data: map[string]string{"message": err.Error()}})
 	} else {
@@ -913,11 +915,6 @@ func (s *Server) wireSkillsToAgent(_ string) {
 	if s.skillCatalog == nil || s.ag == nil {
 		return
 	}
-	for _, meta := range s.skillCatalog.List() {
-		if skill := s.skillCatalog.Get(meta.Name); skill != nil && skill.IsDirectory {
-			_, _ = skills.RegisterDirectoryTools(skill, s.registry)
-		}
-	}
 	s.registry.Register(&skills.LoadSkillTool{
 		Catalog: s.skillCatalog,
 		Host:    s,
@@ -934,7 +931,7 @@ func (s *Server) ActivateSkill(name, body string) {
 
 func (s *Server) SetToolFilter(allow func(name string) bool) {
 	if s.ag != nil {
-		s.ag.ToolNameFilter = allow
+		s.ag.SetToolFilter(allow)
 	}
 }
 

@@ -12,6 +12,7 @@ package compact
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -21,9 +22,16 @@ import (
 )
 
 const (
+	// maxPTLRetries limits how many times we retry the summary request after
+	// a prompt-too-long error by dropping the oldest API-round groups.
+	maxPTLRetries = 3
+	// ptlRetryMarker is prepended after dropping old groups so the summary
+	// request still starts with a user-role message.
+	ptlRetryMarker = "[earlier conversation truncated for compaction retry]"
+
 	// autoCompactThreshold is the legacy ratio gate (kept for reference only).
-	// The live decision now uses the absolute-token formula below, aligned with
-	// Claude Code's autoCompact.ts: trigger on used-tokens >= effectiveWindow − margin.
+	// The live decision now uses the absolute-token formula below:
+	// trigger compaction when used tokens approach the context window limit, leaving a margin for the next turn.
 	autoCompactThreshold = 0.80
 
 	// summaryOutputReserve reserves room for the summary response itself, so the
@@ -38,10 +46,9 @@ const (
 	manualCompactSafetyMargin = 3000
 )
 
-// Recent-message retention budget for compaction, aligned with Claude Code's
-// compact.ts buildPostCompactMessages: instead of summarizing the whole
-// transcript and discarding every original message, we keep the tail of recent
-// messages verbatim and only summarize the older prefix.
+// Recent-message retention budget for compaction: instead of summarizing the
+// whole transcript and discarding every original message, we keep the tail of
+// recent messages verbatim and only summarize the older prefix.
 const (
 	// keepRecentTokens is the lower-bound token budget: walk back from the tail
 	// accumulating per-message tokens until we've kept at least this many.
@@ -98,18 +105,27 @@ Before providing your final summary, wrap your analysis in <analysis> tags to or
    - The user's explicit requests and intents
    - Your approach to addressing the user's requests
    - Key decisions, technical concepts and code patterns
-   - Specific details like file names, code snippets, function signatures, file edits
+   - Specific details like:
+     - file names
+     - full code snippets
+     - function signatures
+     - file edits
    - Errors that you ran into and how you fixed them
-   - Specific user feedback received, especially corrections
-2. Double-check for technical accuracy and completeness.
+   - Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
+2. Double-check for technical accuracy and completeness, addressing each required element thoroughly.
 
-After your analysis, output your final summary wrapped in <summary> tags. The summary MUST preserve:
-- All file paths that were read, modified, or created
-- Key decisions and their rationale
-- The current task/goal and overall progress
-- Any pending work or next steps
-- Error states and their resolution
-- Important code snippets or patterns discussed
+After your analysis, output your final summary wrapped in <summary> tags. Your summary should include the following sections:
+
+1. Primary Request and Intent: Capture all of the user's explicit requests and intents in detail
+2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.
+3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Pay special attention to the most recent messages and include full code snippets where applicable and include a summary of why this file read or edit is important.
+4. Errors and fixes: List all errors that you ran into, and how you fixed them. Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
+5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.
+6. All user messages: List ALL user messages that are not tool results. These are critical for understanding the users' feedback and changing intent.
+7. Pending Tasks: Outline any pending tasks that you have explicitly been asked to work on.
+8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request, paying special attention to the most recent messages from both user and assistant. Include file names and code snippets where applicable.
+9. Optional Next Step: List the next step that you will take that is related to the most recent work you were doing. IMPORTANT: ensure that this step is DIRECTLY in line with the user's most recent explicit requests, and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly in line with the users request.
+   If there is a next step, include direct quotes from the most recent conversation showing exactly what task you were working on and where you left off. This should be verbatim to ensure there's no drift in task interpretation.
 
 Output structure:
 
@@ -118,7 +134,35 @@ Output structure:
 </analysis>
 
 <summary>
-[The final compact summary that retains all actionable context]
+1. Primary Request and Intent:
+   [Detailed description]
+
+2. Key Technical Concepts:
+   - [Concept 1]
+   - [Concept 2]
+
+3. Files and Code Sections:
+   - [File Name 1]
+      - [Summary and important code snippet]
+
+4. Errors and fixes:
+   - [Error and fix description]
+
+5. Problem Solving:
+   [Description]
+
+6. All user messages:
+   - [User message 1]
+   - [User message 2]
+
+7. Pending Tasks:
+   - [Task 1]
+
+8. Current Work:
+   [Precise description]
+
+9. Optional Next Step:
+   [Next step if applicable]
 </summary>`
 
 // EstimateTokens uses a 3.5 chars/token approximation across content, tool args, tool results, and
@@ -219,8 +263,13 @@ func ManageContext(
 	recovery *RecoveryState,
 	toolSchemas []map[string]any,
 	anchor UsageAnchor,
+	budgetMessages []conversation.Message,
 ) (string, error) {
-	tokens := ComputeUsedTokens(conv.GetMessages(), anchor)
+	estimateFrom := conv.GetMessages()
+	if len(budgetMessages) > 0 {
+		estimateFrom = budgetMessages
+	}
+	tokens := ComputeUsedTokens(estimateFrom, anchor)
 	// Soft auto-compact trigger: used tokens >= effectiveWindow − auto margin.
 	if tokens < computeCompactThreshold(contextWindow, maxOutput, false) {
 		return "", nil
@@ -230,7 +279,7 @@ func ManageContext(
 	// force a compaction (bypassing the circuit breaker) instead of the soft
 	// auto path, since the context is too close to the wall to risk skipping.
 	if tokens >= computeCompactThreshold(contextWindow, maxOutput, true) {
-		return ForceCompact(ctx, conv, client, workDir, sessionID, contextWindow, recovery, toolSchemas)
+		return ForceCompact(ctx, conv, client, workDir, sessionID, contextWindow, recovery, toolSchemas, budgetMessages)
 	}
 
 	// Circuit breaker: stop retrying after N consecutive failures. Without
@@ -240,7 +289,7 @@ func ManageContext(
 		return "", nil
 	}
 
-	msg, err := autoCompact(ctx, conv, client, workDir, sessionID, contextWindow, recovery, toolSchemas)
+	msg, err := autoCompact(ctx, conv, client, workDir, sessionID, contextWindow, recovery, toolSchemas, budgetMessages)
 	if err != nil {
 		if tracking != nil {
 			tracking.ConsecutiveFailures++
@@ -264,8 +313,9 @@ func ForceCompact(
 	contextWindow int,
 	recovery *RecoveryState,
 	toolSchemas []map[string]any,
+	budgetMessages []conversation.Message,
 ) (string, error) {
-	return autoCompact(ctx, conv, client, workDir, sessionID, contextWindow, recovery, toolSchemas)
+	return autoCompact(ctx, conv, client, workDir, sessionID, contextWindow, recovery, toolSchemas, budgetMessages)
 }
 
 // hasToolResults reports whether a message carries any tool_result blocks (a
@@ -284,7 +334,7 @@ func hasToolUses(m conversation.Message) bool {
 
 // computeKeepStartIndex chooses the boundary between the prefix that gets
 // summarized (messages[:keepStart]) and the recent tail kept verbatim
-// (messages[keepStart:]), mirroring Claude Code's messagesToKeep selection.
+// (messages[keepStart:]).
 //
 // Walk back from the tail accumulating per-message tokens (single-message
 // EstimateTokens). Stop once EITHER the token lower bound (keepRecentTokens) OR
@@ -340,39 +390,71 @@ func computeKeepStartIndex(messages []conversation.Message) int {
 	return keepStart
 }
 
-// autoCompact is Layer 2: an LLM summary of the older prefix that replaces only
-// messages[:keepStart] with a single summary message, while the recent tail
-// (messages[keepStart:]) is preserved verbatim — aligned with Claude Code's
-// buildPostCompactMessages messagesToKeep. After the summary lands, a recovery
-// block is appended to the summary message so the model still has snapshots of
-// the files it just read, the SOPs for any skills it invoked, and the current
-// tool listing. When there's too little prefix to summarize, it degrades to the
-// original full-summary behaviour.
-func autoCompact(
-	ctx context.Context,
-	conv *conversation.Manager,
-	client llm.Client,
-	workDir string,
-	sessionID string,
-	contextWindow int,
-	recovery *RecoveryState,
-	toolSchemas []map[string]any,
-) (string, error) {
-	messages := conv.GetMessages()
-	beforeTokens := EstimateTokens(messages)
+// groupMessagesByAPIRound splits messages into groups at API round-trip
+// boundaries. A new group starts at each assistant message that follows a
+// tool_result (i.e. a new LLM turn). This keeps tool_use/tool_result pairs
+// together so dropping a group never orphans a tool_result.
+func groupMessagesByAPIRound(messages []conversation.Message) [][]conversation.Message {
+	var groups [][]conversation.Message
+	var current []conversation.Message
+	prevHadToolResult := false
 
-	// Select the recent tail to keep verbatim; only the prefix before keepStart
-	// is summarized. If the boundary leaves nothing (or almost nothing) to
-	// summarize, there's no point compacting — keep the conversation untouched.
-	keepStart := computeKeepStartIndex(messages)
-	if keepStart <= 0 {
-		// Everything is within the kept tail (conversation too short) — degrade
-		// to no-op so we don't "compact for nothing".
-		return "", nil
+	for _, m := range messages {
+		if m.Role == "assistant" && prevHadToolResult && len(current) > 0 {
+			groups = append(groups, current)
+			current = nil
+		}
+		current = append(current, m)
+		prevHadToolResult = len(m.ToolResults) > 0
 	}
-	prefix := messages[:keepStart]
-	keep := messages[keepStart:]
+	if len(current) > 0 {
+		groups = append(groups, current)
+	}
+	return groups
+}
 
+// truncateHeadForPTL drops the oldest API-round groups from the prefix
+// messages until the estimated token count drops by at least tokenGap.
+// Returns nil if there's nothing meaningful left to summarize.
+func truncateHeadForPTL(prefix []conversation.Message, tokenGap int) []conversation.Message {
+	groups := groupMessagesByAPIRound(prefix)
+	if len(groups) < 2 {
+		return nil
+	}
+
+	dropCount := 0
+	if tokenGap > 0 {
+		acc := 0
+		for _, g := range groups {
+			acc += EstimateTokens(g)
+			dropCount++
+			if acc >= tokenGap {
+				break
+			}
+		}
+	} else {
+		dropCount = max(1, len(groups)/5)
+	}
+
+	dropCount = min(dropCount, len(groups)-1)
+	if dropCount < 1 {
+		return nil
+	}
+
+	var result []conversation.Message
+	for _, g := range groups[dropCount:] {
+		result = append(result, g...)
+	}
+	if len(result) > 0 && result[0].Role != "user" {
+		marker := conversation.Message{Role: "user", Content: ptlRetryMarker}
+		result = append([]conversation.Message{marker}, result...)
+	}
+	return result
+}
+
+// buildPrefixText serializes prefix messages into a text block for the
+// summary LLM call.
+func buildPrefixText(prefix []conversation.Message) string {
 	var sb strings.Builder
 	for _, m := range prefix {
 		sb.WriteString(fmt.Sprintf("[%s]: %s\n", m.Role, m.Content))
@@ -387,26 +469,49 @@ func autoCompact(
 			sb.WriteString(fmt.Sprintf("[tool_result]: %s\n", content))
 		}
 	}
+	return sb.String()
+}
 
-	summaryConv := conversation.NewManager()
-	summaryConv.AddUserMessage(summarySystemPrompt + "\n\n" + sb.String())
-
-	events, errs := client.Stream(ctx, summaryConv, nil)
-	var summary strings.Builder
-	for ev := range events {
-		if td, ok := ev.(llm.TextDelta); ok {
-			summary.WriteString(td.Text)
-		}
+// autoCompact is Layer 2: an LLM summary of the older prefix that replaces only
+// messages[:keepStart] with a single summary message, while the recent tail
+// (messages[keepStart:]) is preserved verbatim. After the summary lands, a recovery
+// block is appended to the summary message so the model still has snapshots of
+// the files it just read, the SOPs for any skills it invoked, and the current
+// tool listing. When there's too little prefix to summarize, it degrades to the
+// original full-summary behaviour.
+func autoCompact(
+	ctx context.Context,
+	conv *conversation.Manager,
+	client llm.Client,
+	workDir string,
+	sessionID string,
+	contextWindow int,
+	recovery *RecoveryState,
+	toolSchemas []map[string]any,
+	budgetMessages []conversation.Message,
+) (string, error) {
+	messages := conv.GetMessages()
+	if len(budgetMessages) > 0 {
+		messages = budgetMessages
 	}
-	select {
-	case err := <-errs:
-		if err != nil {
-			return "", err
-		}
-	default:
-	}
+	beforeTokens := EstimateTokens(messages)
 
-	finalSummary := formatCompactSummary(summary.String())
+	// Select the recent tail to keep verbatim; only the prefix before keepStart
+	// is summarized. If the boundary leaves nothing (or almost nothing) to
+	// summarize, there's no point compacting — keep the conversation untouched.
+	keepStart := computeKeepStartIndex(messages)
+	if keepStart <= 0 {
+		// Everything is within the kept tail (conversation too short) — degrade
+		// to no-op so we don't "compact for nothing".
+		return "", nil
+	}
+	prefix := messages[:keepStart]
+	keep := messages[keepStart:]
+
+	finalSummary, err := callSummaryWithPTLRetry(ctx, client, prefix, toolSchemas)
+	if err != nil {
+		return "", err
+	}
 
 	// Persist a compact_boundary record so a later resume can rebuild this
 	// compacted state (summary + kept tail) instead of replaying the full
@@ -443,6 +548,52 @@ func autoCompact(
 	*conv = *compacted
 	afterTokens := EstimateTokens(conv.GetMessages())
 	return fmt.Sprintf("Compacted: %d → %d estimated tokens", beforeTokens, afterTokens), nil
+}
+
+// callSummaryWithPTLRetry sends the prefix to the LLM for summarization. If
+// the request returns ContextTooLongError, it drops the oldest API-round groups
+// from the prefix and retries, up to maxPTLRetries times.
+func callSummaryWithPTLRetry(
+	ctx context.Context,
+	client llm.Client,
+	prefix []conversation.Message,
+	toolSchemas []map[string]any,
+) (string, error) {
+	currentPrefix := prefix
+	for attempt := 0; ; attempt++ {
+		text := buildPrefixText(currentPrefix)
+		summaryConv := conversation.NewManager()
+		summaryConv.AddUserMessage(summarySystemPrompt + "\n\n" + text)
+
+		events, errs := client.Stream(ctx, summaryConv, toolSchemas)
+		var summary strings.Builder
+		for ev := range events {
+			if td, ok := ev.(llm.TextDelta); ok {
+				summary.WriteString(td.Text)
+			}
+		}
+		var streamErr error
+		select {
+		case streamErr = <-errs:
+		default:
+		}
+
+		if streamErr == nil {
+			return formatCompactSummary(summary.String()), nil
+		}
+
+		var ptlErr *llm.ContextTooLongError
+		if !errors.As(streamErr, &ptlErr) || attempt >= maxPTLRetries {
+			return "", streamErr
+		}
+
+		tokenGap := EstimateTokens(currentPrefix) / 5
+		truncated := truncateHeadForPTL(currentPrefix, tokenGap)
+		if truncated == nil {
+			return "", streamErr
+		}
+		currentPrefix = truncated
+	}
 }
 
 // formatCompactSummary strips the <analysis> scratchpad block from the model's two-phase response,

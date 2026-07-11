@@ -209,3 +209,68 @@ func TestCheckerLayerOrder(t *testing.T) {
 		t.Errorf("rule allow should override Ask, got %v", d)
 	}
 }
+
+func TestSplitCompoundCommand(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want []string
+	}{
+		{"ls", []string{"ls"}},
+		{"echo ok && rm -rf /", []string{"echo ok", "rm -rf /"}},
+		{"a || b ; c | d", []string{"a", "b", "c", "d"}},
+		{"", []string{""}},
+	}
+	for _, tc := range cases {
+		got := splitCompoundCommand(tc.cmd)
+		if len(got) != len(tc.want) {
+			t.Errorf("splitCompoundCommand(%q) = %v, want %v", tc.cmd, got, tc.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Errorf("splitCompoundCommand(%q)[%d] = %q, want %q", tc.cmd, i, got[i], tc.want[i])
+			}
+		}
+	}
+}
+
+func TestSandboxAutoAllowRespectsCompoundDeny(t *testing.T) {
+	dir := t.TempDir()
+	sb := NewPathSandbox(dir)
+	local := filepath.Join(dir, "local.yaml")
+	eng := &RuleEngine{LocalPath: local}
+	eng.AppendLocalRule(Rule{ToolName: "Bash", Pattern: "rm -rf /", Effect: RuleDeny})
+
+	chk := NewChecker(sb, eng, ModeDefault)
+	chk.SandboxEnabled = true
+
+	bash := &fakeTool{name: "Bash", cat: tools.CategoryCommand}
+
+	d := chk.Check(bash, map[string]any{"command": "echo ok && rm -rf /"})
+	if d.Effect != Deny {
+		t.Errorf("compound command with denied subcommand should be Deny, got %v", d)
+	}
+
+	d = chk.Check(bash, map[string]any{"command": "go test ./..."})
+	if d.Effect != Allow {
+		t.Errorf("safe command with sandbox should be Allow, got %v", d)
+	}
+}
+
+func TestSandboxAutoAllowRespectsAskRule(t *testing.T) {
+	dir := t.TempDir()
+	sb := NewPathSandbox(dir)
+	local := filepath.Join(dir, "local.yaml")
+	eng := &RuleEngine{LocalPath: local}
+	eng.AppendLocalRule(Rule{ToolName: "Bash", Pattern: "git push*", Effect: RuleAsk})
+
+	chk := NewChecker(sb, eng, ModeDefault)
+	chk.SandboxEnabled = true
+
+	bash := &fakeTool{name: "Bash", cat: tools.CategoryCommand}
+
+	d := chk.Check(bash, map[string]any{"command": "git push origin main"})
+	if d.Effect != Ask {
+		t.Errorf("ask rule should not be overridden by sandbox, got %v", d)
+	}
+}

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/sandbox"
 )
 
 // commandErrorThresholds defines exit code thresholds for special commands.
@@ -53,9 +55,36 @@ func extractLastCommand(command string) string {
 	return filepath.Base(fields[0])
 }
 
+func exitCodeHint(command string, exitCode int) string {
+	base := extractLastCommand(command)
+	switch base {
+	case "grep", "rg":
+		if exitCode == 1 {
+			return "no matches found"
+		}
+	case "diff":
+		if exitCode == 1 {
+			return "files differ"
+		}
+	case "find":
+		if exitCode == 1 {
+			return "some directories were inaccessible"
+		}
+	case "test", "[":
+		if exitCode == 1 {
+			return "condition is false"
+		}
+	}
+	return fmt.Sprintf("command failed with exit code %d", exitCode)
+}
+
 const maxTimeout = 600
 
-type BashTool struct{}
+type BashTool struct {
+	WorkDir       string
+	Sandbox       sandbox.Sandbox // OS-level sandbox instance, nil means disabled
+	SandboxConfig sandbox.Config  // Sandbox path and network permission configuration
+}
 
 func (t *BashTool) Name() string { return "Bash" }
 
@@ -89,10 +118,20 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) ToolResult 
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", command)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	actualCommand := command
+	if t.Sandbox != nil && t.Sandbox.Available() {
+		wrapped, err := t.Sandbox.Wrap(command, t.SandboxConfig)
+		if err == nil {
+			actualCommand = wrapped
+		}
+	}
+	cmd := exec.CommandContext(ctx, "bash", "-c", actualCommand)
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
+	if t.WorkDir != "" {
+		cmd.Dir = t.WorkDir
+	}
 
 	err := cmd.Run()
 
@@ -101,12 +140,9 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) ToolResult 
 	}
 
 	exitCode := 0
-	isError := false
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
-			// Determine whether the exit code is a real error based on command semantics
-			isError = interpretExitCode(command, exitCode)
 		} else if ctx.Err() == nil {
 			return ToolResult{Output: fmt.Sprintf("Error executing command: %s", err), IsError: true}
 		}
@@ -114,19 +150,19 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) ToolResult 
 
 	var sb bytes.Buffer
 	fmt.Fprintf(&sb, "$ %s\n", command)
-	if stdout.Len() > 0 {
-		sb.Write(stdout.Bytes())
-		if stdout.Bytes()[stdout.Len()-1] != '\n' {
+	if combined.Len() > 0 {
+		sb.Write(combined.Bytes())
+		if combined.Bytes()[combined.Len()-1] != '\n' {
 			sb.WriteByte('\n')
 		}
 	}
-	if stderr.Len() > 0 {
-		fmt.Fprintf(&sb, "STDERR: %s", stderr.String())
-		if stderr.Bytes()[stderr.Len()-1] != '\n' {
-			sb.WriteByte('\n')
+	if exitCode != 0 {
+		fmt.Fprintf(&sb, "Exit code %d", exitCode)
+		if !interpretExitCode(command, exitCode) {
+			fmt.Fprintf(&sb, " (%s)", exitCodeHint(command, exitCode))
 		}
 	}
 	fmt.Fprintf(&sb, "(exit code %d)", exitCode)
 
-	return ToolResult{Output: sb.String(), IsError: isError}
+	return ToolResult{Output: sb.String(), IsError: false}
 }

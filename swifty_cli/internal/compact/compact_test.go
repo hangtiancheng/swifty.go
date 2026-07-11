@@ -20,6 +20,7 @@ type stubSummaryClient struct {
 	streamCalled bool
 }
 
+func (c *stubSummaryClient) SetSystemPrompt(prompt string) {}
 func (c *stubSummaryClient) Stream(ctx context.Context, conv *conversation.Manager, tools []map[string]any) (<-chan llm.StreamEvent, <-chan error) {
 	c.streamCalled = true
 	if msgs := conv.GetMessages(); len(msgs) > 0 {
@@ -204,7 +205,7 @@ func TestAutoCompactKeepsRecentVerbatim(t *testing.T) {
 	conv.AddAssistantMessage(recent[1])
 
 	client := &stubSummaryClient{summary: "THE SUMMARY"}
-	msg, err := autoCompact(context.Background(), conv, client, "", "", 200000, nil, nil)
+	msg, err := autoCompact(context.Background(), conv, client, "", "", 200000, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("autoCompact error: %v", err)
 	}
@@ -248,7 +249,7 @@ func TestAutoCompactPersistsBoundary(t *testing.T) {
 	sid := "compact-roundtrip"
 	client := &stubSummaryClient{summary: "PERSISTED-SUMMARY"}
 
-	msg, err := autoCompact(context.Background(), conv, client, workDir, sid, 200000, nil, nil)
+	msg, err := autoCompact(context.Background(), conv, client, workDir, sid, 200000, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("autoCompact error: %v", err)
 	}
@@ -310,7 +311,7 @@ func TestAutoCompactNoSessionNoBoundary(t *testing.T) {
 	workDir := t.TempDir()
 	client := &stubSummaryClient{summary: "S"}
 	// Empty sessionID → no persistence.
-	if _, err := autoCompact(context.Background(), conv, client, workDir, "", 200000, nil, nil); err != nil {
+	if _, err := autoCompact(context.Background(), conv, client, workDir, "", 200000, nil, nil, nil); err != nil {
 		t.Fatalf("autoCompact error: %v", err)
 	}
 	// No session file should have been created under any id.
@@ -332,7 +333,7 @@ func TestAutoCompactSummaryOnlyCoversPrefix(t *testing.T) {
 	conv.AddAssistantMessage("TAIL-ONLY-REPLY")
 
 	client := &stubSummaryClient{summary: "S"}
-	if _, err := autoCompact(context.Background(), conv, client, "", "", 200000, nil, nil); err != nil {
+	if _, err := autoCompact(context.Background(), conv, client, "", "", 200000, nil, nil, nil); err != nil {
 		t.Fatalf("autoCompact error: %v", err)
 	}
 	if !client.streamCalled {
@@ -397,7 +398,7 @@ func TestAutoCompactDegradesWhenTooFewMessages(t *testing.T) {
 	before := conv.GetMessages()
 
 	client := &stubSummaryClient{summary: "S"}
-	msg, err := autoCompact(context.Background(), conv, client, "", "", 200000, nil, nil)
+	msg, err := autoCompact(context.Background(), conv, client, "", "", 200000, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("autoCompact error: %v", err)
 	}

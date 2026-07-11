@@ -12,6 +12,21 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 )
 
+func splitCompoundCommand(cmd string) []string {
+	parts := regexp.MustCompile(`\s*(?:&&|\|\||[;|])\s*`).Split(cmd, -1)
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	if len(result) == 0 {
+		return []string{cmd}
+	}
+	return result
+}
+
 type DecisionEffect string
 
 const (
@@ -85,8 +100,11 @@ func DetectDangerous(command string) (bool, string) {
 
 type PathSandbox struct {
 	allowedRoots []string
+	denyWrite    []string // Protected paths that are always read-only; takes precedence over allowedRoots
 }
 
+// NewPathSandbox creates a path sandbox. denyWrite specifies protected paths (e.g., config files),
+// denying write access even if they are within allowedRoots.
 func NewPathSandbox(projectRoot string, extraAllowed ...string) *PathSandbox {
 	root, _ := filepath.Abs(projectRoot)
 	allowed := []string{root, os.TempDir()}
@@ -94,13 +112,28 @@ func NewPathSandbox(projectRoot string, extraAllowed ...string) *PathSandbox {
 		abs, _ := filepath.Abs(p)
 		allowed = append(allowed, abs)
 	}
-	return &PathSandbox{allowedRoots: allowed}
+
+	// Default protected paths: prevent the Agent from tampering with permission configs and Skill definitions
+	denyWrite := []string{
+		filepath.Join(root, ".swifty", "config.yaml"),
+		filepath.Join(root, ".swifty", "permissions.local.yaml"),
+		filepath.Join(root, ".swifty", "skills"),
+	}
+
+	return &PathSandbox{allowedRoots: allowed, denyWrite: denyWrite}
 }
 
 func (s *PathSandbox) Check(path string) (bool, string) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return false, fmt.Sprintf("cannot resolve path: %s", path)
+	}
+
+	// Check protected paths first: deny immediately if matched
+	for _, deny := range s.denyWrite {
+		if abs == deny || strings.HasPrefix(abs, deny+string(filepath.Separator)) {
+			return false, fmt.Sprintf("protected path: %s", path)
+		}
 	}
 
 	for _, root := range s.allowedRoots {
@@ -111,6 +144,16 @@ func (s *PathSandbox) Check(path string) (bool, string) {
 	return false, fmt.Sprintf("path %s outside sandbox", path)
 }
 
+// GetDenyWrite returns the list of protected paths for building the sandbox Config.
+func (s *PathSandbox) GetDenyWrite() []string {
+	return s.denyWrite
+}
+
+// GetAllowedRoots returns the list of allowed write paths for building the sandbox Config.
+func (s *PathSandbox) GetAllowedRoots() []string {
+	return s.allowedRoots
+}
+
 // Layer 3: Rule engine
 
 type RuleEffect string
@@ -118,6 +161,7 @@ type RuleEffect string
 const (
 	RuleAllow RuleEffect = "allow"
 	RuleDeny  RuleEffect = "deny"
+	RuleAsk   RuleEffect = "ask"
 )
 
 type Rule struct {
@@ -130,7 +174,33 @@ func (r Rule) Matches(toolName, content string) bool {
 	if r.ToolName != toolName {
 		return false
 	}
-	matched, _ := filepath.Match(r.Pattern, content)
+	// Simple wildcard matching: * matches any character (including /), suitable for non-path scenarios like Bash commands.
+	// filepath.Match's * does not match /, causing "allow always" to fail for commands containing paths.
+	return globMatch(r.Pattern, content)
+}
+
+// globMatch implements simple wildcard matching where * matches any character (including /).
+func globMatch(pattern, content string) bool {
+	// Fast path: exact comparison if no wildcards are present
+	if !strings.Contains(pattern, "*") && !strings.Contains(pattern, "?") {
+		return pattern == content
+	}
+	// Convert pattern to regex: * → .*, ? → .
+	re := "^"
+	for _, ch := range pattern {
+		switch ch {
+		case '*':
+			re += ".*"
+		case '?':
+			re += "."
+		case '.', '+', '^', '$', '{', '}', '(', ')', '|', '[', ']', '\\':
+			re += "\\" + string(ch)
+		default:
+			re += string(ch)
+		}
+	}
+	re += "$"
+	matched, _ := regexp.MatchString(re, content)
 	return matched
 }
 
@@ -188,7 +258,7 @@ func loadRulesFile(path string) []Rule {
 	}
 	var rules []Rule
 	for _, e := range entries {
-		if e.Effect != "allow" && e.Effect != "deny" {
+		if e.Effect != "allow" && e.Effect != "deny" && e.Effect != "ask" {
 			continue
 		}
 		r, err := parseRule(e.RuleStr, RuleEffect(e.Effect))
@@ -282,10 +352,11 @@ func DescribeToolAction(toolName string, args map[string]any) string {
 // Layer 4+5: Permission Checker (orchestrates all layers)
 
 type Checker struct {
-	Sandbox      *PathSandbox
-	RuleEngine   *RuleEngine
-	Mode         PermissionMode
-	PlanFilePath string
+	Sandbox        *PathSandbox
+	RuleEngine     *RuleEngine
+	Mode           PermissionMode
+	PlanFilePath   string
+	SandboxEnabled bool
 	// sessionAllowed is Layer 4b: session-level allow-always set (in-memory).
 	// Stores entries in the format "ToolName:pattern", recorded when the user selects always allow.
 	// Disappears when the session ends; not persisted to disk.
@@ -338,6 +409,24 @@ func (c *Checker) Check(tool tools.Tool, args map[string]any) Decision {
 	// Layer 1: safe read-only commands (auto-allow)
 	if cat == tools.CategoryCommand && IsSafeCommand(content) {
 		return Decision{Effect: Allow, Reason: "Safe read-only command"}
+	}
+
+	if c.SandboxEnabled && cat == tools.CategoryCommand {
+		subcommands := splitCompoundCommand(content)
+		var hasAsk bool
+		for _, sub := range subcommands {
+			r := c.RuleEngine.Evaluate(tool.Name(), sub)
+			if r != nil && *r == RuleDeny {
+				return Decision{Effect: Deny, Reason: "Permission rule: deny"}
+			}
+			if r != nil && *r == RuleAsk {
+				hasAsk = true
+			}
+		}
+		if hasAsk {
+			return Decision{Effect: Ask, Reason: "Permission rule: ask (sandbox does not override explicit ask)"}
+		}
+		return Decision{Effect: Allow, Reason: "Sandboxed: auto-allow"}
 	}
 
 	// Layer 2: dangerous command (Bash only)

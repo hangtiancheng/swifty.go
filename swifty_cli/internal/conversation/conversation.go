@@ -149,3 +149,10 @@ func (m *Manager) GetMessages() []Message {
 	copy(result, m.history)
 	return result
 }
+
+func (m *Manager) ReplaceToolResults(msgIndex int, newResults []ToolResultBlock) {
+	if msgIndex < 0 || msgIndex >= len(m.history) {
+		return
+	}
+	m.history[msgIndex].ToolResults = newResults
+}

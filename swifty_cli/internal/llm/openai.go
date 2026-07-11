@@ -52,6 +52,10 @@ func newOpenAIClient(cfg *config.ProviderConfig, systemPrompt string) (*openaiCl
 	}, nil
 }
 
+func (c *openaiClient) SetSystemPrompt(prompt string) {
+	c.systemPrompt = prompt
+}
+
 func (c *openaiClient) SetMaxOutputTokens(tokens int) {
 	c.maxOutputTokens = tokens
 }

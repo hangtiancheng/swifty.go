@@ -8,9 +8,7 @@ import (
 )
 
 // InstallSkillTool lets the model install a new Skill on demand from a
-// skills.sh / github.com URL the user provides. Not a system tool — it
-// touches the user's home directory, so it stays under the per-skill
-// allowed_tools whitelist like any other side-effecting tool.
+// skills.sh / github.com URL the user provides.
 //
 // The OnInstalled callback is fired after a successful install with the
 // new skill's name; the TUI uses it to re-register the slash command so

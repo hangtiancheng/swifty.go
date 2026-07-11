@@ -1,6 +1,6 @@
 ```bash
+git config --global core.fileMode false
 go env -w GOPROXY=https://goproxy.cn,direct
-
 go install github.com/air-verse/air@latest
 ```
 

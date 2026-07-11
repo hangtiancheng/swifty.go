@@ -27,10 +27,12 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/llm"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/mcp"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/memory"
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/memory/consolidation"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/memory/extractor"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/permissions"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/plan_file"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/prompt"
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/sandbox"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/session"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/skills"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/teams"
@@ -213,7 +215,13 @@ type Model struct {
 	todoList           *todo.TaskList
 	memoryMgr          *memory.Manager
 	memoryExtractor    *extractor.Extractor
+	memoryConsolidator *consolidation.Consolidator
 	teamMgr            *teams.TeamManager
+
+	sandboxDialog         bool                 // Whether the sandbox mode selection dialog is open
+	sandboxCursor         int                  // Index of the currently selected sandbox mode
+	sandboxCfg            config.SandboxConfig // Sandbox settings from the configuration file
+	EnableCoordinatorMode bool                 // Configuration switch for Coordinator mode
 
 	resumeSessions  []session.SessionInfo
 	resumeFiltered  []session.SessionInfo
@@ -224,7 +232,7 @@ type Model struct {
 	hasExitedPlanMode bool // tracks whether this session has exited Plan Mode, used to inject a re-entry hint
 }
 
-func New(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig, hookConfigs []hooks.Hook) Model {
+func New(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig, hookConfigs []hooks.Hook, sandboxCfg ...config.SandboxConfig) Model {
 	ta := textarea.New()
 	ta.Placeholder = "Send a message..."
 	ta.Prompt = ""
@@ -249,10 +257,16 @@ func New(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig,
 	reg := dt.Registry
 	reg.Register(&tools.AskUserQuestionTool{RequestCh: askCh})
 
+	var sCfg config.SandboxConfig
+	if len(sandboxCfg) > 0 {
+		sCfg = sandboxCfg[0]
+	}
+
 	m := Model{
 		providers:          providers,
 		mcpConfigs:         mcpConfigs,
 		hookConfigs:        hookConfigs,
+		sandboxCfg:         sCfg,
 		state:              stateProviderSelect,
 		textarea:           ta,
 		conversation:       conversation.NewManager(),
@@ -417,15 +431,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if userMem := memory.GetUserAutoMemPath(); userMem != "" {
 			sandboxAllow = append(sandboxAllow, userMem)
 		}
+		pathSandbox := permissions.NewPathSandbox(wd, sandboxAllow...)
 		ag.Checker = permissions.NewChecker(
-			permissions.NewPathSandbox(wd, sandboxAllow...),
+			pathSandbox,
 			&permissions.RuleEngine{
 				LocalPath: filepath.Join(wd, ".swifty", "permissions.local.yaml"),
 			},
 			permissions.ModeDefault,
 		)
+		if m.sandboxCfg.Enabled {
+			sb := sandbox.New()
+			if bashTool, ok := m.registry.Get("Bash").(*tools.BashTool); ok && sb != nil {
+				bashTool.Sandbox = sb
+				bashTool.SandboxConfig = sandbox.Config{
+					AllowWrite:     pathSandbox.GetAllowedRoots(),
+					DenyWrite:      pathSandbox.GetDenyWrite(),
+					NetworkEnabled: m.sandboxCfg.NetworkEnabled,
+				}
+			}
+			if m.sandboxCfg.AutoAllow {
+				ag.Checker.SandboxEnabled = true
+			}
+		}
 		ag.NotificationFn = m.drainTaskNotifications
-		ag.ToolNameFilter = coordinatorToolFilter(m.teamMgr)
+		ag.ToolNameFilter = teams.CoordinatorToolFilter(m.teamMgr, m.EnableCoordinatorMode)
 		if len(m.hookConfigs) > 0 {
 			eng := hooks.NewEngine()
 			eng.LoadHooks(m.hookConfigs)
@@ -652,23 +681,6 @@ func newAgentHookRunner(client llm.Client) func(prompt string, ctx hooks.HookCon
 	}
 }
 
-// coordinatorToolFilter returns a per-iteration tool predicate for the
-// main (Lead) agent. While at least one team exists, the Lead is
-// restricted to teams.CoordinatorAllowedTools so it delegates work
-// instead of doing it itself; when teams are all torn down, the full
-// tool set is restored on the next iteration.
-func coordinatorToolFilter(teamMgr *teams.TeamManager) func(name string) bool {
-	if teamMgr == nil {
-		return nil
-	}
-	return func(name string) bool {
-		if len(teamMgr.ListTeams()) == 0 {
-			return true
-		}
-		return teams.IsCoordinatorTool(name)
-	}
-}
-
 func (m *Model) registerAgentTools(client llm.Client, providerCfg *config.ProviderConfig, protocol, wd string) {
 	m.taskMgr = agents.NewTaskManager()
 
@@ -765,30 +777,8 @@ func (m *Model) initMCPServersCmd() tea.Cmd {
 }
 
 func (m *Model) loadSkillsAndBuildPrompt(wd string) string {
-	catalog := skills.LoadCatalog(wd)
-	m.skillCatalog = catalog
 
-	skillsDir := filepath.Join(wd, ".swifty", "skills")
-	skillSection := ""
-	if catalog != nil {
-		metas := catalog.List()
-		if len(metas) > 0 {
-			var sb strings.Builder
-			sb.WriteString("## Available Skills\n\n")
-			sb.WriteString(fmt.Sprintf("Skills are installed at: %s\n", skillsDir))
-			sb.WriteString("When creating new skills, always place them under this directory as <skill-name>/SKILL.md.\n\n")
-			sb.WriteString("Only Skill names and one-line descriptions are listed below. To activate a Skill on demand call the LoadSkill tool with {name: \"<skill-name>\"}. After activation the Skill's full SOP gets pinned to the environment context, and any tools the Skill declares get registered. Users can also invoke a Skill directly with /<name>.\n\n")
-			sb.WriteString("If the user pastes a Skill URL (skills.sh, github.com tree URL, or raw SKILL.md URL) and asks to install / add / get it, call the InstallSkill tool with {url: \"<url>\"} — the new Skill becomes available immediately afterwards.\n\n")
-			for _, meta := range metas {
-				desc := meta.Description
-				if len(desc) > 200 {
-					desc = desc[:200] + "…"
-				}
-				sb.WriteString(fmt.Sprintf("- /%s: %s\n", meta.Name, desc))
-			}
-			skillSection = sb.String()
-		}
-	}
+	m.skillCatalog = skills.LoadCatalog(wd)
 
 	for _, cmd := range commands.LoadUserCommands(wd) {
 		if m.cmdRegistry.HasConflict(cmd) {
@@ -797,19 +787,7 @@ func (m *Model) loadSkillsAndBuildPrompt(wd string) string {
 		m.cmdRegistry.Register(cmd)
 	}
 
-	m.instructionsContent = m.loadCustomInstructions(wd)
-	m.memoryContent = memory.LoadAutoMemoryPrompt(wd)
-
-	env := prompt.DetectEnvironment(wd)
-	if m.selectedProvider != nil {
-		env.Model = m.selectedProvider.Model
-	}
-
-	return prompt.BuildSystemPrompt(env, prompt.BuildOptions{
-		CustomInstructions: m.instructionsContent,
-		MemorySection:      m.memoryContent,
-		SkillSection:       skillSection,
-	})
+	return m.rebuildSystemPrompt(wd)
 }
 
 // wireSkillsToAgent finishes the Skill bring-up that loadSkillsAndBuildPrompt
@@ -827,14 +805,6 @@ func (m *Model) wireSkillsToAgent() {
 	}
 	for _, meta := range m.skillCatalog.List() {
 		m.registerSkillCommand(meta.Name)
-		// Eagerly register directory-type skills' tool.json so explicit
-		// /<name> invocations don't trip fail-fast before LoadSkill ever
-		// runs. RegisterDirectoryTools is idempotent (skips already-
-		// registered names), so the lazy LoadSkill path still works
-		// unchanged.
-		if skill := m.skillCatalog.Get(meta.Name); skill != nil && skill.IsDirectory {
-			_, _ = skills.RegisterDirectoryTools(skill, m.registry)
-		}
 	}
 	m.registry.Register(&skills.LoadSkillTool{
 		Catalog: m.skillCatalog,
@@ -843,13 +813,11 @@ func (m *Model) wireSkillsToAgent() {
 	m.registry.Register(&skills.InstallSkillTool{
 		Catalog: m.skillCatalog,
 		OnInstalled: func(name string) {
-			// Re-register the freshly-installed skill as a /<name>
-			// command so the user can hit it without a TUI restart.
-			// Skip silently if the name collides — same precedence as
-			// the initial wiring loop.
 			m.registerSkillCommand(name)
-			if skill := m.skillCatalog.Get(name); skill != nil && skill.IsDirectory {
-				_, _ = skills.RegisterDirectoryTools(skill, m.registry)
+
+			if m.client != nil {
+				wd, _ := os.Getwd()
+				m.client.SetSystemPrompt(m.rebuildSystemPrompt(wd))
 			}
 		},
 	})
@@ -909,6 +877,71 @@ func (m *Model) registerSkillCommand(name string) {
 	m.cmdRegistry.Register(cmd)
 }
 
+// refreshSkillsIfNeeded checks whether the skill directories have changed
+// since the catalog was last loaded. If so, it reloads the catalog, registers
+// any new slash commands, and updates the LLM client's system prompt so the
+// model sees newly-added skills.
+func (m *Model) refreshSkillsIfNeeded() {
+	if m.skillCatalog == nil || m.client == nil {
+		return
+	}
+	if !m.skillCatalog.NeedsReload() {
+		return
+	}
+	wd, _ := os.Getwd()
+	m.skillCatalog.Reload(wd)
+	for _, meta := range m.skillCatalog.List() {
+		m.registerSkillCommand(meta.Name)
+	}
+	m.client.SetSystemPrompt(m.rebuildSystemPrompt(wd))
+}
+
+// rebuildSystemPrompt regenerates the full system prompt from current state
+// (skills, custom instructions, memory). Used by refreshSkillsIfNeeded and
+// /skill reload.
+func (m *Model) rebuildSystemPrompt(wd string) string {
+	skillSection := m.buildSkillSection(wd)
+	m.instructionsContent = m.loadCustomInstructions(wd)
+	m.memoryContent = memory.LoadAutoMemoryPrompt(wd)
+	env := prompt.DetectEnvironment(wd)
+	if m.selectedProvider != nil {
+		env.Model = m.selectedProvider.Model
+	}
+	return prompt.BuildSystemPrompt(env, prompt.BuildOptions{
+		CustomInstructions: m.instructionsContent,
+		MemorySection:      m.memoryContent,
+		SkillSection:       skillSection,
+	})
+}
+
+// buildSkillSection generates the "## Available Skills" prompt section from
+// the current catalog. Extracted from loadSkillsAndBuildPrompt so it can be
+// reused by rebuildSystemPrompt.
+func (m *Model) buildSkillSection(wd string) string {
+	if m.skillCatalog == nil {
+		return ""
+	}
+	metas := m.skillCatalog.List()
+	if len(metas) == 0 {
+		return ""
+	}
+	skillsDir := filepath.Join(wd, ".mewcode", "skills")
+	var sb strings.Builder
+	sb.WriteString("## Available Skills\n\n")
+	sb.WriteString(fmt.Sprintf("Skills are installed at: %s\n", skillsDir))
+	sb.WriteString("When creating new skills, always place them under this directory as <skill-name>/SKILL.md.\n\n")
+	sb.WriteString("Only Skill names and one-line descriptions are listed below. To activate a Skill on demand call the LoadSkill tool with {name: \"<skill-name>\"}. After activation the Skill's full SOP gets pinned to the environment context, and any tools the Skill declares get registered. Users can also invoke a Skill directly with /<name>.\n\n")
+	sb.WriteString("If the user pastes a Skill URL (skills.sh, github.com tree URL, or raw SKILL.md URL) and asks to install / add / get it, call the InstallSkill tool with {url: \"<url>\"} — the new Skill becomes available immediately afterwards.\n\n")
+	for _, meta := range metas {
+		desc := meta.Description
+		if len(desc) > 200 {
+			desc = desc[:200] + "…"
+		}
+		sb.WriteString(fmt.Sprintf("- /%s: %s\n", meta.Name, desc))
+	}
+	return sb.String()
+}
+
 // ----- SkillForkHost implementation on *Model -----
 
 // ActivateSkill delegates to the underlying Agent so RunInline can pin the
@@ -919,10 +952,8 @@ func (m Model) ActivateSkill(name, body string) {
 	}
 }
 
-// SetToolFilter installs the per-skill allowed_tools predicate on the
-// Agent's existing ToolNameFilter slot. Layered on top of the coordinator
-// filter via composition (skills filter applied first; if it rejects, the
-// coordinator filter is asked too — narrower of the two wins).
+// SetToolFilter installs a tool visibility filter on the Agent (used by
+// Teams coordinator mode). Passing nil clears the filter.
 func (m Model) SetToolFilter(allow func(name string) bool) {
 	if m.ag == nil {
 		return
@@ -958,7 +989,7 @@ func (m Model) SnapshotParentMessages() []conversation.Message {
 // Caller is expected to dispatch this on a goroutine (via tea.Cmd) — the
 // channel drain here is synchronous and will freeze the UI if invoked on
 // the bubbletea Update path.
-func (m Model) RunSubAgent(ctx context.Context, body string, seed []conversation.Message, allowedTools []string, _ string) (string, error) {
+func (m Model) RunSubAgent(ctx context.Context, body string, seed []conversation.Message, _ string) (string, error) {
 	if m.client == nil {
 		return "", fmt.Errorf("RunSubAgent: no llm client (provider not selected)")
 	}
@@ -980,18 +1011,6 @@ func (m Model) RunSubAgent(ctx context.Context, body string, seed []conversation
 		subAgent.MaxOutputTokens = m.selectedProvider.GetMaxOutputTokens()
 	}
 	subAgent.MaxIterations = 50
-	if len(allowedTools) > 0 {
-		allowed := make(map[string]bool, len(allowedTools))
-		for _, name := range allowedTools {
-			allowed[name] = true
-		}
-		subAgent.ToolNameFilter = func(name string) bool {
-			if t := m.registry.Get(name); t != nil && tools.IsSystemTool(t) {
-				return true
-			}
-			return allowed[name]
-		}
-	}
 
 	var output strings.Builder
 	ch := subAgent.Run(ctx, subConv)
@@ -1019,7 +1038,7 @@ func (m *Model) installMemoryExtractor(ag *agent.Agent, wd, protocol string) *ex
 		return nil
 	}
 	conv := m.conversation
-	extr := extractor.InitExtractMemories(extractor.Deps{
+	extractorInstance := extractor.InitExtractMemories(extractor.Deps{
 		MemoryDir:     memory.GetAutoMemPath(wd),
 		UserMemoryDir: memory.GetUserAutoMemPath(),
 		ProjectRoot:   wd,
@@ -1029,10 +1048,24 @@ func (m *Model) installMemoryExtractor(ag *agent.Agent, wd, protocol string) *ex
 		Conversation:  conv,
 		AppendSystem:  func(s string) { conv.AddSystemReminder(s) },
 	})
+	// Memory Organizer: automatically merges duplicates, removes outdated entries, and resolves conflicts in the background.
+	consolidator := consolidation.NewConsolidator(consolidation.Deps{
+		MemoryDir:     memory.GetAutoMemPath(wd),
+		UserMemoryDir: memory.GetUserAutoMemPath(),
+		ProjectRoot:   wd,
+		Client:        m.client,
+		ToolRegistry:  m.registry,
+		Protocol:      protocol,
+		Conversation:  conv,
+		AppendSystem:  func(s string) { conv.AddSystemReminder(s) },
+	})
+	m.memoryConsolidator = consolidator
+
 	ag.OnLoopComplete = func(_ *conversation.Manager) {
-		_ = extr.Execute(context.Background())
+		_ = extractorInstance.Execute(context.Background())
+		consolidator.MaybeRun(context.Background())
 	}
-	return extr
+	return extractorInstance
 }
 
 // prefetchRelevantMemories runs the recall selector in a goroutine and
@@ -1221,15 +1254,30 @@ func (m Model) handleProviderSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if userMem := memory.GetUserAutoMemPath(); userMem != "" {
 			sandboxAllow = append(sandboxAllow, userMem)
 		}
+		pathSandbox2 := permissions.NewPathSandbox(wd, sandboxAllow...)
 		ag.Checker = permissions.NewChecker(
-			permissions.NewPathSandbox(wd, sandboxAllow...),
+			pathSandbox2,
 			&permissions.RuleEngine{
 				LocalPath: filepath.Join(wd, ".swifty", "permissions.local.yaml"),
 			},
 			permissions.ModeDefault,
 		)
+		if m.sandboxCfg.Enabled {
+			sb := sandbox.New()
+			if bashTool, ok := m.registry.Get("Bash").(*tools.BashTool); ok && sb != nil {
+				bashTool.Sandbox = sb
+				bashTool.SandboxConfig = sandbox.Config{
+					AllowWrite:     pathSandbox2.GetAllowedRoots(),
+					DenyWrite:      pathSandbox2.GetDenyWrite(),
+					NetworkEnabled: m.sandboxCfg.NetworkEnabled,
+				}
+			}
+			if m.sandboxCfg.AutoAllow {
+				ag.Checker.SandboxEnabled = true
+			}
+		}
 		ag.NotificationFn = m.drainTaskNotifications
-		ag.ToolNameFilter = coordinatorToolFilter(m.teamMgr)
+		ag.ToolNameFilter = teams.CoordinatorToolFilter(m.teamMgr, m.EnableCoordinatorMode)
 		if len(m.hookConfigs) > 0 {
 			eng := hooks.NewEngine()
 			eng.LoadHooks(m.hookConfigs)
@@ -1266,6 +1314,10 @@ func (m Model) handleChat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.rewindDialog {
 		return m.handleRewindKeys(msg)
+	}
+
+	if m.sandboxDialog {
+		return m.handleSandboxDialog(msg)
 	}
 
 	// ctrl+o: toggle expand/collapse on ALL collapsible blocks
@@ -1506,7 +1558,7 @@ func (m *Model) resizeTextarea() {
 
 func (m *Model) updateSlashMenu() {
 	text := m.textarea.Value()
-	if !strings.HasPrefix(text, "/") {
+	if !strings.HasPrefix(text, "/") || m.historyIndex > 0 {
 		m.slashMenuOpen = false
 		m.slashMatches = nil
 		m.slashCursor = 0
@@ -1692,6 +1744,20 @@ func (m Model) buildCommandContext(args string) *commands.Context {
 			}
 			return result
 		},
+		SkillReload: func() int {
+			if m.skillCatalog == nil {
+				return 0
+			}
+			wd, _ := os.Getwd()
+			m.skillCatalog.Reload(wd)
+			for _, meta := range m.skillCatalog.List() {
+				m.registerSkillCommand(meta.Name)
+			}
+			if m.client != nil {
+				m.client.SetSystemPrompt(m.rebuildSystemPrompt(wd))
+			}
+			return len(m.skillCatalog.List())
+		},
 		MCPInfo: func() string {
 			return m.mcpServerInfo
 		},
@@ -1731,6 +1797,19 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 				m.ag.ClearActiveSkills()
 				m.ag.SetToolFilter(nil)
 			}
+			wd, _ := os.Getwd()
+			m.sessionID = session.NewID()
+			m.fileHistory = file_history.New(wd, m.sessionID)
+			m.defaultTools.EditFile.FileHistory = m.fileHistory
+			m.defaultTools.WriteFile.FileHistory = m.fileHistory
+			if m.ag != nil {
+				m.ag.FileHistory = m.fileHistory
+				m.ag.SetSessionID(m.sessionID)
+			}
+			store := todo.NewStore(wd, m.sessionID)
+			m.todoList = todo.NewTaskList(store)
+			m.totalInput = 0
+			m.totalOutput = 0
 			m.updateViewport()
 			return m, tea.Batch(
 				func() tea.Msg { return tea.ClearScreen() },
@@ -1793,13 +1872,18 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 			compactWD, _ := os.Getwd()
 			compactSessionID := m.sessionID
 			return m, func() tea.Msg {
-				msg, err := compact.ForceCompact(context.Background(), conv, client, compactWD, compactSessionID, window, recovery, schemas)
+				msg, err := compact.ForceCompact(context.Background(), conv, client, compactWD, compactSessionID, window, recovery, schemas, nil)
 				return compactDoneMsg{message: msg, err: err}
 			}
 		case "resume":
 			return m.handleResume(args)
 		case "rewind":
 			return m.handleRewind()
+		case "sandbox":
+			m.sandboxDialog = true
+			m.sandboxCursor = 0
+			m.updateViewport()
+			return m, nil
 		}
 
 	case commands.TypePrompt:
@@ -2067,12 +2151,132 @@ func (m Model) renderPlanApprovalDialog() string {
 					sb.WriteString("      " + placeholder + "\n")
 				}
 			} else {
-				sb.WriteString("      " + inputLine + "\n")
+				sb.WriteString("      ")
+				sb.WriteString(inputLine)
+				sb.WriteString("\n")
 			}
 			hint := lipgloss.NewStyle().Foreground(dimText).Render("      shift+tab to approve with this feedback")
 			sb.WriteString(hint)
 			sb.WriteString("\n")
 		}
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// handleSandboxDialog handles key interactions for the sandbox mode selection dialog.
+func (m Model) handleSandboxDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	labels := commands.SandboxModeLabels()
+	switch msg.String() {
+	case "up", "k":
+		if m.sandboxCursor > 0 {
+			m.sandboxCursor--
+		}
+		m.updateViewport()
+		return m, nil
+	case "down", "j":
+		if m.sandboxCursor < len(labels)-1 {
+			m.sandboxCursor++
+		}
+		m.updateViewport()
+		return m, nil
+	case "enter":
+		m.sandboxDialog = false
+		mode := commands.SandboxMode(m.sandboxCursor)
+		return m.applySandboxMode(mode)
+	case "escape":
+		m.sandboxDialog = false
+		m.updateViewport()
+		return m, nil
+	}
+	return m, nil
+}
+
+// applySandboxMode updates the BashTool and permission checker based on the selected mode.
+func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) {
+	bashTool, _ := m.registry.Get("Bash").(*tools.BashTool)
+	labels := commands.SandboxModeLabels()
+	descriptions := commands.SandboxModeDescriptions()
+
+	switch mode {
+	case commands.SandboxAutoAllow:
+		// Enable sandbox + auto-allow
+		sb := sandbox.New()
+		if bashTool != nil {
+			bashTool.Sandbox = sb
+			if m.ag != nil && m.ag.Checker != nil && m.ag.Checker.Sandbox != nil {
+				bashTool.SandboxConfig = sandbox.Config{
+					AllowWrite:     m.ag.Checker.Sandbox.GetAllowedRoots(),
+					DenyWrite:      m.ag.Checker.Sandbox.GetDenyWrite(),
+					NetworkEnabled: false,
+				}
+			}
+		}
+		if m.ag != nil && m.ag.Checker != nil {
+			m.ag.Checker.SandboxEnabled = true
+		}
+	case commands.SandboxRegular:
+		// Enable sandbox but retain regular permission confirmation
+		sb := sandbox.New()
+		if bashTool != nil {
+			bashTool.Sandbox = sb
+			if m.ag != nil && m.ag.Checker != nil && m.ag.Checker.Sandbox != nil {
+				bashTool.SandboxConfig = sandbox.Config{
+					AllowWrite:     m.ag.Checker.Sandbox.GetAllowedRoots(),
+					DenyWrite:      m.ag.Checker.Sandbox.GetDenyWrite(),
+					NetworkEnabled: false,
+				}
+			}
+		}
+		if m.ag != nil && m.ag.Checker != nil {
+			m.ag.Checker.SandboxEnabled = false
+		}
+	case commands.SandboxOff:
+		// Disable sandbox
+		if bashTool != nil {
+			bashTool.Sandbox = nil
+			bashTool.SandboxConfig = sandbox.Config{}
+		}
+		if m.ag != nil && m.ag.Checker != nil {
+			m.ag.Checker.SandboxEnabled = false
+		}
+	}
+
+	msg := fmt.Sprintf("Sandbox mode switched to: %s\n%s", labels[mode], descriptions[mode])
+	m.chatMessages = append(m.chatMessages, chatMessage{role: "system", content: msg})
+	m.updateViewport()
+	return m, nil
+}
+
+// renderSandboxDialog renders the sandbox mode selection interface.
+func (m Model) renderSandboxDialog() string {
+	if !m.sandboxDialog {
+		return ""
+	}
+	var sb strings.Builder
+
+	header := lipgloss.NewStyle().Foreground(brandPurple).Bold(true).Render(
+		" Select Sandbox Mode",
+	)
+	sb.WriteString(header)
+	sb.WriteString("\n\n")
+
+	labels := commands.SandboxModeLabels()
+	descs := commands.SandboxModeDescriptions()
+
+	for i, label := range labels {
+		prefix := "   "
+		if i == m.sandboxCursor {
+			prefix = lipgloss.NewStyle().Foreground(brandPurple).Render(" ❯ ")
+		}
+		displayLabel := label
+		if i == m.sandboxCursor {
+			displayLabel = lipgloss.NewStyle().Bold(true).Render(label)
+		} else {
+			displayLabel = lipgloss.NewStyle().Foreground(dimText).Render(label)
+		}
+		desc := lipgloss.NewStyle().Foreground(dimText).Render(" — " + descs[i])
+		sb.WriteString(fmt.Sprintf("%s%d. %s%s\n", prefix, i+1, displayLabel, desc))
 	}
 	sb.WriteString("\n")
 	return sb.String()
@@ -2469,6 +2673,7 @@ func expandAtRefs(text string) string {
 }
 
 func (m Model) sendMessage(text string) (tea.Model, tea.Cmd) {
+	m.refreshSkillsIfNeeded()
 	wd, _ := os.Getwd()
 	history.Append(wd, text)
 	m.historyEntries = append(m.historyEntries, text)
@@ -2509,8 +2714,8 @@ func (m Model) sendMessage(text string) (tea.Model, tea.Cmd) {
 
 	conv := m.conversation
 	ag := m.ag
+	ag.MemoryRecallCh = prefetchCh
 	startAgentCmd := func() tea.Msg {
-		collectPrefetchedRecall(conv, prefetchCh, 3*time.Second)
 		return agentReadyMsg{ch: ag.Run(ctx, conv)}
 	}
 
@@ -2552,8 +2757,8 @@ func (m Model) sendPromptCommand(displayText, prompt string) (tea.Model, tea.Cmd
 
 	conv := m.conversation
 	ag := m.ag
+	ag.MemoryRecallCh = prefetchCh
 	startAgentCmd := func() tea.Msg {
-		collectPrefetchedRecall(conv, prefetchCh, 3*time.Second)
 		return agentReadyMsg{ch: ag.Run(ctx, conv)}
 	}
 
@@ -2834,6 +3039,10 @@ func (m Model) handleAgentEvent(ev agent.AgentEvent) (tea.Model, tea.Cmd) {
 		m.updateViewport()
 
 	case agent.ErrorEvent:
+		if m.streamBuf != "" {
+			m.chatMessages = append(m.chatMessages, chatMessage{role: "assistant", content: m.streamBuf})
+			m.streamBuf = ""
+		}
 		m.chatMessages = append(m.chatMessages, chatMessage{
 			role:    "error",
 			content: e.Message,
@@ -3163,6 +3372,9 @@ func (m Model) renderChatView() string {
 	if m.rewindDialog {
 		sb.WriteString(m.renderRewindDialog())
 	}
+	if m.sandboxDialog {
+		sb.WriteString(m.renderSandboxDialog())
+	}
 	sb.WriteString(m.renderSeparator())
 	sb.WriteString("\n")
 	if m.planApprovalDialog {
@@ -3173,14 +3385,14 @@ func (m Model) renderChatView() string {
 		sb.WriteString(m.textarea.View())
 	}
 	sb.WriteString("\n")
+	sb.WriteString(m.renderSeparator())
+	sb.WriteString("\n")
 	if m.slashMenuOpen && len(m.slashMatches) > 0 {
 		sb.WriteString(m.renderSlashMenu())
 	}
 	if m.atMenuOpen && len(m.atMatches) > 0 {
 		sb.WriteString(m.renderAtMenu())
 	}
-	sb.WriteString(m.renderSeparator())
-	sb.WriteString("\n")
 	sb.WriteString(m.renderStatusBar())
 	return sb.String()
 }
@@ -3188,7 +3400,7 @@ func (m Model) renderChatView() string {
 func (m Model) renderBanner() string {
 	cat := bannerStyle.Render(` /\_/\    `) + bannerDimStyle.Render("Swifty v0.1.0") + "\n" +
 		bannerStyle.Render(`( o.o )   `) + bannerDimStyle.Render(m.getModelName()) + "\n" +
-		bannerStyle.Render(` > ^ <    `) + bannerDimStyle.Render(m.getWorkDir())
+		bannerStyle.Render(` >   <    `) + bannerDimStyle.Render(m.getWorkDir())
 	return cat
 }
 
@@ -3282,6 +3494,7 @@ func (m Model) DumpHistory() string {
 				sb.WriteString(toolDoneStyle.Render(msg.content))
 			}
 			sb.WriteString("\n")
+			appendEditDiff(&sb, msg.toolGroup)
 
 		case "sub_agent":
 			if msg.subAgentBlock != nil {
@@ -3326,6 +3539,7 @@ func (m Model) renderChatContent() string {
 				sb.WriteString(toolDoneStyle.Render(msg.content))
 			}
 			sb.WriteString("\n")
+			appendEditDiff(&sb, msg.toolGroup)
 
 		case "tool_collapsed":
 			if msg.expanded {
@@ -3448,6 +3662,8 @@ func (m Model) renderMessagesRange(from, to int) string {
 				sb.WriteString(toolDoneStyle.Render(msg.content))
 			}
 			sb.WriteString("\n")
+			appendEditDiff(&sb, msg.toolGroup)
+
 		case "tool_collapsed":
 			// Scrollback can't be re-expanded later, so always render each
 			// tool inline (with name + args) instead of collapsing the group.
@@ -3508,9 +3724,11 @@ func (m Model) renderSlashMenu() string {
 		}
 		label := fmt.Sprintf("  /%-16s — %s", cmd.Name, desc)
 		if i == m.slashCursor {
-			sb.WriteString(menuActiveStyle.Render(label) + "\n")
+			sb.WriteString(menuActiveStyle.Render(label))
+			sb.WriteString("\n")
 		} else {
-			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render(label) + "\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render(label))
+			sb.WriteString("\n")
 		}
 	}
 	return sb.String()
@@ -3520,9 +3738,11 @@ func (m Model) renderAtMenu() string {
 	var sb strings.Builder
 	for i, path := range m.atMatches {
 		if i == m.atCursor {
-			sb.WriteString(menuActiveStyle.Render("  "+path) + "\n")
+			sb.WriteString(menuActiveStyle.Render("  " + path))
+			sb.WriteString("\n")
 		} else {
-			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render("  "+path) + "\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render("  " + path))
+			sb.WriteString("\n")
 		}
 	}
 	return sb.String()
@@ -3557,7 +3777,8 @@ func (m Model) renderPermDialog() string {
 			style = lipgloss.NewStyle().Foreground(cyanText)
 		}
 		label := fmt.Sprintf("%d. %s", i+1, opt.label)
-		sb.WriteString(style.Render(prefix+label) + "\n")
+		sb.WriteString(style.Render(prefix + label))
+		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n")

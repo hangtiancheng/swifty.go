@@ -30,20 +30,14 @@ const (
 	// OldResultSnipChars is the stale-tail snip threshold.
 	OldResultSnipChars = 2000
 
-	// KeepRecentTurns is the recent-window boundary that snip never touches.
-	KeepRecentTurns = 10
-
 	// SpillSubdir lives under the agent's workdir.
 	SpillSubdir = ".swifty/tool_results"
 )
 
-const (
-	persistedTagPrefix = "[Result of "
-	snippedTagPrefix   = "[Stale output snipped:"
-)
+const persistedTagPrefix = "[Result of "
 
 func isAlreadyReplaced(s string) bool {
-	return strings.HasPrefix(s, persistedTagPrefix) || strings.HasPrefix(s, snippedTagPrefix)
+	return strings.HasPrefix(s, persistedTagPrefix)
 }
 
 // Apply is Design B: walk conv, decide each tool_result's fate against state,
@@ -61,10 +55,10 @@ func Apply(
 	conv *conversation.Manager,
 	workDir string,
 	state *ContentReplacementState,
-) (*conversation.Manager, []Record, error) {
+) ([]Record, error) {
 	messages := conv.GetMessages()
 	if len(messages) == 0 {
-		return conv, nil, nil
+		return nil, nil
 	}
 
 	spillDir := filepath.Join(workDir, SpillSubdir)
@@ -72,11 +66,9 @@ func Apply(
 	toolUseByID := buildToolUseIndex(messages)
 
 	var records []Record
-	newMessages := make([]conversation.Message, len(messages))
 
 	for i, msg := range messages {
 		if len(msg.ToolResults) == 0 {
-			newMessages[i] = msg
 			continue
 		}
 
@@ -217,19 +209,10 @@ func Apply(
 				IsError:   tr.IsError,
 			}
 		}
-		newMsg := msg
-		newMsg.ToolResults = newResults
-		newMessages[i] = newMsg
+		conv.ReplaceToolResults(i, newResults)
 	}
 
-	// Pass 3: stale-snip on the new history. Stateless — the boundary moves
-	// as turns add, so an id can flip from raw to snipped at one turn (this
-	// is a known prefix-cache drift, accepted as out-of-scope for the state
-	// machine — fixing it requires either snipping eagerly or making snip
-	// state-aware too).
-	newMessages = snipStale(newMessages)
-
-	return buildManager(newMessages), records, nil
+	return records, nil
 }
 
 // previewSize is the max character count for spill previews, consistent with Claude Code.
@@ -255,52 +238,6 @@ func buildSpillPreview(content string, path string) string {
 	}
 	b.WriteString("\n</persisted-output>")
 	return b.String()
-}
-
-func snipStale(messages []conversation.Message) []conversation.Message {
-	totalTurns := 0
-	for _, m := range messages {
-		if m.Role == "assistant" && len(m.ToolUses) == 0 {
-			totalTurns++
-		}
-	}
-	if totalTurns <= KeepRecentTurns {
-		return messages
-	}
-	out := make([]conversation.Message, len(messages))
-	turnsSeen := 0
-	oldBoundary := totalTurns - KeepRecentTurns
-	for i, m := range messages {
-		if m.Role == "assistant" && len(m.ToolUses) == 0 {
-			turnsSeen++
-		}
-		if turnsSeen > oldBoundary || len(m.ToolResults) == 0 {
-			out[i] = m
-			continue
-		}
-		var newResults []conversation.ToolResultBlock
-		changed := false
-		for _, tr := range m.ToolResults {
-			if isAlreadyReplaced(tr.Content) || len(tr.Content) <= OldResultSnipChars {
-				newResults = append(newResults, tr)
-				continue
-			}
-			newResults = append(newResults, conversation.ToolResultBlock{
-				ToolUseID: tr.ToolUseID,
-				Content:   fmt.Sprintf("[Stale output snipped: %d chars]", len(tr.Content)),
-				IsError:   tr.IsError,
-			})
-			changed = true
-		}
-		if changed {
-			nm := m
-			nm.ToolResults = newResults
-			out[i] = nm
-		} else {
-			out[i] = m
-		}
-	}
-	return out
 }
 
 // buildToolUseIndex maps tool_use_id → ToolUseBlock so spill decisions can
@@ -356,26 +293,4 @@ func writeSpill(dir, toolUseID, content string) (string, error) {
 		return "", err
 	}
 	return path, nil
-}
-
-// buildManager constructs a fresh *conversation.Manager from a message
-// slice. We can't set the unexported `history` field from outside the
-// conversation package, so we replay messages through the public Add*
-// API. Same pattern as compact.rebuildConversation, kept local to avoid a
-// cross-package dependency.
-func buildManager(messages []conversation.Message) *conversation.Manager {
-	out := conversation.NewManager()
-	for _, m := range messages {
-		switch {
-		case len(m.ToolUses) > 0:
-			out.AddAssistantFull(m.Content, m.ThinkingBlocks, m.ToolUses)
-		case len(m.ToolResults) > 0:
-			out.AddToolResultsMessage(m.ToolResults)
-		case m.Role == "user":
-			out.AddUserMessage(m.Content)
-		case m.Role == "assistant":
-			out.AddAssistantMessage(m.Content)
-		}
-	}
-	return out
 }

@@ -49,6 +49,10 @@ func newOpenAICompatClient(cfg *config.ProviderConfig, systemPrompt string) (*op
 	}, nil
 }
 
+func (c *openaiCompatClient) SetSystemPrompt(prompt string) {
+	c.systemPrompt = prompt
+}
+
 func (c *openaiCompatClient) Stream(ctx context.Context, conv *conversation.Manager, toolSchemas []map[string]any) (<-chan StreamEvent, <-chan error) {
 	events := make(chan StreamEvent, 64)
 	errs := make(chan error, 1)
@@ -98,6 +102,7 @@ func (c *openaiCompatClient) Stream(ctx context.Context, conv *conversation.Mana
 			argsJSON string
 		}
 		toolCalls := make(map[int64]*toolCallAccum)
+		var reasoningAccum string
 
 		// Read SSE events in a separate goroutine so we can respect ctx cancellation
 		// and detect silent connection drops, same pattern as the openai Responses client.
@@ -155,6 +160,17 @@ func (c *openaiCompatClient) Stream(ctx context.Context, conv *conversation.Mana
 					events <- TextDelta{Text: delta.Content}
 				}
 
+				if rc, ok := delta.JSON.ExtraFields["reasoning_content"]; ok && rc.Valid() {
+					raw := rc.Raw()
+					if len(raw) >= 2 && raw[0] == '"' {
+						var text string
+						if json.Unmarshal([]byte(raw), &text) == nil && text != "" {
+							reasoningAccum += text
+							events <- ThinkingDelta{Text: text}
+						}
+					}
+				}
+
 				for _, tc := range delta.ToolCalls {
 					acc, exists := toolCalls[tc.Index]
 					if !exists {
@@ -175,6 +191,10 @@ func (c *openaiCompatClient) Stream(ctx context.Context, conv *conversation.Mana
 				}
 
 				if finishReason == "tool_calls" || finishReason == "stop" {
+					if reasoningAccum != "" {
+						events <- ThinkingComplete{Thinking: reasoningAccum}
+						reasoningAccum = ""
+					}
 					for _, acc := range toolCalls {
 						var args map[string]any
 						if acc.argsJSON != "" {
@@ -247,10 +267,12 @@ func buildChatCompletionMessages(systemPrompt string, messages []conversation.Me
 
 	for _, m := range messages {
 		if m.Role == "assistant" {
-			// ThinkingBlocks are skipped for Chat Completions
+			var reasoning string
+			for _, tb := range m.ThinkingBlocks {
+				reasoning += tb.Thinking
+			}
 
 			if len(m.ToolUses) > 0 {
-				// Assistant message with tool calls
 				assistant := openai.ChatCompletionAssistantMessageParam{}
 				if m.Content != "" {
 					assistant.Content.OfString = param.NewOpt(m.Content)
@@ -265,9 +287,19 @@ func buildChatCompletionMessages(systemPrompt string, messages []conversation.Me
 						},
 					})
 				}
+				if reasoning != "" {
+					assistant.SetExtraFields(map[string]any{"reasoning_content": reasoning})
+				}
 				result = append(result, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
-			} else if m.Content != "" {
-				result = append(result, openai.AssistantMessage(m.Content))
+			} else if m.Content != "" || reasoning != "" {
+				assistant := openai.ChatCompletionAssistantMessageParam{}
+				if m.Content != "" {
+					assistant.Content.OfString = param.NewOpt(m.Content)
+				}
+				if reasoning != "" {
+					assistant.SetExtraFields(map[string]any{"reasoning_content": reasoning})
+				}
+				result = append(result, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
 			}
 		} else if len(m.ToolResults) > 0 {
 			// Tool results become individual tool messages

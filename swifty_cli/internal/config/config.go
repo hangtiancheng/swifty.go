@@ -143,11 +143,20 @@ type MCPServerConfig struct {
 	Env       map[string]string `yaml:"env"`
 }
 
+// SandboxConfig controls the OS-level sandbox configuration.
+type SandboxConfig struct {
+	Enabled        bool `yaml:"enabled"`         // Whether to enable the sandbox
+	AutoAllow      bool `yaml:"auto_allow"`      // Whether to automatically allow commands inside the sandbox
+	NetworkEnabled bool `yaml:"network_enabled"` // Whether to allow network access
+}
+
 type AppConfig struct {
-	Providers      []ProviderConfig  `yaml:"providers"`
-	PermissionMode string            `yaml:"permission_mode"`
-	MCPServers     []MCPServerConfig `yaml:"mcp_servers"`
-	Hooks          []hooks.Hook      `yaml:"hooks"`
+	Providers             []ProviderConfig  `yaml:"providers"`
+	PermissionMode        string            `yaml:"permission_mode"`
+	MCPServers            []MCPServerConfig `yaml:"mcp_servers"`
+	Hooks                 []hooks.Hook      `yaml:"hooks"`
+	Sandbox               SandboxConfig     `yaml:"sandbox"`
+	EnableCoordinatorMode bool              `yaml:"enable_coordinator_mode"`
 }
 
 func loadSingleFile(path string) (*AppConfig, error) {
@@ -184,6 +193,12 @@ func mergeConfig(base, override *AppConfig) *AppConfig {
 		}
 	}
 	base.Hooks = append(base.Hooks, override.Hooks...)
+	if override.Sandbox.Enabled {
+		base.Sandbox = override.Sandbox
+	}
+	if override.EnableCoordinatorMode {
+		base.EnableCoordinatorMode = true
+	}
 	return base
 }
 

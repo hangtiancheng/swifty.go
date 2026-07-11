@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeSkillDir(t *testing.T, root, name, frontmatter, body string) string {
@@ -22,7 +23,7 @@ func writeSkillDir(t *testing.T, root, name, frontmatter, body string) string {
 
 func TestLoadCatalogPhase1EmptyBody(t *testing.T) {
 	work := t.TempDir()
-	writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "demo",
+	writeSkillDir(t, filepath.Join(work, ".mewcode", "skills"), "demo",
 		"name: demo\ndescription: a phase-1 demo\nmode: inline",
 		"# Body\n\nFull SOP here.")
 
@@ -44,7 +45,7 @@ func TestLoadCatalogPhase1EmptyBody(t *testing.T) {
 
 func TestCatalogGetFullHotReload(t *testing.T) {
 	work := t.TempDir()
-	dir := writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "hot",
+	dir := writeSkillDir(t, filepath.Join(work, ".mewcode", "skills"), "hot",
 		"name: hot\ndescription: hot reload demo",
 		"version 1")
 
@@ -71,49 +72,41 @@ func TestCatalogGetFullHotReload(t *testing.T) {
 	}
 }
 
-func TestLoadCatalogBuiltinsPresent(t *testing.T) {
-	cat := LoadCatalog(t.TempDir())
-	wantNames := []string{"commit", "test", "fullstack-interview", "teach-me"}
-	for _, name := range wantNames {
-		s := cat.Get(name)
-		if s == nil {
-			t.Errorf("builtin %q missing from catalog", name)
-		}
-		if cat.Source(name) != "builtin" {
-			t.Errorf("builtin %q source = %q, want builtin", name, cat.Source(name))
-		}
-	}
-}
-
-func TestLoadCatalogProjectOverridesBuiltin(t *testing.T) {
+func TestCatalogNeedsReload(t *testing.T) {
 	work := t.TempDir()
-	writeSkillDir(t, filepath.Join(work, ".swifty", "skills"), "commit",
-		"name: commit\ndescription: project override",
-		"project body")
+	skillsDir := filepath.Join(work, ".mewcode", "skills")
+	writeSkillDir(t, skillsDir, "alpha",
+		"name: alpha\ndescription: first skill", "body alpha")
 
 	cat := LoadCatalog(work)
-	if cat.Source("commit") != "project" {
-		t.Errorf("project tier did not override builtin; source = %q", cat.Source("commit"))
+	if cat.NeedsReload() {
+		t.Error("NeedsReload should be false right after LoadCatalog")
 	}
-	if cat.Get("commit").Meta.Description != "project override" {
-		t.Errorf("description not from project tier: %q", cat.Get("commit").Meta.Description)
+
+	// Ensure filesystem tick so modtime differs (ext4 can have 1s granularity).
+	time.Sleep(10 * time.Millisecond)
+
+	// Add a new skill directory — parent modtime changes.
+	writeSkillDir(t, skillsDir, "beta",
+		"name: beta\ndescription: second skill", "body beta")
+
+	if !cat.NeedsReload() {
+		t.Error("NeedsReload should be true after adding a new skill dir")
+	}
+
+	// After reload, NeedsReload resets.
+	cat.Reload(work)
+	if cat.NeedsReload() {
+		t.Error("NeedsReload should be false after Reload")
+	}
+	if cat.Get("beta") == nil {
+		t.Error("beta should be in catalog after Reload")
 	}
 }
 
-func TestBuiltinFullstackInterviewIsDirectory(t *testing.T) {
+func TestLoadCatalogNoBuiltins(t *testing.T) {
 	cat := LoadCatalog(t.TempDir())
-	skill := cat.Get("fullstack-interview")
-	if skill == nil {
-		t.Fatal("fullstack-interview builtin missing")
-	}
-	if !skill.IsDirectory {
-		t.Errorf("fullstack-interview should be IsDirectory (has tool.json)")
-	}
-	schemas, err := parseToolJSON(skill)
-	if err != nil {
-		t.Fatalf("parseToolJSON: %v", err)
-	}
-	if len(schemas) != 1 || schemas[0].Name != "parse_resume" {
-		t.Errorf("expected single parse_resume schema, got %+v", schemas)
+	if len(cat.List()) != 0 {
+		t.Errorf("expected empty catalog with no disk skills, got %d", len(cat.List()))
 	}
 }

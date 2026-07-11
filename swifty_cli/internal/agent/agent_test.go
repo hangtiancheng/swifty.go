@@ -24,6 +24,7 @@ type mockClient struct {
 	callIdx   int
 }
 
+func (m *mockClient) SetSystemPrompt(string) {}
 func (m *mockClient) Stream(ctx context.Context, conv *conversation.Manager, toolSchemas []map[string]any) (<-chan llm.StreamEvent, <-chan error) {
 	ch := make(chan llm.StreamEvent, 64)
 	errCh := make(chan error, 1)
@@ -51,6 +52,8 @@ type dynamicMock struct {
 	handlers []func(msgs []conversation.Message) []llm.StreamEvent
 	callIdx  int
 }
+
+func (m *dynamicMock) SetSystemPrompt(string) {}
 
 func (m *dynamicMock) Stream(ctx context.Context, conv *conversation.Manager, toolSchemas []map[string]any) (<-chan llm.StreamEvent, <-chan error) {
 	ch := make(chan llm.StreamEvent, 64)

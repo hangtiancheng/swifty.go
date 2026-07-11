@@ -64,6 +64,10 @@ func newAnthropicClient(cfg *config.ProviderConfig, systemPrompt string) (*anthr
 	}, nil
 }
 
+func (c *anthropicClient) SetSystemPrompt(prompt string) {
+	c.systemPrompt = prompt
+}
+
 func (c *anthropicClient) SetMaxOutputTokens(tokens int) {
 	c.maxOutputTokens = tokens
 }
