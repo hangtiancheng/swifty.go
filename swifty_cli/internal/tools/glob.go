@@ -91,7 +91,7 @@ func (t *GlobTool) Execute(_ context.Context, args map[string]any) ToolResult {
 		return ToolResult{Output: fmt.Sprintf("Error: %s", err), IsError: true}
 	}
 
-	// Sort by modification time in descending order, most recently modified first.
+	// 按修改时间倒序，最近修改的排前面
 	sort.Slice(matches, func(i, j int) bool {
 		fi, ei := os.Stat(filepath.Join(basePath, matches[i]))
 		fj, ej := os.Stat(filepath.Join(basePath, matches[j]))

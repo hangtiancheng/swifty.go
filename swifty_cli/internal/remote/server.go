@@ -16,7 +16,6 @@ import (
 	swifty "github.com/hangtiancheng/swifty.go/swifty_http"
 
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agent"
-	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agents"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/commands"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/compact"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/config"
@@ -32,6 +31,7 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/prompt"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/session"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/skills"
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/subagent"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/teams"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/todo"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
@@ -97,7 +97,7 @@ type Server struct {
 
 	cmdRegistry     *commands.Registry
 	skillCatalog    *skills.Catalog
-	taskMgr         *agents.TaskManager
+	taskMgr         *subagent.TaskManager
 	todoList        *todo.TaskList
 	memoryMgr       *memory.Manager
 	memoryExtractor *extractor.Extractor
@@ -116,10 +116,10 @@ func NewServer(providers []config.ProviderConfig, mcpConfigs []config.MCPServerC
 		mcpConfigs:            mcpConfigs,
 		hookCfgs:              hookCfgs,
 		addr:                  addr,
+		enableCoordinatorMode: enableCoordinatorMode,
 		conns:                 make(map[*swifty.WSConn]struct{}),
 		pendingPerms:          make(map[string]chan<- agent.PermissionResponse),
 		pendingAsks:           make(map[string]chan tools.QuestionResponse),
-		enableCoordinatorMode: enableCoordinatorMode,
 	}
 }
 
@@ -284,7 +284,7 @@ func (s *Server) initAgent() error {
 
 	s.ag = ag
 
-	if at, ok := s.registry.Get("Agent").(*agents.AgentTool); ok {
+	if at, ok := s.registry.Get("Agent").(*subagent.AgentTool); ok {
 		at.ParentChecker = ag.Checker
 		at.ParentReplacementState = ag.ReplacementState
 	}
@@ -301,11 +301,11 @@ func (s *Server) initAgent() error {
 }
 
 func (s *Server) registerTools(client llm.Client, p *config.ProviderConfig, wd string) {
-	s.taskMgr = agents.NewTaskManager()
+	s.taskMgr = subagent.NewTaskManager()
 	store := todo.NewStore(wd, s.sessionID)
 	s.todoList = todo.NewTaskList(store)
 	s.memoryMgr = memory.NewManager(wd)
-	loader := agents.NewAgentLoader(wd)
+	loader := subagent.NewAgentLoader(wd)
 	loader.LoadAll()
 	s.teamMgr = teams.NewTeamManager()
 
@@ -323,8 +323,8 @@ func (s *Server) registerTools(client llm.Client, p *config.ProviderConfig, wd s
 	s.registry.Register(&teams.TeamCreateTool{TeamMgr: s.teamMgr})
 	s.registry.Register(&teams.TeamDeleteTool{TeamMgr: s.teamMgr})
 	s.registry.Register(&teams.SendMessageTool{TeamMgr: s.teamMgr, SenderName: "lead"})
-	subProgressCh := make(chan agents.SubAgentProgress, 32)
-	s.registry.Register(&agents.AgentTool{
+	subProgressCh := make(chan subagent.SubAgentProgress, 32)
+	s.registry.Register(&subagent.AgentTool{
 		Client:        client,
 		ModelResolver: llm.NewModelResolver(*p),
 		Registry:      s.registry,

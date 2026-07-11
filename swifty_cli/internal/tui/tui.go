@@ -11,12 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
-	"golang.org/x/text/width"
-
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agent"
-	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agents"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/commands"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/compact"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/config"
@@ -35,10 +30,12 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/sandbox"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/session"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/skills"
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/subagent"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/teams"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/todo"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/worktree"
+	"golang.org/x/text/width"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -198,7 +195,7 @@ type Model struct {
 	rewindOptionCursor int
 
 	askUserCh          chan tools.AskUserRequest
-	subAgentProgressCh chan agents.SubAgentProgress
+	subAgentProgressCh chan subagent.SubAgentProgress
 	activeSubAgent     *subAgentBlock
 	askUserDialog      bool
 	askUserQuestions   []tools.Question
@@ -211,17 +208,17 @@ type Model struct {
 	askUserOnSubmit    bool
 	askUserSubmitIdx   int
 	skillCatalog       *skills.Catalog
-	taskMgr            *agents.TaskManager
+	taskMgr            *subagent.TaskManager
 	todoList           *todo.TaskList
 	memoryMgr          *memory.Manager
 	memoryExtractor    *extractor.Extractor
 	memoryConsolidator *consolidation.Consolidator
 	teamMgr            *teams.TeamManager
 
-	sandboxDialog         bool                 // Whether the sandbox mode selection dialog is open
-	sandboxCursor         int                  // Index of the currently selected sandbox mode
-	sandboxCfg            config.SandboxConfig // Sandbox settings from the configuration file
-	EnableCoordinatorMode bool                 // Configuration switch for Coordinator mode
+	sandboxDialog         bool                 // 沙箱模式选择对话框是否打开
+	sandboxCursor         int                  // 当前选中的沙箱模式索引
+	sandboxCfg            config.SandboxConfig // 配置文件中的沙箱设置
+	EnableCoordinatorMode bool                 // Coordinator 模式配置开关
 
 	resumeSessions  []session.SessionInfo
 	resumeFiltered  []session.SessionInfo
@@ -229,7 +226,7 @@ type Model struct {
 	resumeSearch    string
 	resumeScrollTop int
 
-	hasExitedPlanMode bool // tracks whether this session has exited Plan Mode, used to inject a re-entry hint
+	hasExitedPlanMode bool // 记录本次会话是否曾退出过 Plan Mode，用于重入时注入提示
 }
 
 func New(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig, hookConfigs []hooks.Hook, sandboxCfg ...config.SandboxConfig) Model {
@@ -252,7 +249,7 @@ func New(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig,
 	sp.Style = lipgloss.NewStyle().Foreground(brandPurple)
 
 	askCh := make(chan tools.AskUserRequest, 1)
-	subProgressCh := make(chan agents.SubAgentProgress, 32)
+	subProgressCh := make(chan subagent.SubAgentProgress, 32)
 	dt := tools.CreateDefaultTools()
 	reg := dt.Registry
 	reg.Register(&tools.AskUserQuestionTool{RequestCh: askCh})
@@ -439,6 +436,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			},
 			permissions.ModeDefault,
 		)
+		// 根据配置文件初始化 OS 级沙箱
 		if m.sandboxCfg.Enabled {
 			sb := sandbox.New()
 			if bashTool, ok := m.registry.Get("Bash").(*tools.BashTool); ok && sb != nil {
@@ -462,7 +460,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ag.Hooks = eng
 		}
 		m.ag = ag
-		if at, ok := m.registry.Get("Agent").(*agents.AgentTool); ok {
+		if at, ok := m.registry.Get("Agent").(*subagent.AgentTool); ok {
 			at.ParentChecker = ag.Checker
 			at.ParentReplacementState = ag.ReplacementState
 		}
@@ -682,14 +680,14 @@ func newAgentHookRunner(client llm.Client) func(prompt string, ctx hooks.HookCon
 }
 
 func (m *Model) registerAgentTools(client llm.Client, providerCfg *config.ProviderConfig, protocol, wd string) {
-	m.taskMgr = agents.NewTaskManager()
+	m.taskMgr = subagent.NewTaskManager()
 
 	store := todo.NewStore(wd, m.sessionID)
 	m.todoList = todo.NewTaskList(store)
 
 	m.memoryMgr = memory.NewManager(wd)
 
-	loader := agents.NewAgentLoader(wd)
+	loader := subagent.NewAgentLoader(wd)
 	loader.LoadAll()
 
 	teamMgr := teams.NewTeamManager()
@@ -734,7 +732,7 @@ func (m *Model) registerAgentTools(client llm.Client, providerCfg *config.Provid
 	m.registry.Register(&teams.TeamCreateTool{TeamMgr: teamMgr})
 	m.registry.Register(&teams.TeamDeleteTool{TeamMgr: teamMgr})
 	m.registry.Register(&teams.SendMessageTool{TeamMgr: teamMgr, SenderName: "lead"})
-	m.registry.Register(&agents.AgentTool{
+	m.registry.Register(&subagent.AgentTool{
 		Client:        client,
 		ModelResolver: llm.NewModelResolver(*providerCfg),
 		Registry:      m.registry,
@@ -747,6 +745,7 @@ func (m *Model) registerAgentTools(client llm.Client, providerCfg *config.Provid
 		// ParentChecker is wired below once m.ag.Checker is constructed —
 		// registerAgentTools runs before the main agent's Checker is set.
 	})
+
 }
 
 func (m *Model) initMCPServersCmd() tea.Cmd {
@@ -777,7 +776,6 @@ func (m *Model) initMCPServersCmd() tea.Cmd {
 }
 
 func (m *Model) loadSkillsAndBuildPrompt(wd string) string {
-
 	m.skillCatalog = skills.LoadCatalog(wd)
 
 	for _, cmd := range commands.LoadUserCommands(wd) {
@@ -814,7 +812,6 @@ func (m *Model) wireSkillsToAgent() {
 		Catalog: m.skillCatalog,
 		OnInstalled: func(name string) {
 			m.registerSkillCommand(name)
-
 			if m.client != nil {
 				wd, _ := os.Getwd()
 				m.client.SetSystemPrompt(m.rebuildSystemPrompt(wd))
@@ -1038,7 +1035,7 @@ func (m *Model) installMemoryExtractor(ag *agent.Agent, wd, protocol string) *ex
 		return nil
 	}
 	conv := m.conversation
-	extractorInstance := extractor.InitExtractMemories(extractor.Deps{
+	extr := extractor.InitExtractMemories(extractor.Deps{
 		MemoryDir:     memory.GetAutoMemPath(wd),
 		UserMemoryDir: memory.GetUserAutoMemPath(),
 		ProjectRoot:   wd,
@@ -1048,7 +1045,8 @@ func (m *Model) installMemoryExtractor(ag *agent.Agent, wd, protocol string) *ex
 		Conversation:  conv,
 		AppendSystem:  func(s string) { conv.AddSystemReminder(s) },
 	})
-	// Memory Organizer: automatically merges duplicates, removes outdated entries, and resolves conflicts in the background.
+
+	// 记忆整理器：后台自动合并重复、删除过时、修正矛盾
 	consolidator := consolidation.NewConsolidator(consolidation.Deps{
 		MemoryDir:     memory.GetAutoMemPath(wd),
 		UserMemoryDir: memory.GetUserAutoMemPath(),
@@ -1062,10 +1060,10 @@ func (m *Model) installMemoryExtractor(ag *agent.Agent, wd, protocol string) *ex
 	m.memoryConsolidator = consolidator
 
 	ag.OnLoopComplete = func(_ *conversation.Manager) {
-		_ = extractorInstance.Execute(context.Background())
+		_ = extr.Execute(context.Background())
 		consolidator.MaybeRun(context.Background())
 	}
-	return extractorInstance
+	return extr
 }
 
 // prefetchRelevantMemories runs the recall selector in a goroutine and
@@ -1262,6 +1260,7 @@ func (m Model) handleProviderSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			},
 			permissions.ModeDefault,
 		)
+		// 根据配置文件初始化 OS 级沙箱
 		if m.sandboxCfg.Enabled {
 			sb := sandbox.New()
 			if bashTool, ok := m.registry.Get("Bash").(*tools.BashTool); ok && sb != nil {
@@ -1285,7 +1284,7 @@ func (m Model) handleProviderSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			ag.Hooks = eng
 		}
 		m.ag = ag
-		if at, ok := m.registry.Get("Agent").(*agents.AgentTool); ok {
+		if at, ok := m.registry.Get("Agent").(*subagent.AgentTool); ok {
 			at.ParentChecker = ag.Checker
 			at.ParentReplacementState = ag.ReplacementState
 		}
@@ -1514,9 +1513,7 @@ func stringWidth(s string) int {
 	for _, r := range s {
 		switch {
 		case unicode.IsControl(r):
-			// control characters have no visible width
 		case unicode.Is(unicode.Mn, r), unicode.Is(unicode.Me, r):
-			// nonspacing and enclosing marks attach to the previous rune
 		case width.EastAsianWide == width.LookupRune(r).Kind(),
 			width.EastAsianFullwidth == width.LookupRune(r).Kind():
 			w += 2
@@ -1797,6 +1794,7 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 				m.ag.ClearActiveSkills()
 				m.ag.SetToolFilter(nil)
 			}
+			// 开启全新会话：重置 session ID 及关联的持久化存储
 			wd, _ := os.Getwd()
 			m.sessionID = session.NewID()
 			m.fileHistory = file_history.New(wd, m.sessionID)
@@ -1808,6 +1806,7 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 			}
 			store := todo.NewStore(wd, m.sessionID)
 			m.todoList = todo.NewTaskList(store)
+			// 重置 token 计数
 			m.totalInput = 0
 			m.totalOutput = 0
 			m.updateViewport()
@@ -1827,7 +1826,7 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 					content: fmt.Sprintf("Entered Plan mode. Plan file: %s\nExplore the codebase and design your approach.", planPath),
 				})
 
-				// Re-entry detection: if this session previously exited Plan Mode and the plan file exists, inject the re-entry hint
+				// 重入检测：如果本次会话曾退出过 Plan Mode 且 plan 文件已存在，注入重入提示
 				if m.hasExitedPlanMode && plan_file.PlanExists(wd) {
 					reentryMsg := prompt.BuildPlanModeReentryReminder(planPath, true)
 					if reentryMsg != "" {
@@ -2075,7 +2074,7 @@ func (m Model) executePlanApproval() (tea.Model, tea.Cmd) {
 	plan_file.ResetPlanPath()
 
 	executeMsg := prompt.BuildPlanModeExitReminder(planPath, planExists)
-	// Mark that this session has exited Plan Mode so future re-entries can inject the hint
+	// 标记本次会话已退出过 Plan Mode，后续重入时可注入提示
 	m.hasExitedPlanMode = true
 	executeMsg += "\n\nUser has approved your plan. You can now start coding."
 	if planContent != "" {
@@ -2151,9 +2150,7 @@ func (m Model) renderPlanApprovalDialog() string {
 					sb.WriteString("      " + placeholder + "\n")
 				}
 			} else {
-				sb.WriteString("      ")
-				sb.WriteString(inputLine)
-				sb.WriteString("\n")
+				sb.WriteString("      " + inputLine + "\n")
 			}
 			hint := lipgloss.NewStyle().Foreground(dimText).Render("      shift+tab to approve with this feedback")
 			sb.WriteString(hint)
@@ -2164,7 +2161,7 @@ func (m Model) renderPlanApprovalDialog() string {
 	return sb.String()
 }
 
-// handleSandboxDialog handles key interactions for the sandbox mode selection dialog.
+// handleSandboxDialog 处理沙箱模式选择对话框的按键交互
 func (m Model) handleSandboxDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	labels := commands.SandboxModeLabels()
 	switch msg.String() {
@@ -2192,7 +2189,7 @@ func (m Model) handleSandboxDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// applySandboxMode updates the BashTool and permission checker based on the selected mode.
+// applySandboxMode 根据选择的模式更新 BashTool 和权限检查器
 func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) {
 	bashTool, _ := m.registry.Get("Bash").(*tools.BashTool)
 	labels := commands.SandboxModeLabels()
@@ -2200,7 +2197,7 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 
 	switch mode {
 	case commands.SandboxAutoAllow:
-		// Enable sandbox + auto-allow
+		// 启用沙箱 + 自动放行
 		sb := sandbox.New()
 		if bashTool != nil {
 			bashTool.Sandbox = sb
@@ -2216,7 +2213,7 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 			m.ag.Checker.SandboxEnabled = true
 		}
 	case commands.SandboxRegular:
-		// Enable sandbox but retain regular permission confirmation
+		// 启用沙箱但保留常规权限确认
 		sb := sandbox.New()
 		if bashTool != nil {
 			bashTool.Sandbox = sb
@@ -2232,7 +2229,7 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 			m.ag.Checker.SandboxEnabled = false
 		}
 	case commands.SandboxOff:
-		// Disable sandbox
+		// 关闭沙箱
 		if bashTool != nil {
 			bashTool.Sandbox = nil
 			bashTool.SandboxConfig = sandbox.Config{}
@@ -2242,13 +2239,13 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 		}
 	}
 
-	msg := fmt.Sprintf("Sandbox mode switched to: %s\n%s", labels[mode], descriptions[mode])
+	msg := fmt.Sprintf("沙箱模式已切换：%s\n%s", labels[mode], descriptions[mode])
 	m.chatMessages = append(m.chatMessages, chatMessage{role: "system", content: msg})
 	m.updateViewport()
 	return m, nil
 }
 
-// renderSandboxDialog renders the sandbox mode selection interface.
+// renderSandboxDialog 渲染沙箱模式选择界面
 func (m Model) renderSandboxDialog() string {
 	if !m.sandboxDialog {
 		return ""
@@ -2256,7 +2253,7 @@ func (m Model) renderSandboxDialog() string {
 	var sb strings.Builder
 
 	header := lipgloss.NewStyle().Foreground(brandPurple).Bold(true).Render(
-		" Select Sandbox Mode",
+		" 选择沙箱模式",
 	)
 	sb.WriteString(header)
 	sb.WriteString("\n\n")
@@ -2714,6 +2711,7 @@ func (m Model) sendMessage(text string) (tea.Model, tea.Cmd) {
 
 	conv := m.conversation
 	ag := m.ag
+	// 非阻塞 memory recall：prefetchCh 传给 agent，工具执行后注入
 	ag.MemoryRecallCh = prefetchCh
 	startAgentCmd := func() tea.Msg {
 		return agentReadyMsg{ch: ag.Run(ctx, conv)}
@@ -2771,7 +2769,7 @@ type askUserMsg struct {
 }
 
 type subAgentProgressMsg struct {
-	progress agents.SubAgentProgress
+	progress subagent.SubAgentProgress
 }
 
 func (m *Model) drainSubAgentProgress() {
@@ -3039,6 +3037,7 @@ func (m Model) handleAgentEvent(ev agent.AgentEvent) (tea.Model, tea.Cmd) {
 		m.updateViewport()
 
 	case agent.ErrorEvent:
+		// 保留错误前已输出的流式文本
 		if m.streamBuf != "" {
 			m.chatMessages = append(m.chatMessages, chatMessage{role: "assistant", content: m.streamBuf})
 			m.streamBuf = ""
@@ -3101,7 +3100,7 @@ func renderToolBlockText(tb toolBlockInfo) string {
 func renderSubAgentBlock(sab *subAgentBlock, expanded bool) string {
 	var sb strings.Builder
 
-	agentLabel := cases.Title(language.English).String(sab.agentType)
+	agentLabel := strings.Title(sab.agentType)
 	if agentLabel == "" {
 		agentLabel = "Agent"
 	}
@@ -3156,14 +3155,13 @@ func isCollapsibleTool(name string) bool {
 	return false
 }
 
-// isDiffTool checks if the tool's output is a line-numbered diff text generated by BuildDiff.
+// isDiffTool 判断该工具的 output 是不是 BuildDiff 生成的带行号 diff 文本。
 func isDiffTool(name string) bool {
 	return name == "EditFile"
 }
 
-// renderDiffLines renders the line-numbered diff text produced by tools.BuildDiff() into colored lines:
-// Lines starting with "+ " are rendered in green, lines starting with "- " in red,
-// and the rest (context lines / summary lines) use toolDetailStyle.
+// renderDiffLines 把 tools.BuildDiff() 产出的带行号 diff 文本渲染成彩色行：
+// "+ " 开头绿色、"- " 开头红色，其余（上下文行/摘要行）走 toolDetailStyle。
 func renderDiffLines(output string) string {
 	lines := strings.Split(output, "\n")
 	rendered := make([]string, len(lines))
@@ -3180,7 +3178,7 @@ func renderDiffLines(output string) string {
 	return strings.Join(rendered, "\n")
 }
 
-// appendEditDiff appends the EditFile diff body (if any) to the already rendered tool title line.
+// appendEditDiff 在已渲染好的工具标题行后面追加 EditFile 的 diff 正文（如果有）。
 func appendEditDiff(sb *strings.Builder, toolGroup []toolBlockInfo) {
 	if len(toolGroup) != 1 {
 		return
@@ -3400,7 +3398,7 @@ func (m Model) renderChatView() string {
 func (m Model) renderBanner() string {
 	cat := bannerStyle.Render(` /\_/\    `) + bannerDimStyle.Render("Swifty v0.1.0") + "\n" +
 		bannerStyle.Render(`( o.o )   `) + bannerDimStyle.Render(m.getModelName()) + "\n" +
-		bannerStyle.Render(` >   <    `) + bannerDimStyle.Render(m.getWorkDir())
+		bannerStyle.Render(` > ^ <    `) + bannerDimStyle.Render(m.getWorkDir())
 	return cat
 }
 
@@ -3663,7 +3661,6 @@ func (m Model) renderMessagesRange(from, to int) string {
 			}
 			sb.WriteString("\n")
 			appendEditDiff(&sb, msg.toolGroup)
-
 		case "tool_collapsed":
 			// Scrollback can't be re-expanded later, so always render each
 			// tool inline (with name + args) instead of collapsing the group.
@@ -3724,11 +3721,9 @@ func (m Model) renderSlashMenu() string {
 		}
 		label := fmt.Sprintf("  /%-16s — %s", cmd.Name, desc)
 		if i == m.slashCursor {
-			sb.WriteString(menuActiveStyle.Render(label))
-			sb.WriteString("\n")
+			sb.WriteString(menuActiveStyle.Render(label) + "\n")
 		} else {
-			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render(label))
-			sb.WriteString("\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render(label) + "\n")
 		}
 	}
 	return sb.String()
@@ -3738,11 +3733,9 @@ func (m Model) renderAtMenu() string {
 	var sb strings.Builder
 	for i, path := range m.atMatches {
 		if i == m.atCursor {
-			sb.WriteString(menuActiveStyle.Render("  " + path))
-			sb.WriteString("\n")
+			sb.WriteString(menuActiveStyle.Render("  "+path) + "\n")
 		} else {
-			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render("  " + path))
-			sb.WriteString("\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(dimText).Render("  "+path) + "\n")
 		}
 	}
 	return sb.String()
@@ -3777,8 +3770,7 @@ func (m Model) renderPermDialog() string {
 			style = lipgloss.NewStyle().Foreground(cyanText)
 		}
 		label := fmt.Sprintf("%d. %s", i+1, opt.label)
-		sb.WriteString(style.Render(prefix + label))
-		sb.WriteString("\n")
+		sb.WriteString(style.Render(prefix+label) + "\n")
 	}
 
 	sb.WriteString("\n")
@@ -3867,8 +3859,9 @@ func (m Model) renderRewindOptionsDialog() string {
 func (m Model) renderMarkdown(content string) string {
 	// Don't use WithAutoStyle — it queries the terminal background via OSC 11
 	// every time, and the response leaks into stdin and pollutes the input.
-	// glamour's NewTermRenderer defaults ColorProfile to termenv.TrueColor,
-	// so we don't need to set it explicitly.
+	// Force TrueColor explicitly: without a profile, glamour delegates to
+	// termenv auto-detection, which fails under bubbletea's stdin takeover
+	// and falls back to the no-color "notty" style — markdown then prints raw.
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("dark"),
 		glamour.WithWordWrap(m.width-6),
@@ -4039,9 +4032,9 @@ func (m Model) doResumeSession(wd, targetID string, sessions []session.SessionIn
 	boundary, after, compacted := session.FindLastCompactBoundary(msgs)
 	var replay []session.Message
 	if compacted {
-		resumeSummary := "This session continues from a previous conversation that was compacted due to context window limits. Below is a summary of the earlier conversation:\n\n" + boundary.Summary
+		resumeSummary := "本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + boundary.Summary
 		if len(boundary.Keep) > 0 {
-			resumeSummary += "\n\nRecent messages have been preserved verbatim."
+			resumeSummary += "\n\n近期消息已原样保留。"
 		}
 		replay = append(replay, session.Message{Role: "user", Content: resumeSummary})
 		for _, k := range boundary.Keep {

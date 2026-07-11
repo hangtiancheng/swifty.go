@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agent"
-	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agents"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/config"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/conversation"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/file_history"
@@ -21,6 +20,7 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/prompt"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/session"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/skills"
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/subagent"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/todo"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/worktree"
@@ -46,8 +46,8 @@ type usageInfo struct {
 	OutputTokens int `json:"output_tokens"`
 }
 
-// parsePrintFlags parses -p/--print mode arguments from the command-line flags.
-// Returns prompt, outputFormat, and whether print mode was requested.
+// parsePrintFlags 从命令行参数中解析 -p/--print 模式相关参数
+// 返回 prompt, outputFormat, ok
 func parsePrintFlags(args []string) (string, string, bool) {
 	isPrint := false
 	outputFormat := "text"
@@ -105,11 +105,11 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 
 	llm.ResolveContextWindow(context.Background(), p)
 
-	// Register tools.
-	taskMgr := agents.NewTaskManager()
+	// 注册工具
+	taskMgr := subagent.NewTaskManager()
 	store := todo.NewStore(wd, sessionID)
 	todoList := todo.NewTaskList(store)
-	loader := agents.NewAgentLoader(wd)
+	loader := subagent.NewAgentLoader(wd)
 	loader.LoadAll()
 
 	registry.Register(&todo.TaskCreateTool{List: todoList})
@@ -117,8 +117,8 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 	registry.Register(&todo.TaskListTool{List: todoList})
 	registry.Register(&todo.TaskUpdateTool{List: todoList})
 	registry.Register(&tools.ToolSearchTool{Registry: registry, Protocol: p.Protocol})
-	subProgressCh := make(chan agents.SubAgentProgress, 32)
-	registry.Register(&agents.AgentTool{
+	subProgressCh := make(chan subagent.SubAgentProgress, 32)
+	registry.Register(&subagent.AgentTool{
 		Client:        client,
 		ModelResolver: llm.NewModelResolver(*p),
 		Registry:      registry,
@@ -137,7 +137,7 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 	ag.FileHistory = fh
 	ag.SetSessionID(sessionID)
 
-	// In print mode, all permissions are auto-approved.
+	// print 模式自动允许所有权限
 	sandboxAllow := []string{memory.GetAutoMemPath(wd)}
 	if userMem := memory.GetUserAutoMemPath(); userMem != "" {
 		sandboxAllow = append(sandboxAllow, userMem)
@@ -159,7 +159,7 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 	ag.NotificationFn = func() []string { return nil }
 	ag.ToolNameFilter = func(name string) bool { return true }
 
-	if at, ok := registry.Get("Agent").(*agents.AgentTool); ok {
+	if at, ok := registry.Get("Agent").(*subagent.AgentTool); ok {
 		at.ParentChecker = ag.Checker
 		at.ParentReplacementState = ag.ReplacementState
 	}
@@ -168,7 +168,7 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 	registry.Register(&tools.EnterWorktreeTool{SessionID: sessionID, RepoRoot: gitRoot})
 	registry.Register(&tools.ExitWorktreeTool{RepoRoot: gitRoot})
 
-	// Execute the agent loop.
+	// 执行
 	conv.AddUserMessage(userPrompt)
 	ctx := context.Background()
 	ch := ag.Run(ctx, conv)
@@ -308,7 +308,7 @@ func buildPrintSkillSection(catalog *skills.Catalog) string {
 		if len(desc) > 200 {
 			desc = desc[:200] + "…"
 		}
-		fmt.Fprintf(&sb, "- /%s: %s\n", meta.Name, desc)
+		sb.WriteString(fmt.Sprintf("- /%s: %s\n", meta.Name, desc))
 	}
 	return sb.String()
 }

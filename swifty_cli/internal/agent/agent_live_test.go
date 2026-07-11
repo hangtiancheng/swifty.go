@@ -261,7 +261,7 @@ func TestLiveSkillCreatorOutputPath(t *testing.T) {
 		t.Skip("skill-creator skill not installed")
 	}
 
-	// Use a temp dir to simulate a project with .swifty/skills
+	// Use a temp dir to simulate a project with .swifty/skills/
 	workDir := t.TempDir()
 	testSkillsDir := filepath.Join(workDir, ".swifty", "skills")
 	os.MkdirAll(testSkillsDir, 0o755)

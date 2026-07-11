@@ -51,7 +51,7 @@ func TestCleanupStaleAgentWorktrees(t *testing.T) {
 	bare := t.TempDir()
 	exec.Command("git", "init", "--bare", bare).Run()
 	exec.Command("git", "-C", repo, "remote", "add", "origin", bare).Run()
-	exec.Command("git", "-C", repo, "push", "origin", "HEAD").Run()
+	exec.Command("git", "-C", repo, "push", "origin", "master").Run()
 
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)

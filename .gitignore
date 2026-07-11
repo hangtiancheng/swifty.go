@@ -194,3 +194,6 @@ rules.ninja
 *.local.yaml
 **/*.local.yml
 **/*.local.yaml
+raw
+
+!swifty_cli/internal/remote/fe/dist

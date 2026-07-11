@@ -106,9 +106,6 @@ func readMemoryHeader(filePath, memoryDir string) (MemoryHeader, bool) {
 		sb.WriteString(scanner.Text())
 		sb.WriteByte('\n')
 	}
-	if err := scanner.Err(); err != nil {
-		return MemoryHeader{}, false
-	}
 
 	mf := parseFrontmatter(sb.String())
 	rel, err := filepath.Rel(memoryDir, filePath)

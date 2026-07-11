@@ -31,6 +31,8 @@ func IsCoordinatorTool(name string) bool {
 	return CoordinatorAllowedTools[name]
 }
 
+// CoordinatorToolFilter 返回 Lead Agent 的工具过滤函数。
+// enabled 为 false 时返回 nil（不限制），为 true 时在有 Team 存在时限制工具集。
 func CoordinatorToolFilter(teamMgr *TeamManager, enabled bool) func(name string) bool {
 	if teamMgr == nil || !enabled {
 		return nil

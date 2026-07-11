@@ -21,7 +21,7 @@ func main() {
 		return
 	}
 
-	// Parse --remote mode flags
+	// 解析 -p/--print 和 --remote 模式
 	remoteAddr := ""
 	var filteredArgs []string
 	for i := 1; i < len(os.Args); i++ {
@@ -48,8 +48,10 @@ func main() {
 		validHooks = nil
 	}
 
+	// -p/--print 模式：非交互式执行，输出结果后退出
 	if userPrompt, outputFormat, ok := parsePrintFlags(os.Args[1:]); ok {
 		if userPrompt == "" {
+			// 从 stdin 读取 prompt
 			buf, _ := os.ReadFile("/dev/stdin")
 			userPrompt = string(buf)
 		}
@@ -64,7 +66,6 @@ func main() {
 		return
 	}
 
-	// --remote mode: start HTTP + WebSocket server, browser accesses the Web UI
 	if remoteAddr != "" {
 		srv := remote.NewServer(cfg.Providers, cfg.MCPServers, validHooks, remoteAddr, cfg.EnableCoordinatorMode)
 		if err := srv.Run(); err != nil {

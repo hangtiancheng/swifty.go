@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// linuxSandbox implements sandbox isolation using bubblewrap (bwrap).
-// bwrap leverages Linux user namespaces to create lightweight isolated environments.
+// linuxSandbox 基于 bubblewrap (bwrap) 实现沙箱隔离。
+// bwrap 利用 Linux user namespace 创建轻量级隔离环境。
 type linuxSandbox struct{}
 
 func newPlatformSandbox() Sandbox {
@@ -24,40 +24,40 @@ func (s *linuxSandbox) Available() bool {
 func (s *linuxSandbox) Wrap(command string, config Config) (string, error) {
 	var args []string
 
-	// Isolate user and PID namespaces.
+	// 隔离 user 和 pid namespace
 	args = append(args, "bwrap", "--unshare-user", "--unshare-pid")
 
-	// Mount the root filesystem as read-only.
+	// 根文件系统只读挂载
 	args = append(args, "--ro-bind", "/", "/")
 
-	// Grant write access per path via writable bind mounts.
+	// 按路径放行写入（可写绑定）
 	for _, path := range config.AllowWrite {
 		args = append(args, "--bind", path, path)
 	}
 
-	// Enforce read-only (overrides writable sub-paths under the root mount).
+	// 强制只读（覆盖上面可写根路径下的子路径）
 	for _, path := range config.DenyWrite {
 		args = append(args, "--ro-bind", path, path)
 	}
 
-	// Network isolation.
+	// 网络隔离
 	if !config.NetworkEnabled {
 		args = append(args, "--unshare-net")
 	}
 
-	// Mount /proc, required by many commands.
+	// 挂载 /proc，很多命令依赖它
 	args = append(args, "--proc", "/proc")
 
-	// Append the command to execute.
+	// 追加要执行的命令
 	args = append(args, "--", "bash", "-c", command)
 
-	// Assemble the full command string, ensuring proper shell escaping.
+	// 拼接成完整命令字符串，shell 特殊字符需要正确转义
 	var sb strings.Builder
 	for i, arg := range args {
 		if i > 0 {
 			sb.WriteByte(' ')
 		}
-		// Wrap arguments containing whitespace or special characters in single quotes.
+		// 包含空格或特殊字符的参数用单引号包裹
 		if strings.ContainsAny(arg, " \t\n\"'\\$`!") {
 			sb.WriteString(fmt.Sprintf("'%s'", strings.ReplaceAll(arg, "'", "'\\''")))
 		} else {

@@ -27,9 +27,9 @@ type EnvironmentContext struct {
 }
 
 type BuildOptions struct {
-	// CustomInstructions holds custom instruction content loaded from SWIFTY.md and similar instruction files
+	// CustomInstructions 是从 SWIFTY.md 等指令文件加载的自定义指令内容
 	CustomInstructions string
-	// MemorySection holds persistent memory content loaded from auto-memory
+	// MemorySection 是从自动记忆中加载的持久记忆内容
 	MemorySection string
 	SkillSection  string
 }
@@ -97,7 +97,7 @@ func BuildSystemPrompt(env EnvironmentContext, opts BuildOptions) string {
 	b.Add(OutputEfficiencySection())
 	b.Add(EnvironmentSection(env))
 
-	// Custom instructions (priority 80, above environment info but below Skills)
+	// 自定义指令（优先级 80，高于环境信息但低于 Skills）
 	if opts.CustomInstructions != "" {
 		b.Add(Section{
 			Name:     "CustomInstructions",
@@ -114,7 +114,7 @@ func BuildSystemPrompt(env EnvironmentContext, opts BuildOptions) string {
 		})
 	}
 
-	// Persistent memory (priority 95, placed last for maximum model attention)
+	// 持久记忆（优先级 95，放在最后以获得最高模型注意力）
 	if opts.MemorySection != "" {
 		b.Add(Section{
 			Name:     "Memory",

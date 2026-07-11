@@ -83,8 +83,8 @@ func (t *EditFileTool) Execute(_ context.Context, args map[string]any) ToolResul
 		t.FileStateCache.Update(filePath, newContent)
 	}
 
+	// 带上具体 diff 而不是只报一句"改好了"：模型和 TUI 都需要知道具体改了哪几行
 	diff := BuildDiff(content, newContent)
-	// Include the specific diff instead of just reporting "done": both the model and the TUI need to know exactly which lines were changed.
 	summary := fmt.Sprintf(
 		"Updated %s with %d addition%s and %d removal%s",
 		filePath, diff.Additions, plural(diff.Additions), diff.Removals, plural(diff.Removals),

@@ -53,7 +53,7 @@ func DiscoverInstructions(workDir string) []InstructionSource {
 	var sources []InstructionSource
 	seen := map[string]bool{}
 
-	// Determine the project root for @include path boundary checking
+	// 确定项目根目录，用于 @include 路径边界检查
 	absWorkDir, _ := filepath.Abs(workDir)
 	projectRoot := findGitRoot(absWorkDir)
 	if projectRoot == "" {
@@ -87,8 +87,8 @@ func add(out *[]InstructionSource, seen map[string]bool, path, projectRoot strin
 	*out = append(*out, InstructionSource{Path: abs, Content: content})
 }
 
-// expandIncludes expands @include directives. projectRoot is used for boundary checking
-// to prevent escaping to arbitrary locations outside the project directory via ../
+// expandIncludes 展开 @include 指令。projectRoot 用于边界检查，
+// 防止通过 ../ 逃逸到项目目录之外的任意位置。
 func expandIncludes(content, baseDir, projectRoot string, seen map[string]bool, depth int) string {
 	if depth > MaxIncludeDepth {
 		return content
@@ -110,7 +110,7 @@ func expandIncludes(content, baseDir, projectRoot string, seen map[string]bool, 
 			if path := parseInclude(trimmed); path != "" {
 				resolved := resolveInclude(path, baseDir)
 				if abs, err := filepath.Abs(resolved); err == nil && !seen[abs] {
-					// @include path boundary check: do not allow escaping outside the project directory or user home
+					// @include 路径边界检查：不允许逃逸到项目目录和用户 home 之外
 					if !isIncludeAllowed(abs, projectRoot) {
 						out.WriteString("<!-- @include skipped: path outside project -->\n")
 						continue
@@ -133,18 +133,18 @@ func expandIncludes(content, baseDir, projectRoot string, seen map[string]bool, 
 	return out.String()
 }
 
-// isIncludeAllowed checks whether the resolved absolute path of an @include is within the allowed scope.
-// Allowed scope: the project directory (projectRoot) and its subdirectories, plus ~/.swifty under the user home.
-// This prevents escaping to arbitrary locations via paths like @../../etc/passwd.
+// isIncludeAllowed 检查 @include 解析后的绝对路径是否在允许范围内。
+// 允许范围：项目目录（projectRoot）及其子目录，以及用户 home 目录下的 .swifty/。
+// 这可以防止通过 @../../etc/passwd 等路径逃逸到任意位置。
 func isIncludeAllowed(absPath, projectRoot string) bool {
-	// Paths within the project directory are always allowed
+	// 项目目录内的路径始终允许
 	if projectRoot != "" && strings.HasPrefix(absPath, projectRoot+string(filepath.Separator)) {
 		return true
 	}
 	if absPath == projectRoot {
 		return true
 	}
-	// The .swifty/ directory under user home is also allowed (for global instruction file includes)
+	// 用户 home 下的 .swifty/ 目录也允许（全局指令文件的 include）
 	if home, err := os.UserHomeDir(); err == nil {
 		swiftyDir := filepath.Join(home, ".swifty")
 		if strings.HasPrefix(absPath, swiftyDir+string(filepath.Separator)) {

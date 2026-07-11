@@ -138,7 +138,7 @@ func (t *Team) recordExternalMember(name, paneID string) {
 // the spawned process runs; passing "" falls back to the lead's current directory so the mailbox
 // path resolves identically. Worktree isolation is the expected use of a non-empty workdir.
 //
-// Output format matches the cmd line parsed by cmd/main.go's teammate-mode branch.
+// Output format matches the cmd line parsed by cmd/swifty/main.go's teammate-mode branch.
 func BuildTeammateCLI(teamName, memberName, workdir string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {

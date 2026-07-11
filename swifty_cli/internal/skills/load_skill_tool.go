@@ -39,7 +39,7 @@ func (t *LoadSkillTool) Schema() map[string]any {
 			"properties": map[string]any{
 				"name": map[string]any{
 					"type":        "string",
-					"description": "The Skill name to activate (e.g. \"commit\", \"fullstack-interview\").",
+					"description": "The Skill name to activate (e.g. \"commit\", \"backend-interview\").",
 				},
 			},
 			"required": []string{"name"},

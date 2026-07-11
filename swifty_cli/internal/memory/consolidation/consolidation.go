@@ -1,10 +1,8 @@
-// Package consolidation implements background memory consolidation (autoDream).
+// Package consolidation 实现后台记忆整理（autoDream）。
 //
-// Consolidation is triggered automatically when two gate conditions are met:
-// more than minHours hours have elapsed since the last consolidation, and
-// more than minSessions sessions have accumulated in the meantime. Once triggered,
-// a sub-agent is forked in the background to scan existing memories, merge duplicates,
-// remove stale entries, fix contradictions, and maintain the index.
+// 满足两个门控条件后自动触发：距上次整理超过 minHours 小时，
+// 且期间累积了 minSessions 个以上会话。触发后 fork 一个子 Agent
+// 在后台扫描现有记忆，合并重复、删除过时、修正矛盾、维护索引。
 package consolidation
 
 import (
@@ -16,45 +14,44 @@ import (
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agent"
-	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agents"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/conversation"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/llm"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/memory"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/permissions"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/session"
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/subagent"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 )
 
 const (
 	defaultMinHours    = 24
 	defaultMinSessions = 5
-	// scanThrottleMs prevents scanning the session directory on every turn
-	// when the time gate passes but the session gate does not.
+	// scanThrottleMs 防止时间门通过但会话门未通过时每轮都扫会话目录
 	scanThrottleMs = 10 * 60 * 1000
 )
 
-// Deps holds the external dependencies for the Consolidator.
+// Deps 是 Consolidator 的外部依赖。
 type Deps struct {
 	MemoryDir     string                // <wd>/.swifty/memory/
 	UserMemoryDir string                // ~/.swifty/memory/
-	ProjectRoot   string                // Absolute path to the project root.
-	Client        llm.Client            // LLM client.
-	ToolRegistry  *tools.Registry       // Parent agent's tool registry.
+	ProjectRoot   string                // 项目根目录绝对路径
+	Client        llm.Client            // LLM 客户端
+	ToolRegistry  *tools.Registry       // 父 Agent 的工具注册表
 	Protocol      string                // "anthropic" / "openai"
-	Conversation  *conversation.Manager // Parent agent's conversation.
-	AppendSystem  func(string)          // Notify the TUI.
-	DebugLogf     func(string, ...any)  // Debug logger.
+	Conversation  *conversation.Manager // 父 Agent 对话
+	AppendSystem  func(string)          // 通知 TUI
+	DebugLogf     func(string, ...any)  // 调试日志
 }
 
-// Consolidator manages background memory consolidation state and execution.
+// Consolidator 管理后台记忆整理的状态和执行。
 type Consolidator struct {
 	deps        Deps
-	lastScanAt  int64 // Timestamp (ms) of the last session directory scan.
+	lastScanAt  int64 // 上次扫描会话目录的时间（ms）
 	minHours    int
 	minSessions int
 }
 
-// NewConsolidator creates a new consolidator instance.
+// NewConsolidator 创建一个新的整理器。
 func NewConsolidator(deps Deps) *Consolidator {
 	return &Consolidator{
 		deps:        deps,
@@ -63,24 +60,24 @@ func NewConsolidator(deps Deps) *Consolidator {
 	}
 }
 
-// SetThresholds overrides the default gate thresholds. Intended for testing.
+// SetThresholds 用于测试：覆盖默认的门控阈值。
 func (c *Consolidator) SetThresholds(minHours, minSessions int) {
 	c.minHours = minHours
 	c.minSessions = minSessions
 }
 
-// MaybeRun checks the gate conditions and triggers a background consolidation if met.
-// Designed to be called after each agent loop iteration with minimal overhead (a single stat).
+// MaybeRun 检查门控条件，满足则执行一次后台整理。
+// 每轮 Agent Loop 完成后调用，成本极低（一次 stat）。
 func (c *Consolidator) MaybeRun(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	// Skip if the memory directory does not exist.
+	// 记忆目录不存在则跳过
 	if _, err := os.Stat(strings.TrimRight(c.deps.MemoryDir, string(filepath.Separator))); os.IsNotExist(err) {
 		return
 	}
 
-	// Time gate: check whether enough time has elapsed since the last consolidation.
+	// 时间门：距上次整理是否超过阈值
 	lastAt, err := ReadLastConsolidatedAt(c.deps.MemoryDir)
 	if err != nil {
 		c.debugf("[consolidation] ReadLastConsolidatedAt failed: %v", err)
@@ -91,7 +88,7 @@ func (c *Consolidator) MaybeRun(ctx context.Context) {
 		return
 	}
 
-	// Scan throttle: avoid scanning the session directory on every turn.
+	// 扫描节流：防止每轮都扫会话目录
 	now := time.Now().UnixMilli()
 	if now-c.lastScanAt < scanThrottleMs {
 		c.debugf("[consolidation] scan throttle — last scan %ds ago", (now-c.lastScanAt)/1000)
@@ -99,7 +96,7 @@ func (c *Consolidator) MaybeRun(ctx context.Context) {
 	}
 	c.lastScanAt = now
 
-	// Session gate: check whether enough sessions have accumulated.
+	// 会话门：累积的会话数是否达到阈值
 	sessionIDs := listSessionsSince(c.deps.ProjectRoot, lastAt)
 	if len(sessionIDs) < c.minSessions {
 		c.debugf("[consolidation] skip — %d sessions since last consolidation, need %d",
@@ -107,7 +104,7 @@ func (c *Consolidator) MaybeRun(ctx context.Context) {
 		return
 	}
 
-	// Acquire the consolidation lock.
+	// 获取锁
 	priorMtime, err := TryAcquireLock(c.deps.MemoryDir)
 	if err != nil {
 		c.debugf("[consolidation] lock acquire failed: %v", err)
@@ -138,14 +135,14 @@ func (c *Consolidator) run(ctx context.Context, sessionIDs []string, priorMtime 
 		transcriptDir, sessionIDs,
 	)
 
-	// Build an independent conversation: start from scratch without inheriting parent agent context.
+	// 构建独立对话：不继承父 Agent 上下文，从空白对话开始
 	conv := conversation.NewManager()
 	conv.AddUserMessage(prompt)
 
-	// Tool filtering: provide the sub-agent with async-level tools.
-	subRegistry := agents.FilterToolsForAgent(c.deps.ToolRegistry, nil, nil, true)
+	// 工具过滤：给整理子 Agent async 级别的工具集
+	subRegistry := subagent.FilterToolsForAgent(c.deps.ToolRegistry, nil, nil, true)
 
-	// Path sandbox: restrict writes to the memory directories only.
+	// 路径沙箱：只允许写入记忆目录
 	sandboxRoots := []string{c.deps.MemoryDir}
 	if c.deps.UserMemoryDir != "" {
 		sandboxRoots = append(sandboxRoots, c.deps.UserMemoryDir)
@@ -154,7 +151,7 @@ func (c *Consolidator) run(ctx context.Context, sessionIDs []string, priorMtime 
 	subChecker := permissions.NewChecker(subSandbox, &permissions.RuleEngine{}, permissions.ModeBypass)
 
 	subAgent := agent.New(c.deps.Client, subRegistry, c.deps.Protocol)
-	subAgent.MaxIterations = 15 // Consolidation may require multiple read/write rounds.
+	subAgent.MaxIterations = 15 // 整理可能需要多轮读写
 	subAgent.Checker = subChecker
 	subAgent.WorkDir = c.deps.ProjectRoot
 
@@ -168,7 +165,7 @@ func (c *Consolidator) run(ctx context.Context, sessionIDs []string, priorMtime 
 	c.debugf("[consolidation] finished in %s, %d files touched: %v",
 		time.Since(startTime), len(writtenPaths), writtenPaths)
 
-	// Filter out the index file; only notify for actual memory file changes.
+	// 过滤掉索引文件，只通知实际的记忆文件修改
 	var memoryPaths []string
 	for _, p := range writtenPaths {
 		if filepath.Base(p) == memory.AutoMemEntrypointName {
@@ -186,7 +183,7 @@ func (c *Consolidator) run(ctx context.Context, sessionIDs []string, priorMtime 
 	}
 }
 
-// listSessionsSince returns session IDs modified after the given timestamp (ms).
+// listSessionsSince 返回 sinceMs 之后被修改过的会话 ID 列表。
 func listSessionsSince(projectRoot string, sinceMs int64) []string {
 	sessions := session.ListSessions(projectRoot)
 	since := time.UnixMilli(sinceMs)
@@ -199,8 +196,7 @@ func listSessionsSince(projectRoot string, sinceMs int64) []string {
 	return ids
 }
 
-// extractWrittenPaths extracts all file paths written or edited by the sub-agent
-// from the conversation message history.
+// extractWrittenPaths 从子 Agent 对话中提取所有 Write/Edit 的文件路径。
 func extractWrittenPaths(messages []conversation.Message) []string {
 	var paths []string
 	seen := make(map[string]struct{})

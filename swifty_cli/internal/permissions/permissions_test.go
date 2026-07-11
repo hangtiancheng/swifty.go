@@ -239,6 +239,7 @@ func TestSandboxAutoAllowRespectsCompoundDeny(t *testing.T) {
 	sb := NewPathSandbox(dir)
 	local := filepath.Join(dir, "local.yaml")
 	eng := &RuleEngine{LocalPath: local}
+	// filepath.Match 的 * 不跨空格，用精确命令作为 pattern
 	eng.AppendLocalRule(Rule{ToolName: "Bash", Pattern: "rm -rf /", Effect: RuleDeny})
 
 	chk := NewChecker(sb, eng, ModeDefault)
@@ -246,11 +247,13 @@ func TestSandboxAutoAllowRespectsCompoundDeny(t *testing.T) {
 
 	bash := &fakeTool{name: "Bash", cat: tools.CategoryCommand}
 
+	// 复合命令中 rm 子命令应触发 deny，即使沙箱已开启
 	d := chk.Check(bash, map[string]any{"command": "echo ok && rm -rf /"})
 	if d.Effect != Deny {
 		t.Errorf("compound command with denied subcommand should be Deny, got %v", d)
 	}
 
+	// 单条安全命令在沙箱下应 auto-allow（不匹配任何 deny 规则）
 	d = chk.Check(bash, map[string]any{"command": "go test ./..."})
 	if d.Effect != Allow {
 		t.Errorf("safe command with sandbox should be Allow, got %v", d)
@@ -269,6 +272,7 @@ func TestSandboxAutoAllowRespectsAskRule(t *testing.T) {
 
 	bash := &fakeTool{name: "Bash", cat: tools.CategoryCommand}
 
+	// 显式 ask 规则在沙箱下不应被自动放行
 	d := chk.Check(bash, map[string]any{"command": "git push origin main"})
 	if d.Effect != Ask {
 		t.Errorf("ask rule should not be overridden by sandbox, got %v", d)

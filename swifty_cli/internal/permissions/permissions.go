@@ -12,6 +12,8 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 )
 
+// splitCompoundCommand 拆分 shell 复合命令（&&、||、;、|）为独立子命令，
+// 逐条匹配权限规则，防止通过 "cmd1 && dangerous_cmd" 绕过检查。
 func splitCompoundCommand(cmd string) []string {
 	parts := regexp.MustCompile(`\s*(?:&&|\|\||[;|])\s*`).Split(cmd, -1)
 	var result []string
@@ -79,7 +81,7 @@ var defaultDangerousPatterns = []dangerousPattern{
 	{regexp.MustCompile(`curl\s+.*\|\s*(ba)?sh`), "pipe remote script"},
 	{regexp.MustCompile(`wget\s+.*\|\s*(ba)?sh`), "pipe remote script"},
 	{regexp.MustCompile(`>\s*/dev/sd`), "overwrite disk device"},
-	// Git destructive commands — prevent accidental loss of work
+	// Git 破坏性命令——防止误操作丢失工作
 	{regexp.MustCompile(`git\s+push\s+.*--force`), "force push"},
 	{regexp.MustCompile(`git\s+reset\s+--hard`), "hard reset"},
 	{regexp.MustCompile(`git\s+clean\s+-f`), "force clean untracked files"},
@@ -100,11 +102,11 @@ func DetectDangerous(command string) (bool, string) {
 
 type PathSandbox struct {
 	allowedRoots []string
-	denyWrite    []string // Protected paths that are always read-only; takes precedence over allowedRoots
+	denyWrite    []string // 始终只读的受保护路径，优先级高于 allowedRoots
 }
 
-// NewPathSandbox creates a path sandbox. denyWrite specifies protected paths (e.g., config files),
-// denying write access even if they are within allowedRoots.
+// NewPathSandbox 创建路径沙箱。denyWrite 指定受保护路径（如配置文件），
+// 即使在 allowedRoots 内也拒绝写入。
 func NewPathSandbox(projectRoot string, extraAllowed ...string) *PathSandbox {
 	root, _ := filepath.Abs(projectRoot)
 	allowed := []string{root, os.TempDir()}
@@ -113,7 +115,7 @@ func NewPathSandbox(projectRoot string, extraAllowed ...string) *PathSandbox {
 		allowed = append(allowed, abs)
 	}
 
-	// Default protected paths: prevent the Agent from tampering with permission configs and Skill definitions
+	// 默认受保护路径：防止 Agent 篡改权限配置和 Skill 定义
 	denyWrite := []string{
 		filepath.Join(root, ".swifty", "config.yaml"),
 		filepath.Join(root, ".swifty", "permissions.local.yaml"),
@@ -129,7 +131,7 @@ func (s *PathSandbox) Check(path string) (bool, string) {
 		return false, fmt.Sprintf("cannot resolve path: %s", path)
 	}
 
-	// Check protected paths first: deny immediately if matched
+	// 受保护路径优先检查：命中则直接拒绝
 	for _, deny := range s.denyWrite {
 		if abs == deny || strings.HasPrefix(abs, deny+string(filepath.Separator)) {
 			return false, fmt.Sprintf("protected path: %s", path)
@@ -144,12 +146,12 @@ func (s *PathSandbox) Check(path string) (bool, string) {
 	return false, fmt.Sprintf("path %s outside sandbox", path)
 }
 
-// GetDenyWrite returns the list of protected paths for building the sandbox Config.
+// GetDenyWrite 返回受保护路径列表，供沙箱 Config 构建使用
 func (s *PathSandbox) GetDenyWrite() []string {
 	return s.denyWrite
 }
 
-// GetAllowedRoots returns the list of allowed write paths for building the sandbox Config.
+// GetAllowedRoots 返回允许写入的路径列表，供沙箱 Config 构建使用
 func (s *PathSandbox) GetAllowedRoots() []string {
 	return s.allowedRoots
 }
@@ -174,18 +176,18 @@ func (r Rule) Matches(toolName, content string) bool {
 	if r.ToolName != toolName {
 		return false
 	}
-	// Simple wildcard matching: * matches any character (including /), suitable for non-path scenarios like Bash commands.
-	// filepath.Match's * does not match /, causing "allow always" to fail for commands containing paths.
+	// 简单通配符匹配：* 匹配任意字符（包括 /），适用于 Bash 命令等非路径场景。
+	// filepath.Match 的 * 不匹配 /，导致 "allow always" 对含路径的命令失效。
 	return globMatch(r.Pattern, content)
 }
 
-// globMatch implements simple wildcard matching where * matches any character (including /).
+// globMatch 实现简单的通配符匹配，* 匹配任意字符（包括 /）。
 func globMatch(pattern, content string) bool {
-	// Fast path: exact comparison if no wildcards are present
+	// 快捷路径：无通配符时做精确比较
 	if !strings.Contains(pattern, "*") && !strings.Contains(pattern, "?") {
 		return pattern == content
 	}
-	// Convert pattern to regex: * → .*, ? → .
+	// 将 pattern 转为正则：* → .*, ? → .
 	re := "^"
 	for _, ch := range pattern {
 		switch ch {
@@ -326,15 +328,14 @@ func ExtractContent(toolName string, args map[string]any) string {
 	return v
 }
 
-// DescribeToolAction generates a human-readable description of the operation
-// for HITL (Human-In-The-Loop) confirmation. It prefers the standard content
-// fields (command, file_path, etc.) and falls back to a joined parameter summary.
+// DescribeToolAction 为 HITL 确认生成人类可读的操作描述。
+// 优先从标准内容字段（command, file_path 等）提取；无法提取时拼接参数摘要。
 func DescribeToolAction(toolName string, args map[string]any) string {
 	content := ExtractContent(toolName, args)
 	if content != "" {
 		return content
 	}
-	// When no standard field exists, concatenate a brief summary of the parameters
+	// 无标准字段时，拼接参数的简短摘要
 	var parts []string
 	for k, v := range args {
 		s := fmt.Sprintf("%v", v)
@@ -352,14 +353,16 @@ func DescribeToolAction(toolName string, args map[string]any) string {
 // Layer 4+5: Permission Checker (orchestrates all layers)
 
 type Checker struct {
-	Sandbox        *PathSandbox
-	RuleEngine     *RuleEngine
-	Mode           PermissionMode
-	PlanFilePath   string
+	Sandbox      *PathSandbox
+	RuleEngine   *RuleEngine
+	Mode         PermissionMode
+	PlanFilePath string
+	// SandboxEnabled 表示是否启用 OS 级沙箱。
+	// 启用后 Bash 命令在沙箱内执行，配合 autoAllow 可跳过确认。
 	SandboxEnabled bool
-	// sessionAllowed is Layer 4b: session-level allow-always set (in-memory).
-	// Stores entries in the format "ToolName:pattern", recorded when the user selects always allow.
-	// Disappears when the session ends; not persisted to disk.
+	// sessionAllowed 是 Layer 4b：会话级 allow-always 集合（内存中）。
+	// 存放格式为 "ToolName:pattern"，用户选择 always allow 时记录。
+	// 会话结束即消失，不写入磁盘。
 	sessionAllowed map[string]bool
 }
 
@@ -372,14 +375,14 @@ func NewChecker(sandbox *PathSandbox, ruleEngine *RuleEngine, mode PermissionMod
 	}
 }
 
-// AddSessionAllow adds the tool+content pattern to the session-level allow set (Layer 4b).
-// Also writes to the persistent rule engine so it takes effect in future sessions.
+// AddSessionAllow 将工具+内容模式加入会话级放行集合（Layer 4b）。
+// 同时写入持久化规则引擎，以便下次会话也生效。
 func (c *Checker) AddSessionAllow(toolName, content string) {
 	key := toolName + ":" + content
 	c.sessionAllowed[key] = true
 }
 
-// checkSessionAllowed checks whether the tool+content matches a session-level allow record.
+// checkSessionAllowed 检查是否匹配会话级放行记录。
 func (c *Checker) checkSessionAllowed(toolName, content string) bool {
 	if len(c.sessionAllowed) == 0 {
 		return false
@@ -388,7 +391,7 @@ func (c *Checker) checkSessionAllowed(toolName, content string) bool {
 	if c.sessionAllowed[key] {
 		return true
 	}
-	// Prefix match: recorded patterns may have a wildcard suffix *
+	// 前缀匹配：已记录的 pattern 可能带通配尾缀 *
 	for allowed := range c.sessionAllowed {
 		if strings.HasSuffix(allowed, "*") && strings.HasPrefix(key, allowed[:len(allowed)-1]) {
 			return true
@@ -411,6 +414,9 @@ func (c *Checker) Check(tool tools.Tool, args map[string]any) Decision {
 		return Decision{Effect: Allow, Reason: "Safe read-only command"}
 	}
 
+	// Layer 1b: 沙箱自动放行 — 命令在 OS 沙箱内执行时无需确认，
+	// 但显式 deny/ask 规则仍然生效。
+	// 拆分复合命令逐条检查，任何子命令触发 deny 则整体 deny，触发 ask 则弹窗。
 	if c.SandboxEnabled && cat == tools.CategoryCommand {
 		subcommands := splitCompoundCommand(content)
 		var hasAsk bool
@@ -442,7 +448,7 @@ func (c *Checker) Check(tool tools.Tool, args map[string]any) Decision {
 		ok, reason := c.Sandbox.Check(content)
 		if !ok {
 			if c.Mode == ModeBypass {
-				// bypass mode skips sandbox confirmation and allows directly
+				// bypass 模式跳过沙箱确认，直接放行
 			} else {
 				return Decision{Effect: Ask, Reason: fmt.Sprintf("Path sandbox: %s", reason)}
 			}
@@ -458,7 +464,7 @@ func (c *Checker) Check(tool tools.Tool, args map[string]any) Decision {
 		return Decision{Effect: Deny, Reason: "Permission rule: deny"}
 	}
 
-	// Layer 4b: session-level allow (in-memory, takes precedence over mode fallback)
+	// Layer 4b: 会话级放行（内存中，优先于模式兜底）
 	if c.checkSessionAllowed(tool.Name(), content) {
 		return Decision{Effect: Allow, Reason: "Session allow-always"}
 	}

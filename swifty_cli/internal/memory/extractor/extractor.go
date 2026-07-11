@@ -19,11 +19,11 @@ import (
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agent"
-	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/agents"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/conversation"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/llm"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/memory"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/permissions"
+	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/subagent"
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 )
 
@@ -180,7 +180,7 @@ func (e *Extractor) runExtraction(ctx context.Context, isTrailingRun bool) error
 
 	// Tool whitelist: ReadFile / WriteFile / EditFile / Glob / Grep / Bash / ToolSearch (via
 	// FilterToolsForAgent's async path). Agent and AskUserQuestion are auto-excluded.
-	subRegistry := agents.FilterToolsForAgent(e.deps.ToolRegistry, nil, nil, true)
+	subRegistry := subagent.FilterToolsForAgent(e.deps.ToolRegistry, nil, nil, true)
 
 	// Strict path sandbox: only memoryDir is allowed for file tools. This is stricter than the
 	// original createAutoMemCanUseTool (which lets Read/Grep/Glob roam unrestricted) but matches the

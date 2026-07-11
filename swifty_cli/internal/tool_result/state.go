@@ -1,4 +1,4 @@
-// Package tool_result implements Swifty's Design-B tool-result budget:
+// Package toolresult implements Swifty's Design-B tool-result budget:
 // every replacement decision is recorded in ContentReplacementState and
 // applied to a freshly-built *conversation.Manager so the input conversation
 // is never mutated. State across turns is what makes the model-visible

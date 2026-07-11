@@ -15,7 +15,7 @@ func TestClearResetsSession(t *testing.T) {
 	}
 	m := New([]config.ProviderConfig{provider}, nil, nil)
 
-	// Simulate some pre-existing state.
+	// 模拟已有一些状态
 	m.chatMessages = []chatMessage{
 		{role: "user", content: "hello"},
 		{role: "assistant", content: "hi"},
@@ -25,21 +25,21 @@ func TestClearResetsSession(t *testing.T) {
 	m.totalOutput = 500
 	oldSessionID := m.sessionID
 
-	// Execute /clear.
+	// 执行 /clear
 	updated, _ := m.executeCommand("clear", "")
 	m = updated.(Model)
 
-	// Verify messages are cleared.
+	// 验证消息已清空
 	if len(m.chatMessages) != 0 {
 		t.Errorf("chatMessages should be empty after /clear, got %d", len(m.chatMessages))
 	}
 
-	// Verify committedUpTo is reset to zero.
+	// 验证 committedUpTo 归零
 	if m.committedUpTo != 0 {
 		t.Errorf("committedUpTo should be 0 after /clear, got %d", m.committedUpTo)
 	}
 
-	// Verify session ID has changed (differs from the old value).
+	// 验证 session ID 已更新（不等于旧值）
 	if m.sessionID == oldSessionID {
 		t.Errorf("sessionID should change after /clear, still %s", m.sessionID)
 	}
@@ -47,7 +47,7 @@ func TestClearResetsSession(t *testing.T) {
 		t.Error("sessionID should not be empty after /clear")
 	}
 
-	// Verify token counters are reset to zero.
+	// 验证 token 计数归零
 	if m.totalInput != 0 {
 		t.Errorf("totalInput should be 0 after /clear, got %d", m.totalInput)
 	}
@@ -55,7 +55,7 @@ func TestClearResetsSession(t *testing.T) {
 		t.Errorf("totalOutput should be 0 after /clear, got %d", m.totalOutput)
 	}
 
-	// Verify conversation has been re-created.
+	// 验证 conversation 已重建
 	if m.conversation == nil {
 		t.Error("conversation should not be nil after /clear")
 	}

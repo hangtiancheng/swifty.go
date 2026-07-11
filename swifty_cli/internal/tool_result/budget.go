@@ -14,43 +14,33 @@ import (
 // freezes decisions, but the actual numerical limits stay the same as the
 // pre-state implementation so behavior on a fresh conversation is identical.
 const (
-	// SingleResultLimit gates the per-tool spill. Aligned with Claude Code's
-	// DEFAULT_MAX_RESULT_SIZE_CHARS = 50_000. Must stay strictly above
-	// tools.MaxOutputChars (10000) + truncation suffix; otherwise a tool
-	// result truncated to MaxOutputChars trips the spill on every iteration
-	// — and reading the spilled file back is itself a ~10K result that
-	// would re-spill, looping.
+	// SingleResultLimit 单条工具结果超过 50K 字符时溢写到文件，避免撑爆上下文。
+	// 阈值须严格大于 tools.MaxOutputChars (10000) + 截断后缀，否则截断后的结果
+	// 会反复触发溢写形成死循环。
 	SingleResultLimit = 50000
 
-	// MessageAggregateLimit triggers Pass 2 when a single user message's
-	// tool_result content sums above this. Aligned with Claude Code's
-	// MAX_TOOL_RESULTS_PER_MESSAGE_CHARS = 200_000.
+	// MessageAggregateLimit 单条消息中所有工具结果的总字符数超过 200K 时
+	// 触发 Pass 2 聚合溢写。
 	MessageAggregateLimit = 200000
-
-	// OldResultSnipChars is the stale-tail snip threshold.
-	OldResultSnipChars = 2000
 
 	// SpillSubdir lives under the agent's workdir.
 	SpillSubdir = ".swifty/tool_results"
 )
 
-const persistedTagPrefix = "[Result of "
+const (
+	persistedTagPrefix = "[Result of "
+)
 
 func isAlreadyReplaced(s string) bool {
 	return strings.HasPrefix(s, persistedTagPrefix)
 }
 
-// Apply is Design B: walk conv, decide each tool_result's fate against state,
-// return a NEW *conversation.Manager with replacements applied. The input
-// conv is never mutated. state's SeenIDs/Replacements are mutated to record
-// this turn's decisions; subsequent calls re-apply those decisions verbatim
-// (byte-identical preview strings, no I/O) so the prompt-cache prefix is
-// stable across turns.
+// Apply 是 Design A 实现：直接就地修改 conv 中超出预算的 tool_result 内容，
+// 不再生成新的 Manager 副本。state 的 SeenIDs/Replacements 记录本轮决策，
+// 后续调用逐字节回放相同预览字符串，保证 Prompt Cache 前缀稳定。
 //
-// Returns the new manager, any newly-recorded decisions (caller should
-// append to the session transcript), and an error only on catastrophic
-// failure (filesystem errors during spill are swallowed per-result so a
-// spill failure freezes that one id as raw rather than aborting the turn).
+// 返回本轮新增的替换记录（调用方追加到会话日志）和错误（仅文件系统
+// 灾难性错误；单条 spill 失败会静默冻结为原始内容，不中断整轮）。
 func Apply(
 	conv *conversation.Manager,
 	workDir string,
@@ -77,19 +67,18 @@ func Apply(
 
 		for _, tr := range msg.ToolResults {
 			if rep, ok := state.Replacements[tr.ToolUseID]; ok {
-				// Already decided "replace" — re-apply the exact preview.
+				// 已决策替换 — 回放精确预览。
 				decisions[tr.ToolUseID] = rep
 				continue
 			}
 			if _, ok := state.SeenIDs[tr.ToolUseID]; ok {
-				// Seen but not replaced — frozen as raw forever.
+				// 已见但未替换 — 永久冻结为原始内容。
 				decisions[tr.ToolUseID] = tr.Content
 				continue
 			}
 			if isAlreadyReplaced(tr.Content) {
-				// External pre-tagged content (e.g. resumed from disk where
-				// the persisted preview was already written into history).
-				// Freeze as the tag itself so subsequent turns stay stable.
+				// 外部预标记内容（如从磁盘恢复时已写入预览）。
+				// 冻结为标记本身，后续轮次保持稳定。
 				state.SeenIDs[tr.ToolUseID] = struct{}{}
 				state.Replacements[tr.ToolUseID] = tr.Content
 				decisions[tr.ToolUseID] = tr.Content
@@ -200,7 +189,7 @@ func Apply(
 			decisions[tr.ToolUseID] = tr.Content
 		}
 
-		// Materialize new tool_results in original order.
+		// 就地替换：按原始顺序写回 conv 的消息历史。
 		newResults := make([]conversation.ToolResultBlock, len(msg.ToolResults))
 		for k, tr := range msg.ToolResults {
 			newResults[k] = conversation.ToolResultBlock{
@@ -215,12 +204,12 @@ func Apply(
 	return records, nil
 }
 
-// previewSize is the max character count for spill previews, consistent with Claude Code.
+// previewSize 是存盘预览的最大字符数，取前 2KB 兼顾可读性和空间占用。
 const previewSize = 2000
 
-// buildSpillPreview constructs spill replacement text with a leading 2KB preview.
-// Once written to state.Replacements it is replayed byte-by-byte; format changes will
-// invalidate the prompt cache — do not alter lightly.
+// buildSpillPreview 构造存盘替换文本，包含前 2KB 预览。
+// 一旦写入 state.Replacements 就会逐字节回放，格式变更会导致
+// Prompt Cache 失效，不要轻易改动。
 func buildSpillPreview(content string, path string) string {
 	sizeKB := len(content) / 1024
 	preview := content
@@ -231,8 +220,8 @@ func buildSpillPreview(content string, path string) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "<persisted-output>\n")
-	fmt.Fprintf(&b, "Output too large (%dKB), full content saved to:\n%s\n\n", sizeKB, path)
-	fmt.Fprintf(&b, "Preview (first 2KB):\n%s", preview)
+	fmt.Fprintf(&b, "输出太大（%dKB），完整内容已保存到：\n%s\n\n", sizeKB, path)
+	fmt.Fprintf(&b, "预览（前 2KB）：\n%s", preview)
 	if hasMore {
 		b.WriteString("\n...")
 	}

@@ -1,28 +1,28 @@
 package commands
 
-// SandboxMode defines three operating modes for the sandbox
+// SandboxMode 定义沙箱的三种运行模式
 type SandboxMode int
 
 const (
-	SandboxAutoAllow SandboxMode = iota // Sandbox + Auto-allow (Recommended)
-	SandboxRegular                      // Sandbox + Regular permission confirmation
-	SandboxOff                          // Disable sandbox
+	SandboxAutoAllow SandboxMode = iota // 沙箱 + 自动放行（推荐）
+	SandboxRegular                      // 沙箱 + 常规权限确认
+	SandboxOff                          // 关闭沙箱
 )
 
-// SandboxModeLabels returns the display labels for the three modes
+// SandboxModeLabels 返回三种模式的显示标签
 func SandboxModeLabels() []string {
 	return []string{
-		"Enable Sandbox + Auto-allow (Recommended)",
-		"Enable Sandbox + Regular Permissions",
-		"Disable Sandbox",
+		"开启沙箱 + 自动放行（推荐）",
+		"开启沙箱 + 常规权限",
+		"关闭沙箱",
 	}
 }
 
-// SandboxModeDescriptions returns the description text for each mode
+// SandboxModeDescriptions 返回各模式的说明文字
 func SandboxModeDescriptions() []string {
 	return []string{
-		"Commands are automatically executed within the sandbox without confirmation. Explicit deny rules still apply.",
-		"Commands are executed within the sandbox but still require permission confirmation.",
-		"No OS-level isolation is used; relies only on application-layer permissions.",
+		"命令自动在沙箱内执行，无需确认。显式 deny 规则仍生效。",
+		"命令在沙箱内执行，但仍需权限确认。",
+		"不使用 OS 级隔离，仅依赖应用层权限。",
 	}
 }

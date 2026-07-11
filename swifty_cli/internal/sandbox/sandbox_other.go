@@ -2,8 +2,7 @@
 
 package sandbox
 
-// newPlatformSandbox returns nil on unsupported platforms.
-// Callers must check for nil before use.
+// 不支持沙箱的平台返回 nil，调用方需判空
 func newPlatformSandbox() Sandbox {
 	return nil
 }

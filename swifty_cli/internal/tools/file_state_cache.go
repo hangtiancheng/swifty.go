@@ -1,13 +1,14 @@
 package tools
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 )
 
 // FileStateCache tracks which files have been read and their modification
-// times, enforcing a "read-before-edit" discipline  to prevent blind overwrites.
+// times, enforcing a "read-before-edit" discipline to prevent blind overwrites.
 type FileStateCache struct {
 	mu      sync.Mutex
 	entries map[string]*fileStateEntry
@@ -42,7 +43,7 @@ func (c *FileStateCache) Check(filePath string) (bool, string) {
 	c.mu.Unlock()
 
 	if !exists {
-		return false, "Error: file has not been read yet. Read it first before editing."
+		return false, fmt.Sprintf("Error: file has not been read yet. Read it first before editing.")
 	}
 
 	info, err := os.Stat(abs)
@@ -52,7 +53,7 @@ func (c *FileStateCache) Check(filePath string) (bool, string) {
 	}
 	currentMtime := info.ModTime().UnixMilli()
 	if currentMtime > entry.Mtime {
-		return false, "Error: file has been modified since last read. Read it again before editing."
+		return false, fmt.Sprintf("Error: file has been modified since last read. Read it again before editing.")
 	}
 
 	return true, ""

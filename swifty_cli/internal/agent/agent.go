@@ -49,8 +49,10 @@ type Agent struct {
 	// ToolNameFilter, when non-nil, drops any tool whose Name returns false from the schemas sent to
 	// the LLM. The filter is consulted at the top of every iteration so callers can flip Coordinator
 	// Mode on or off (e.g., when a team is created/torn down) without restarting the agent.
-	Instructions   string
-	MemoryContent  string
+	Instructions  string
+	MemoryContent string
+	// MemoryRecallCh 非阻塞 memory recall：prefetch 与主 LLM 调用并行，
+	// 工具执行后从 channel 读取并注入
 	MemoryRecallCh <-chan string
 	ToolNameFilter func(name string) bool
 	// OnLoopComplete, when non-nil, is invoked fire-and-forget after the agent reaches LoopComplete
@@ -209,6 +211,7 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			}
 
 			a.emitHook(hooks.EventTurnStart, "", nil)
+
 			// Inject deferred tool names into system-reminder so the model knows what's available via
 			// ToolSearch.
 			if deferredNames := a.Registry.GetDeferredToolNames(); len(deferredNames) > 0 {
@@ -218,18 +221,21 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 
 			a.emitHook(hooks.EventPreSend, "", nil)
 
-			// Layer 1: apply tool-result budget
+			// Layer 1: apply tool-result budget（就地修改 conv）
+			// system reminders 已注入，直接在 conv 上替换超限内容
 			newRecords, _ := tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
 			if len(newRecords) > 0 {
 				_ = tool_result.AppendRecords(a.WorkDir, newRecords)
 			}
 
 			// Layer 2: auto-compact
+			// conv 已经过 Layer 1 裁剪，直接用其消息估算 token
 			if msg, err := compact.ManageContext(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.MaxOutputTokens, &a.compactTracking, a.RecoveryState, toolSchemas, usageAnchor, nil); err == nil && msg != "" {
 				ch <- CompactEvent{Message: msg}
 				usageAnchor = compact.UsageAnchor{}
 				conv.InjectLongTermMemory(a.Instructions, a.MemoryContent)
-				tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
+				// 压缩后 conv 已变，重新应用 Layer 1 budget
+				tool_result.Apply(conv, a.WorkDir, a.ReplacementState) //nolint:errcheck
 			}
 
 			events, errs := a.Client.Stream(ctx, conv, toolSchemas)
@@ -420,14 +426,16 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			}
 			conv.AddToolResultsMessage(toolResults)
 
+			// 非阻塞 memory recall：工具执行完后检查 prefetch 是否就绪
 			if a.MemoryRecallCh != nil {
 				select {
 				case recall := <-a.MemoryRecallCh:
 					if recall != "" {
 						conv.AddSystemReminder(recall)
 					}
-					a.MemoryRecallCh = nil
+					a.MemoryRecallCh = nil // 只消费一次
 				default:
+					// prefetch 还没好，下轮再检查
 				}
 			}
 
@@ -478,6 +486,7 @@ func filterSchemasByName(schemas []map[string]any, allow func(name string) bool)
 func (a *Agent) handleStreamError(ctx context.Context, ch chan AgentEvent, conv *conversation.Manager, err error) (retry, compacted bool) {
 	var ctxErr *llm.ContextTooLongError
 	if errors.As(err, &ctxErr) {
+		// conv 已由 Layer 1 就地裁剪，直接传 nil 让 ForceCompact 使用 conv 自身消息
 		msg, compactErr := compact.ForceCompact(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.RecoveryState, a.currentToolSchemas(), nil)
 		if compactErr == nil && msg != "" {
 			ch <- CompactEvent{Message: "Auto-compacted due to context length: " + msg}
@@ -559,7 +568,7 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 		}
 		if decision.Effect == permissions.Ask {
 			respCh := make(chan PermissionResponse, 1)
-			// Use DescribeToolAction to produce a human-readable action description
+			// 使用 DescribeToolAction 生成人类可读的操作描述
 			desc := permissions.DescribeToolAction(tc.ToolName, tc.Arguments)
 			eventCh <- PermissionRequestEvent{
 				ToolName:   tc.ToolName,
@@ -582,7 +591,7 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 				if len(content) > 60 {
 					pattern = content[:60] + "*"
 				}
-				// Layer 4b: add to session-level allowlist (in-memory) and persist to the rule engine
+				// Layer 4b: 写入会话级放行集合（内存），同时持久化到规则引擎
 				a.Checker.AddSessionAllow(tc.ToolName, pattern)
 				a.Checker.RuleEngine.AppendLocalRule(permissions.Rule{
 					ToolName: tc.ToolName,
@@ -594,13 +603,13 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 	}
 
 	if a.Hooks != nil {
-		hookCtx := hooks.HookContext{
+		hctx := hooks.HookContext{
 			EventName: hooks.EventPreToolUse,
 			ToolName:  tc.ToolName,
 			ToolArgs:  tc.Arguments,
 			FilePath:  extractFilePath(tc.Arguments),
 		}
-		if rejected, msg := a.Hooks.RunPreToolHooks(hookCtx); rejected {
+		if rejected, msg := a.Hooks.RunPreToolHooks(hctx); rejected {
 			return toolExecResult{
 				toolID:   tc.ToolID,
 				toolName: tc.ToolName,

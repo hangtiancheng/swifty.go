@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// mockDeferredTool simulates a tool that will be deferred.
+// mockDeferredTool 模拟一个会被 defer 的工具
 type mockDeferredTool struct {
 	name string
 	desc string
@@ -32,7 +32,7 @@ func (t *mockDeferredTool) Execute(ctx context.Context, args map[string]any) Too
 	return ToolResult{Output: "ok"}
 }
 
-// mockNormalTool simulates a normal tool that will not be deferred.
+// mockNormalTool 模拟一个不会被 defer 的普通工具
 type mockNormalTool struct {
 	name string
 }
@@ -51,7 +51,7 @@ func (t *mockNormalTool) Execute(ctx context.Context, args map[string]any) ToolR
 	return ToolResult{Output: "ok"}
 }
 
-// mockMCPTool simulates MCPToolWrapper (does not implement the DeferrableTool interface).
+// mockMCPTool 模拟 MCPToolWrapper（没实现 DeferrableTool 接口）
 type mockMCPTool struct {
 	name string
 	desc string
@@ -82,7 +82,7 @@ func TestDeferredToolsNotInGetAllSchemas(t *testing.T) {
 
 	schemas := reg.GetAllSchemas("anthropic")
 
-	// Only ReadFile should be present; deferred tools should not appear.
+	// 只应该有 ReadFile，deferred 的不应该出现
 	if len(schemas) != 1 {
 		t.Errorf("expected 1 schema (only ReadFile), got %d", len(schemas))
 	}
@@ -92,19 +92,19 @@ func TestDeferredToolsNotInGetAllSchemas(t *testing.T) {
 }
 
 func TestMCPToolIsDeferred(t *testing.T) {
-	// mockMCPTool does not implement DeferrableTool, simulating the old behavior (not deferred).
-	// The real MCPToolWrapper now implements ShouldDefer() = true.
+	// mockMCPTool 没实现 DeferrableTool，模拟旧行为（不 defer）
+	// 真正的 MCPToolWrapper 现在实现了 ShouldDefer() = true
 	reg := NewRegistry()
 	reg.Register(&mockNormalTool{name: "ReadFile"})
 	reg.Register(&mockMCPTool{name: "mcp__grafana__query", desc: "Query Prometheus"})
 
 	schemas := reg.GetAllSchemas("anthropic")
-	// mockMCPTool does not implement DeferrableTool, so it is still passed in full.
+	// mockMCPTool 没实现 DeferrableTool，所以仍然全量传
 	if len(schemas) != 2 {
 		t.Errorf("expected 2 schemas (mockMCPTool has no ShouldDefer), got %d", len(schemas))
 	}
 
-	// But if we use mockDeferredTool to simulate the real MCPToolWrapper behavior:
+	// 但如果用 mockDeferredTool 模拟真正的 MCPToolWrapper 行为
 	reg2 := NewRegistry()
 	reg2.Register(&mockNormalTool{name: "ReadFile"})
 	reg2.Register(&mockDeferredTool{name: "mcp__grafana__query", desc: "Query Prometheus"})

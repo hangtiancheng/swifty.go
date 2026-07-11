@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// realisticMCPTool simulates the schema size of real MCP tools.
-// Based on actual tools from Grafana/Playwright MCP Server, each tool has
-// 5-10 parameters with complete description, enum, default, and other fields.
+// realisticMCPTool 模拟真实 MCP 工具的 schema 大小。
+// 参照 Grafana/Playwright MCP Server 的实际工具，每个工具有
+// 5-10 个参数，带完整 description、enum、default 等字段。
 type realisticMCPTool struct {
 	name   string
 	desc   string
@@ -36,8 +36,8 @@ func (t *realisticMCPTool) Execute(_ context.Context, _ map[string]any) ToolResu
 	return ToolResult{Output: "ok"}
 }
 
-// makeRealisticTools generates n simulated MCP tools with rich parameters, with schema size
-// close to real Grafana/Playwright tools (each tool JSON is about 800-1200 bytes).
+// makeRealisticTools 生成 n 个参数丰富的模拟 MCP 工具，schema 大小
+// 接近真实的 Grafana/Playwright 工具（每个工具 JSON 约 800-1200 bytes）。
 func makeRealisticTools(n int) []*realisticMCPTool {
 	templates := []struct {
 		namePrefix string
@@ -134,8 +134,8 @@ func makeRealisticTools(n int) []*realisticMCPTool {
 	return tools
 }
 
-// builtinToolSchemaSize returns the total schema JSON size of built-in tools
-// (ReadFile/WriteFile/EditFile/Bash/Glob/Grep).
+// builtinToolSchemaSize 返回内置工具（ReadFile/WriteFile/EditFile/Bash/Glob/Grep）
+// 的 schema JSON 总大小。
 func builtinToolSchemaSize() int {
 	reg := CreateDefaultRegistry()
 	schemas := reg.GetAllSchemas("anthropic")
@@ -143,38 +143,37 @@ func builtinToolSchemaSize() int {
 	return len(data)
 }
 
-// TestDeferredBenchmarkFullSession simulates a complete multi-turn session, comparing
-// the token consumption difference in the tools parameter between full loading
-// and deferred loading approaches.
+// TestDeferredBenchmarkFullSession 模拟一段完整的多轮会话，对比全量加载
+// 和延迟加载两种方案在 tools 参数上的 token 消耗差异。
 //
-// Scenario:
-//   - 6 built-in tools (ReadFile/WriteFile/EditFile/Bash/Glob/Grep)
-//   - 1 ToolSearch tool (deferred loading approach only)
-//   - 58 MCP tools (simulating 5 MCP Servers)
-//   - 10 turns, with 1 MCP tool activated at turn 3 and turn 6 each
+// 场景设定：
+//   - 6 个内置工具（ReadFile/WriteFile/EditFile/Bash/Glob/Grep）
+//   - 1 个 ToolSearch 工具（延迟加载方案独有）
+//   - 58 个 MCP 工具（模拟 5 个 MCP Server）
+//   - 10 轮会话，在第 3 轮和第 6 轮各激活 1 个 MCP 工具
 //
-// Metric: cumulative JSON byte count of the tools parameter in each turn's API request.
-// The deferred loading approach also adds the overhead of the deferred tool name list in system-reminder.
+// 统计口径：每轮 API 请求中 tools 参数的 JSON 字节数累计。
+// 延迟加载方案还要加上 system-reminder 中延迟工具名称列表的开销。
 func TestDeferredBenchmarkFullSession(t *testing.T) {
 	const (
 		numMCPTools = 58
 		numTurns    = 10
 	)
 
-	// --- Build two Registry instances ---
+	// --- 构建两套 Registry ---
 
-	// Full loading: no tools are deferred
+	// 全量加载：所有工具都不 defer
 	regFull := NewRegistry()
 	for _, tool := range CreateDefaultTools().Registry.ListTools() {
 		regFull.Register(tool)
 	}
 	mcpTools := makeRealisticTools(numMCPTools)
-	// Full approach: MCP tools registered as non-deferred (wrapped to remove ShouldDefer)
+	// 全量方案：MCP 工具注册为非 defer（用 wrapper 包一层去掉 ShouldDefer）
 	for _, mt := range mcpTools {
 		regFull.Register(&nonDeferredWrapper{realisticMCPTool: mt})
 	}
 
-	// Deferred loading: all MCP tools are deferred
+	// 延迟加载：MCP 工具全部 defer
 	regDeferred := NewRegistry()
 	for _, tool := range CreateDefaultTools().Registry.ListTools() {
 		regDeferred.Register(tool)
@@ -185,40 +184,40 @@ func TestDeferredBenchmarkFullSession(t *testing.T) {
 		regDeferred.Register(mt)
 	}
 
-	// --- Simulate session ---
+	// --- 模拟会话 ---
 
 	var totalBytesFull int
 	var totalBytesDeferred int
 
-	// Activate one tool at turn 3 and turn 6
+	// 在第 3 轮和第 6 轮各激活一个工具
 	activateAtTurn := map[int]string{
 		3: mcpTools[5].Name(),
 		6: mcpTools[20].Name(),
 	}
 
-	t.Logf("=== Session simulation: %d built-in tools + %d MCP tools, %d turns ===\n", 6, numMCPTools, numTurns)
+	t.Logf("=== 会话模拟：%d 个内置工具 + %d 个 MCP 工具，%d 轮对话 ===\n", 6, numMCPTools, numTurns)
 	t.Logf("%-6s %12s %12s %12s   %s", "Turn", "Full(bytes)", "Deferred(bytes)", "Deferred-detail", "Event")
 
 	for turn := 1; turn <= numTurns; turn++ {
 		event := ""
 
-		// Activate tool (simulate ToolSearch being called)
+		// 激活工具（模拟 ToolSearch 被调用）
 		if toolName, ok := activateAtTurn[turn]; ok {
 			regDeferred.MarkDiscovered(toolName)
 			event = fmt.Sprintf("activated %s", toolName)
 		}
 
-		// Full approach: tools parameter size per turn
+		// 全量方案：每轮 tools 参数大小
 		schemasFull := regFull.GetAllSchemas("anthropic")
 		dataFull, _ := json.Marshal(schemasFull)
 		turnBytesFull := len(dataFull)
 
-		// Deferred approach: tools parameter + deferred tool name list in system-reminder
+		// 延迟方案：tools 参数 + system-reminder 中的延迟工具名称列表
 		schemasDeferred := regDeferred.GetAllSchemas("anthropic")
 		dataDeferred, _ := json.Marshal(schemasDeferred)
 		turnToolsBytes := len(dataDeferred)
 
-		// Deferred tool name list in system-reminder (injected every turn)
+		// system-reminder 里的延迟工具名称列表（每轮都会注入）
 		deferredNames := regDeferred.GetDeferredToolNames()
 		reminderText := ""
 		if len(deferredNames) > 0 {
@@ -240,32 +239,32 @@ func TestDeferredBenchmarkFullSession(t *testing.T) {
 	tokensSaved := estimatedTokensFull - estimatedTokensDeferred
 
 	t.Logf("")
-	t.Logf("=== Full session statistics ===")
-	t.Logf("Full loading total:     %d bytes (%d estimated tokens)", totalBytesFull, estimatedTokensFull)
-	t.Logf("Deferred loading total: %d bytes (%d estimated tokens)", totalBytesDeferred, estimatedTokensDeferred)
-	t.Logf("Savings:                %.1f%% (%d estimated tokens saved)", savings*100, tokensSaved)
+	t.Logf("=== 全会话统计 ===")
+	t.Logf("全量加载总计:   %d bytes (%d estimated tokens)", totalBytesFull, estimatedTokensFull)
+	t.Logf("延迟加载总计:   %d bytes (%d estimated tokens)", totalBytesDeferred, estimatedTokensDeferred)
+	t.Logf("节省:           %.1f%% (%d estimated tokens saved)", savings*100, tokensSaved)
 	t.Logf("")
 
-	// Single-turn comparison
+	// 单轮对比
 	schemasFull1 := regFull.GetAllSchemas("anthropic")
 	dataFull1, _ := json.Marshal(schemasFull1)
-	t.Logf("=== Single-turn snapshot (final state, 2 MCP tools activated) ===")
-	t.Logf("Full tools parameter:     %d bytes (%d tools)", len(dataFull1), len(schemasFull1))
+	t.Logf("=== 单轮快照（最终状态，2 个 MCP 工具已激活）===")
+	t.Logf("全量 tools 参数:   %d bytes (%d tools)", len(dataFull1), len(schemasFull1))
 
 	schemasD1 := regDeferred.GetAllSchemas("anthropic")
 	dataD1, _ := json.Marshal(schemasD1)
 	dNames := regDeferred.GetDeferredToolNames()
 	reminder := strings.Join(dNames, "\n")
-	t.Logf("Deferred tools parameter: %d bytes (%d tools) + reminder %d bytes (%d names)",
+	t.Logf("延迟 tools 参数:   %d bytes (%d tools) + reminder %d bytes (%d names)",
 		len(dataD1), len(schemasD1), len(reminder), len(dNames))
 
 	if savings < 0.80 {
-		t.Errorf("Full session token savings should be >= 80%%, got %.1f%%", savings*100)
+		t.Errorf("全会话维度 token 节省应 >= 80%%，实际 %.1f%%", savings*100)
 	}
 }
 
-// nonDeferredWrapper wraps a realisticMCPTool as a non-deferred version,
-// used for comparison with the full loading approach.
+// nonDeferredWrapper 把一个 realisticMCPTool 包装成非 defer 版本，
+// 用于全量加载方案的对比。
 type nonDeferredWrapper struct {
 	*realisticMCPTool
 }
