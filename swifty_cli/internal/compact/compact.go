@@ -265,8 +265,9 @@ func ManageContext(
 	anchor UsageAnchor,
 	budgetMessages []conversation.Message,
 ) (string, error) {
-	// budget 裁剪后的消息更接近实际发送量，用它做 token 估算更准确，
-	// 避免因未裁剪的大工具结果导致不必要的压缩。
+	// Budget-trimmed messages better reflect the actual payload sent, yielding
+	// more accurate token estimates and avoiding unnecessary compaction caused
+	// by untrimmed large tool results.
 	estimateFrom := conv.GetMessages()
 	if len(budgetMessages) > 0 {
 		estimateFrom = budgetMessages
@@ -306,7 +307,8 @@ func ManageContext(
 
 // ForceCompact is the manual /compact entry. Always runs Layer 2 (full summary) regardless of
 // current token ratio. Layer 1 is skipped because a full summary supersedes spill/snip anyway.
-// budgetMessages 为 budget 裁剪后的消息列表，nil 时回退到 conv 原始消息。
+// budgetMessages is the budget-trimmed message list; when nil, falls back to the original
+// conversation messages.
 func ForceCompact(
 	ctx context.Context,
 	conv *conversation.Manager,
@@ -493,8 +495,9 @@ func autoCompact(
 	toolSchemas []map[string]any,
 	budgetMessages []conversation.Message,
 ) (string, error) {
-	// 优先使用 budget 裁剪后的消息做摘要和 token 估算，
-	// 因为裁剪后更接近实际发送内容，避免摘要请求因包含未裁剪的大工具结果而超出上下文窗口。
+	// Prefer budget-trimmed messages for summarization and token estimation,
+	// since they better reflect what will actually be sent and prevent the
+	// summary request from exceeding the context window due to untrimmed large tool results.
 	messages := conv.GetMessages()
 	if len(budgetMessages) > 0 {
 		messages = budgetMessages
@@ -513,8 +516,9 @@ func autoCompact(
 	prefix := messages[:keepStart]
 	keep := messages[keepStart:]
 
-	// 调用 LLM 生成摘要，带 PTL 重试：如果摘要请求本身超出上下文窗口，
-	// 从最老的 API 轮次开始丢弃，最多重试 maxPTLRetries 次。
+	// Call the LLM to generate a summary, with PTL retry: if the summary
+	// request itself exceeds the context window, drop the oldest API-round
+	// groups and retry up to maxPTLRetries times.
 	finalSummary, err := callSummaryWithPTLRetry(ctx, client, prefix, toolSchemas)
 	if err != nil {
 		return "", err
@@ -537,12 +541,12 @@ func autoCompact(
 		session.SaveCompactBoundary(workDir, sessionID, finalSummary, keepRecords)
 	}
 
-	content := "本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + finalSummary
+	content := "This session continues from a previous conversation that was compacted due to context limits. Below is a summary of the earlier conversation:\n\n" + finalSummary
 	if len(keep) > 0 {
-		content += "\n\n近期消息已原样保留。"
+		content += "\n\nRecent messages have been preserved verbatim."
 	}
 	if sessionID != "" && workDir != "" {
-		content += fmt.Sprintf("\n\n如果你需要压缩前的具体细节（代码片段、报错信息等），请用 ReadFile 读取完整会话记录：%s", session.SessionFilePath(workDir, sessionID))
+		content += fmt.Sprintf("\n\nIf you need details from before compaction (code snippets, error messages, etc.), use ReadFile to read the full session log: %s", session.SessionFilePath(workDir, sessionID))
 	}
 	if attachment := BuildRecoveryAttachment(recovery, toolSchemas); attachment != "" {
 		content += "\n\n---\n\n" + attachment

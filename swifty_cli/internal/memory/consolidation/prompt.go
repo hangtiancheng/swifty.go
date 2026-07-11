@@ -7,9 +7,9 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/memory"
 )
 
-// BuildConsolidationPrompt 构建记忆整理的完整 prompt。
-// memoryDir 是项目级记忆目录，transcriptDir 是会话 JSONL 所在目录，
-// sessionIDs 是自上次整理以来的会话 ID 列表。
+// BuildConsolidationPrompt builds the full prompt for memory consolidation.
+// memoryDir is the project-level memory directory, transcriptDir is the directory containing session JSONL files,
+// sessionIDs is the list of session IDs since the last consolidation.
 func BuildConsolidationPrompt(memoryDir, userMemoryDir, transcriptDir string, sessionIDs []string) string {
 	var sb strings.Builder
 

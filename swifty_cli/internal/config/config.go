@@ -143,11 +143,11 @@ type MCPServerConfig struct {
 	Env       map[string]string `yaml:"env"`
 }
 
-// SandboxConfig 控制 OS 级沙箱的配置
+// SandboxConfig controls the OS-level sandbox configuration.
 type SandboxConfig struct {
-	Enabled        bool `yaml:"enabled"`         // 是否启用沙箱
-	AutoAllow      bool `yaml:"auto_allow"`      // 沙箱内命令是否自动放行
-	NetworkEnabled bool `yaml:"network_enabled"` // 是否允许网络访问
+	Enabled        bool `yaml:"enabled"`         // whether sandbox is enabled
+	AutoAllow      bool `yaml:"auto_allow"`      // whether commands inside sandbox are auto-allowed
+	NetworkEnabled bool `yaml:"network_enabled"` // whether network access is permitted
 }
 
 type AppConfig struct {
@@ -193,7 +193,7 @@ func mergeConfig(base, override *AppConfig) *AppConfig {
 		}
 	}
 	base.Hooks = append(base.Hooks, override.Hooks...)
-	// 沙箱配置：后加载的配置覆盖先前的
+	// Sandbox config: later-loaded config overrides earlier.
 	if override.Sandbox.Enabled {
 		base.Sandbox = override.Sandbox
 	}

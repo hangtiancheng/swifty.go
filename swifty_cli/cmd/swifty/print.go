@@ -46,8 +46,8 @@ type usageInfo struct {
 	OutputTokens int `json:"output_tokens"`
 }
 
-// parsePrintFlags 从命令行参数中解析 -p/--print 模式相关参数
-// 返回 prompt, outputFormat, ok
+// parsePrintFlags parses -p/--print mode flags from command-line arguments.
+// Returns prompt, outputFormat, and ok.
 func parsePrintFlags(args []string) (string, string, bool) {
 	isPrint := false
 	outputFormat := "text"
@@ -105,7 +105,7 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 
 	llm.ResolveContextWindow(context.Background(), p)
 
-	// 注册工具
+	// Register tools.
 	taskMgr := subagent.NewTaskManager()
 	store := todo.NewStore(wd, sessionID)
 	todoList := todo.NewTaskList(store)
@@ -137,7 +137,7 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 	ag.FileHistory = fh
 	ag.SetSessionID(sessionID)
 
-	// print 模式自动允许所有权限
+	// Print mode auto-allows all permissions.
 	sandboxAllow := []string{memory.GetAutoMemPath(wd)}
 	if userMem := memory.GetUserAutoMemPath(); userMem != "" {
 		sandboxAllow = append(sandboxAllow, userMem)
@@ -168,7 +168,7 @@ func runPrint(userPrompt string, cfg *config.AppConfig, hookCfgs []hooks.Hook, o
 	registry.Register(&tools.EnterWorktreeTool{SessionID: sessionID, RepoRoot: gitRoot})
 	registry.Register(&tools.ExitWorktreeTool{RepoRoot: gitRoot})
 
-	// 执行
+	// Execute.
 	conv.AddUserMessage(userPrompt)
 	ctx := context.Background()
 	ch := ag.Run(ctx, conv)

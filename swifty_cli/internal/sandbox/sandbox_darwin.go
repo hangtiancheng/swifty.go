@@ -8,11 +8,12 @@ import (
 	"strings"
 )
 
-// sandboxExecPath 硬编码路径，防止 PATH 注入攻击
+// sandboxExecPath is a hardcoded path to prevent PATH injection attacks.
 const sandboxExecPath = "/usr/bin/sandbox-exec"
 
-// darwinSandbox 基于 macOS seatbelt（sandbox-exec）实现沙箱隔离。
-// 通过动态生成 seatbelt profile 控制文件写入和网络访问权限。
+// darwinSandbox implements sandbox isolation using macOS seatbelt (sandbox-exec).
+// It dynamically generates a seatbelt profile to control file-write and network
+// access permissions.
 type darwinSandbox struct{}
 
 func newPlatformSandbox() Sandbox {
@@ -24,29 +25,30 @@ func (s *darwinSandbox) Available() bool {
 	return err == nil
 }
 
-// buildProfile 动态生成 seatbelt profile 字符串。
-// 策略：默认拒绝 → 放行执行/读取 → 按路径放行写入 → 按路径拒绝写入 → 网络控制。
+// buildProfile dynamically generates a seatbelt profile string.
+// Strategy: deny by default -> allow exec/read -> allow write per path -> deny write per path -> network control.
 func buildProfile(config Config) string {
 	var sb strings.Builder
 
 	sb.WriteString("(version 1)\n")
 	sb.WriteString("(deny default)\n")
 
-	// 允许进程执行和 fork
+	// Allow process execution and fork.
 	sb.WriteString("(allow process-exec)\n")
 	sb.WriteString("(allow process-fork)\n")
-	// 允许读取系统信息
+	// Allow reading system information.
 	sb.WriteString("(allow sysctl-read)\n")
-	// 全盘可读
+	// Full-disk readable.
 	sb.WriteString("(allow file-read* (subpath \"/\"))\n")
 
-	// 按路径放行写入
+	// Allow write per path.
 	for _, path := range config.AllowWrite {
 		sb.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", path))
 	}
 
-	// 拒绝写入的路径放在 allow 之后，seatbelt 后出现的规则优先。
-	// 单文件用 literal 精确匹配，目录用 subpath 前缀匹配。
+	// Paths to deny write are placed after allow rules; seatbelt applies
+	// later rules with higher priority. Single files use literal for exact
+	// match; directories use subpath for prefix match.
 	for _, path := range config.DenyWrite {
 		info, err := os.Stat(path)
 		if err == nil && info.IsDir() {
@@ -56,7 +58,7 @@ func buildProfile(config Config) string {
 		}
 	}
 
-	// 网络控制
+	// Network control.
 	if config.NetworkEnabled {
 		sb.WriteString("(allow network*)\n")
 	} else {
@@ -68,7 +70,8 @@ func buildProfile(config Config) string {
 
 func (s *darwinSandbox) Wrap(command string, config Config) (string, error) {
 	profile := buildProfile(config)
-	// 用 -p 参数传入 profile 内容，用单引号包裹命令避免 shell 二次解析
+	// Pass profile via -p flag; wrap command in single quotes to prevent
+	// shell from re-interpreting it.
 	wrapped := fmt.Sprintf("%s -p '%s' bash -c %q", sandboxExecPath, profile, command)
 	return wrapped, nil
 }

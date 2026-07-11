@@ -150,9 +150,10 @@ func (m *Manager) GetMessages() []Message {
 	return result
 }
 
-// ReplaceToolResults 就地替换指定消息的 ToolResults 列表。
-// 用于 Layer 1 tool-result budget 的 Design A 实现：直接修改原始
-// 对话历史，而非生成新的副本。msgIndex 越界时静默忽略。
+// ReplaceToolResults replaces the ToolResults list of the message at the given
+// index in place. Used by the Layer 1 tool-result budget Design A: mutates the
+// original conversation history rather than producing a copy. Out-of-bounds
+// msgIndex is silently ignored.
 func (m *Manager) ReplaceToolResults(msgIndex int, newResults []ToolResultBlock) {
 	if msgIndex < 0 || msgIndex >= len(m.history) {
 		return

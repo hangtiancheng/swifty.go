@@ -64,7 +64,7 @@ var (
 			Foreground(dimText).
 			PaddingLeft(4)
 
-	// EditFile diff 行样式：新增绿、删除红，上下文行复用 toolDetailStyle
+	// EditFile diff line styles: green for additions, red for deletions; context lines reuse toolDetailStyle
 	diffAddStyle = lipgloss.NewStyle().
 			Foreground(greenText).
 			PaddingLeft(4)

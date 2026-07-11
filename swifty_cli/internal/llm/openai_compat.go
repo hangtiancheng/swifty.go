@@ -160,8 +160,9 @@ func (c *openaiCompatClient) Stream(ctx context.Context, conv *conversation.Mana
 					events <- TextDelta{Text: delta.Content}
 				}
 
-				// DeepSeek/小米等 provider 在 Chat Completions delta 中用非标准字段
-				// reasoning_content 传输思考内容，SDK 未直接建模，从 ExtraFields 提取。
+				// Providers such as DeepSeek and Xiaomi transmit thinking content in the Chat Completions
+				// delta via the non-standard field reasoning_content; the SDK does not model it directly,
+				// so we extract it from ExtraFields.
 				if rc, ok := delta.JSON.ExtraFields["reasoning_content"]; ok && rc.Valid() {
 					raw := rc.Raw()
 					if len(raw) >= 2 && raw[0] == '"' {
@@ -258,8 +259,8 @@ func (c *openaiCompatClient) Stream(ctx context.Context, conv *conversation.Mana
 
 // buildChatCompletionMessages converts conversation history into the Chat Completions
 // message format. The system prompt becomes a system message at the start.
-// 对于支持 reasoning_content 的 provider（如 DeepSeek、小米），thinking blocks
-// 会作为 assistant 消息的 reasoning_content 字段回传。
+// For providers that support reasoning_content (such as DeepSeek and Xiaomi), thinking blocks
+// are passed back as the reasoning_content field of the assistant message.
 func buildChatCompletionMessages(systemPrompt string, messages []conversation.Message) []openai.ChatCompletionMessageParamUnion {
 	var result []openai.ChatCompletionMessageParamUnion
 
@@ -270,7 +271,7 @@ func buildChatCompletionMessages(systemPrompt string, messages []conversation.Me
 
 	for _, m := range messages {
 		if m.Role == "assistant" {
-			// 拼接 thinking blocks 为 reasoning_content，供 DeepSeek 等 provider 使用。
+			// Concatenate thinking blocks into reasoning_content for providers such as DeepSeek.
 			var reasoning string
 			for _, tb := range m.ThinkingBlocks {
 				reasoning += tb.Thinking

@@ -14,13 +14,13 @@ import (
 )
 
 // =========================================================================
-// 锁文件测试
+// Lock file tests
 // =========================================================================
 
 func TestLock_FirstAcquire(t *testing.T) {
 	dir := t.TempDir()
 
-	// 锁文件不存在时，lastConsolidatedAt 应该是 0
+	// When lock file does not exist, lastConsolidatedAt should be 0
 	last, err := ReadLastConsolidatedAt(dir)
 	if err != nil {
 		t.Fatalf("ReadLastConsolidatedAt: %v", err)
@@ -29,7 +29,7 @@ func TestLock_FirstAcquire(t *testing.T) {
 		t.Fatalf("expected 0, got %d", last)
 	}
 
-	// 首次获取应该成功，返回旧 mtime 0
+	// First acquisition should succeed, returning prior mtime 0
 	prior, err := TryAcquireLock(dir)
 	if err != nil {
 		t.Fatalf("TryAcquireLock: %v", err)
@@ -38,13 +38,13 @@ func TestLock_FirstAcquire(t *testing.T) {
 		t.Fatalf("expected prior=0, got %d", prior)
 	}
 
-	// 锁文件内容应该是当前 PID
+	// Lock file content should be the current PID
 	content, _ := os.ReadFile(filepath.Join(dir, lockFileName))
 	if string(content) != strconv.Itoa(os.Getpid()) {
 		t.Fatalf("expected PID %d, got %s", os.Getpid(), content)
 	}
 
-	// lastConsolidatedAt 现在应该非零
+	// lastConsolidatedAt should now be non-zero
 	last2, _ := ReadLastConsolidatedAt(dir)
 	if last2 == 0 {
 		t.Fatal("expected non-zero after lock acquire")
@@ -54,10 +54,10 @@ func TestLock_FirstAcquire(t *testing.T) {
 func TestLock_BlocksWhenHeld(t *testing.T) {
 	dir := t.TempDir()
 
-	// 获取锁
+	// Acquire lock
 	_, _ = TryAcquireLock(dir)
 
-	// 同一进程再次获取应该被阻塞（PID 活着，mtime 在 1 小时内）
+	// Same process trying again should be blocked (PID alive, mtime within 1 hour)
 	prior2, _ := TryAcquireLock(dir)
 	if prior2 != -1 {
 		t.Fatal("expected lock to block when held by live process")
@@ -67,11 +67,11 @@ func TestLock_BlocksWhenHeld(t *testing.T) {
 func TestLock_ReclaimsDeadPID(t *testing.T) {
 	dir := t.TempDir()
 
-	// 写一个不存在的 PID 的锁文件
+	// Write a lock file with a non-existent PID
 	lockFile := filepath.Join(dir, lockFileName)
 	os.WriteFile(lockFile, []byte("999999999"), 0o644)
 
-	// 应该能抢到锁（PID 已死）
+	// Should reclaim the lock (PID is dead)
 	prior, err := TryAcquireLock(dir)
 	if err != nil {
 		t.Fatalf("TryAcquireLock: %v", err)
@@ -84,13 +84,13 @@ func TestLock_ReclaimsDeadPID(t *testing.T) {
 func TestLock_ReclaimsStale(t *testing.T) {
 	dir := t.TempDir()
 
-	// 写一个 mtime 超过 1 小时的锁文件（即使 PID 是自己）
+	// Write a lock file with mtime over 1 hour old (even if PID is self)
 	lockFile := filepath.Join(dir, lockFileName)
 	os.WriteFile(lockFile, []byte(strconv.Itoa(os.Getpid())), 0o644)
 	oldTime := time.Now().Add(-2 * time.Hour)
 	os.Chtimes(lockFile, oldTime, oldTime)
 
-	// mtime 超过 holderStaleMs，即使 PID 活着也应该能抢到
+	// mtime exceeds holderStaleMs, should reclaim even with live PID
 	prior, err := TryAcquireLock(dir)
 	if err != nil {
 		t.Fatalf("TryAcquireLock: %v", err)
@@ -114,7 +114,7 @@ func TestLock_RollbackDeletesOnZero(t *testing.T) {
 func TestLock_RollbackRestoresMtime(t *testing.T) {
 	dir := t.TempDir()
 
-	// 先创建旧锁
+	// Create old lock first
 	lockFile := filepath.Join(dir, lockFileName)
 	oldTime := time.Now().Add(-48 * time.Hour)
 	os.WriteFile(lockFile, []byte("99999"), 0o644)
@@ -123,14 +123,14 @@ func TestLock_RollbackRestoresMtime(t *testing.T) {
 	prior, _ := TryAcquireLock(dir)
 	RollbackLock(dir, prior)
 
-	// mtime 应该被还原到旧值附近
+	// mtime should be restored near the old value
 	info, _ := os.Stat(lockFile)
 	diff := info.ModTime().UnixMilli() - prior
 	if diff < -1000 || diff > 1000 {
 		t.Fatalf("mtime not restored: expected ~%d, got %d", prior, info.ModTime().UnixMilli())
 	}
 
-	// PID 应该被清空
+	// PID should be cleared
 	content, _ := os.ReadFile(lockFile)
 	if strings.TrimSpace(string(content)) != "" {
 		t.Fatalf("expected empty PID after rollback, got %q", content)
@@ -138,7 +138,7 @@ func TestLock_RollbackRestoresMtime(t *testing.T) {
 }
 
 // =========================================================================
-// Prompt 测试
+// Prompt tests
 // =========================================================================
 
 func TestPrompt_ContainsAllPhases(t *testing.T) {
@@ -167,7 +167,7 @@ func TestPrompt_EmptySessions(t *testing.T) {
 }
 
 // =========================================================================
-// 会话列表测试
+// Session list tests
 // =========================================================================
 
 func TestListSessionsSince(t *testing.T) {
@@ -175,11 +175,11 @@ func TestListSessionsSince(t *testing.T) {
 	sessDir := filepath.Join(dir, ".swifty", "sessions")
 	os.MkdirAll(sessDir, 0o755)
 
-	// 创建旧会话（2 天前）
+	// Create old session (2 days ago)
 	os.WriteFile(filepath.Join(sessDir, "old.jsonl"), []byte(`{"role":"user","content":"hi","ts":1}`+"\n"), 0o644)
 	os.Chtimes(filepath.Join(sessDir, "old.jsonl"), time.Now().Add(-48*time.Hour), time.Now().Add(-48*time.Hour))
 
-	// 创建新会话（刚才）
+	// Create recent sessions (just now)
 	os.WriteFile(filepath.Join(sessDir, "new1.jsonl"), []byte(`{"role":"user","content":"a","ts":2}`+"\n"), 0o644)
 	os.WriteFile(filepath.Join(sessDir, "new2.jsonl"), []byte(`{"role":"user","content":"b","ts":3}`+"\n"), 0o644)
 
@@ -190,7 +190,7 @@ func TestListSessionsSince(t *testing.T) {
 }
 
 // =========================================================================
-// MaybeRun 门控逻辑测试
+// MaybeRun gate logic tests
 // =========================================================================
 
 func TestMaybeRun_SkipsWhenMemoryDirMissing(t *testing.T) {
@@ -200,7 +200,7 @@ func TestMaybeRun_SkipsWhenMemoryDirMissing(t *testing.T) {
 		ProjectRoot: dir,
 	})
 
-	// 不应该 panic 或报错
+	// Should not panic or error
 	c.MaybeRun(context.Background())
 }
 
@@ -209,7 +209,7 @@ func TestMaybeRun_SkipsWhenTimeGateNotMet(t *testing.T) {
 	memDir := filepath.Join(dir, ".swifty", "memory")
 	os.MkdirAll(memDir, 0o755)
 
-	// 设置锁文件 mtime 为 1 小时前（不满足 24 小时门控）
+	// Set lock file mtime to 1 hour ago (does not satisfy 24-hour gate)
 	lockFile := filepath.Join(memDir, lockFileName)
 	os.WriteFile(lockFile, []byte(""), 0o644)
 	os.Chtimes(lockFile, time.Now().Add(-1*time.Hour), time.Now().Add(-1*time.Hour))
@@ -223,8 +223,8 @@ func TestMaybeRun_SkipsWhenTimeGateNotMet(t *testing.T) {
 
 	c.MaybeRun(context.Background())
 
-	// 不应该触发（连 debug log 都不应该有 "firing" 字样）
-	// 时间门未通过，直接返回
+	// Should not trigger (no debug log with "firing" expected)
+	// Time gate not met, return early
 }
 
 func TestMaybeRun_SkipsWhenSessionGateNotMet(t *testing.T) {
@@ -234,7 +234,7 @@ func TestMaybeRun_SkipsWhenSessionGateNotMet(t *testing.T) {
 	os.MkdirAll(memDir, 0o755)
 	os.MkdirAll(sessDir, 0o755)
 
-	// 只创建 2 个会话（不满足 5 个门控）
+	// Only create 2 sessions (does not satisfy the 5-session gate)
 	os.WriteFile(filepath.Join(sessDir, "s1.jsonl"), []byte(`{"role":"user","content":"a","ts":1}`+"\n"), 0o644)
 	os.WriteFile(filepath.Join(sessDir, "s2.jsonl"), []byte(`{"role":"user","content":"b","ts":2}`+"\n"), 0o644)
 
@@ -244,11 +244,11 @@ func TestMaybeRun_SkipsWhenSessionGateNotMet(t *testing.T) {
 		ProjectRoot: dir,
 		DebugLogf:   func(f string, a ...any) { logs = append(logs, f) },
 	})
-	c.SetThresholds(0, 5) // 时间门设为 0（立刻通过），会话门设为 5
+	c.SetThresholds(0, 5) // Set time gate to 0 (immediate pass), session gate to 5
 
 	c.MaybeRun(context.Background())
 
-	// 应该看到 "skip — 2 sessions" 日志
+	// Should see "skip — 2 sessions" log
 	found := false
 	for _, log := range logs {
 		if strings.Contains(log, "skip") && strings.Contains(log, "sessions") {
@@ -268,34 +268,34 @@ func TestMaybeRun_TriggersWhenBothGatesMet(t *testing.T) {
 	os.MkdirAll(memDir, 0o755)
 	os.MkdirAll(sessDir, 0o755)
 
-	// 创建 6 个会话
+	// Create 6 sessions
 	for i := 0; i < 6; i++ {
 		name := filepath.Join(sessDir, "s"+strconv.Itoa(i)+".jsonl")
 		os.WriteFile(name, []byte(`{"role":"user","content":"x","ts":1}`+"\n"), 0o644)
 	}
 
-	// 验证门控逻辑：两个门都通过时，应该获取到锁并打印 "firing"。
-	// 不提供 Client，所以不会真正启动子 Agent——只验证触发判断逻辑。
-	// 用 lockAcquired 标记验证：如果锁被获取了，说明整个门控链通过了。
+	// Verify gate logic: when both gates pass, lock should be acquired and "firing" logged.
+	// No Client provided, so the sub-agent won't actually start — only verifies trigger logic.
+	// Uses lockAcquired to verify: if lock was acquired, the entire gate chain passed.
 	lockAcquired := false
 
-	// 手动模拟 MaybeRun 的门控链（不调 c.run 避免 nil client panic）
+	// Manually simulate MaybeRun's gate chain (skip c.run to avoid nil client panic)
 	lastAt, _ := ReadLastConsolidatedAt(memDir)
 	hoursSince := float64(time.Now().UnixMilli()-lastAt) / 3_600_000
 
 	sessionIDs := listSessionsSince(dir, lastAt)
 
-	// 时间门应该通过（没有锁文件，lastAt=0）
+	// Time gate should pass (no lock file, lastAt=0)
 	if hoursSince < 0 {
 		t.Fatal("time gate should pass (no lock file)")
 	}
 
-	// 会话门应该通过（6 个会话 >= 5）
+	// Session gate should pass (6 sessions >= 5)
 	if len(sessionIDs) < 5 {
 		t.Fatalf("session gate should pass: got %d sessions", len(sessionIDs))
 	}
 
-	// 锁应该能获取到
+	// Lock should be acquirable
 	prior, err := TryAcquireLock(memDir)
 	if err != nil {
 		t.Fatalf("lock acquire failed: %v", err)
@@ -316,7 +316,7 @@ func TestMaybeRun_ScanThrottle(t *testing.T) {
 	os.MkdirAll(memDir, 0o755)
 	os.MkdirAll(sessDir, 0o755)
 
-	// 只有 2 个会话（不够触发）
+	// Only 2 sessions (not enough to trigger)
 	os.WriteFile(filepath.Join(sessDir, "s1.jsonl"), []byte(`{"role":"user","content":"a","ts":1}`+"\n"), 0o644)
 	os.WriteFile(filepath.Join(sessDir, "s2.jsonl"), []byte(`{"role":"user","content":"b","ts":2}`+"\n"), 0o644)
 
@@ -328,12 +328,12 @@ func TestMaybeRun_ScanThrottle(t *testing.T) {
 	})
 	c.SetThresholds(0, 5)
 
-	// 第一次调用：扫描会话，发现不够
+	// First call: scan sessions, find insufficient count
 	c.MaybeRun(context.Background())
 
 	logsBefore := len(logs)
 
-	// 第二次立刻调用：应该被扫描节流拦住
+	// Second call immediately: should be blocked by scan throttle
 	c.MaybeRun(context.Background())
 
 	throttled := false
@@ -360,7 +360,7 @@ func TestMaybeRun_LockBlocks(t *testing.T) {
 		os.WriteFile(name, []byte(`{"role":"user","content":"x","ts":1}`+"\n"), 0o644)
 	}
 
-	// 先手动获取锁
+	// Manually acquire lock first
 	TryAcquireLock(memDir)
 
 	var logs []string
@@ -369,11 +369,11 @@ func TestMaybeRun_LockBlocks(t *testing.T) {
 		ProjectRoot: dir,
 		DebugLogf:   func(f string, a ...any) { logs = append(logs, f) },
 	})
-	c.SetThresholds(0, 1) // 门控全降最低
+	c.SetThresholds(0, 1) // Set all gates to minimum
 
 	c.MaybeRun(context.Background())
 
-	// 应该被锁阻塞
+	// Should be blocked by lock
 	blocked := false
 	for _, log := range logs {
 		if strings.Contains(log, "lock held") {
@@ -387,7 +387,7 @@ func TestMaybeRun_LockBlocks(t *testing.T) {
 }
 
 // =========================================================================
-// extractWrittenPaths 测试
+// extractWrittenPaths tests
 // =========================================================================
 
 func TestExtractWrittenPaths(t *testing.T) {
@@ -406,7 +406,7 @@ func TestExtractWrittenPaths(t *testing.T) {
 			Role:    "assistant",
 			Content: "done",
 			ToolUses: []conversation.ToolUseBlock{
-				{ToolName: "WriteFile", Arguments: map[string]any{"file_path": "/mem/feedback_testing.md"}}, // 重复
+				{ToolName: "WriteFile", Arguments: map[string]any{"file_path": "/mem/feedback_testing.md"}}, // duplicate
 				{ToolName: "WriteFile", Arguments: map[string]any{"file_path": "/mem/project_new.md"}},
 			},
 		},
@@ -414,12 +414,12 @@ func TestExtractWrittenPaths(t *testing.T) {
 
 	paths := extractWrittenPaths(msgs)
 
-	// 应该有 3 个不重复的路径（WriteFile 和 EditFile），ReadFile 不算
+	// Should have 3 unique paths (WriteFile and EditFile), ReadFile not counted
 	if len(paths) != 3 {
 		t.Fatalf("expected 3 paths, got %d: %v", len(paths), paths)
 	}
 
-	// feedback_testing.md 不应该重复
+	// feedback_testing.md should not appear more than once
 	count := 0
 	for _, p := range paths {
 		if strings.Contains(p, "feedback_testing") {

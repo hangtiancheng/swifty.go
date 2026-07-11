@@ -7,11 +7,13 @@ import (
 
 const (
 	diffContextLines = 3
-	// 防止超大文件产出天量 diff 文本拖垮 TUI 渲染和上下文占用
+	// Cap diff output to prevent very large files from producing excessive
+	// diff text that would slow down TUI rendering and consume context.
 	maxDiffLines = 200
 )
 
-// DiffResult 是 BuildDiff 的返回值：带行号的 diff 文本 + 新增/删除行数统计。
+// DiffResult is the return value of BuildDiff: diff text with line numbers
+// plus counts of added and removed lines.
 type DiffResult struct {
 	Text      string
 	Additions int
@@ -25,9 +27,10 @@ func plural(n int) string {
 	return "s"
 }
 
-// BuildDiff 对比编辑前后的文件内容，生成一段带行号的 diff。
-// 利用"编辑只改动中间一小段"的特点，从两端找公共前缀/后缀行，
-// 避免跑通用的 LCS/Myers diff 算法（对大文件更快，实现也更简单）。
+// BuildDiff compares the file content before and after an edit and produces
+// a line-numbered diff. It exploits the fact that edits only change a small
+// region in the middle: common prefix and suffix lines are found from both
+// ends, avoiding a full LCS/Myers diff (faster for large files and simpler).
 func BuildDiff(oldContent, newContent string) DiffResult {
 	oldLines := strings.Split(oldContent, "\n")
 	newLines := strings.Split(newContent, "\n")

@@ -11,15 +11,15 @@ import (
 
 const lockFileName = ".consolidate-lock"
 
-// holderStaleMs 是锁的最大持有时间，超过后即使 PID 还活着也视为过期（防 PID 复用）
+// holderStaleMs is the maximum lock hold time; after this, the lock is considered expired even if the PID is still alive (prevents PID reuse)
 const holderStaleMs = 60 * 60 * 1000
 
 func lockPath(memoryDir string) string {
 	return filepath.Join(memoryDir, lockFileName)
 }
 
-// ReadLastConsolidatedAt 返回上次整理完成的时间戳（锁文件的 mtime）。
-// 锁文件不存在则返回 0。每轮检查成本：一次 stat。
+// ReadLastConsolidatedAt returns the timestamp of the last consolidation completion (lock file mtime).
+// Returns 0 if the lock file does not exist. Cost per check: one stat call.
 func ReadLastConsolidatedAt(memoryDir string) (int64, error) {
 	info, err := os.Stat(lockPath(memoryDir))
 	if err != nil {
@@ -31,14 +31,14 @@ func ReadLastConsolidatedAt(memoryDir string) (int64, error) {
 	return info.ModTime().UnixMilli(), nil
 }
 
-// TryAcquireLock 尝试获取整理锁。成功时返回获取前的 mtime（用于失败回滚），
-// 失败时返回 -1（别人正在持有）。
+// TryAcquireLock attempts to acquire the consolidation lock. On success returns the prior mtime
+// (for rollback on failure); on failure returns -1 (another process holds it).
 //
-// 获取流程：
-//  1. 读锁文件的 mtime 和 PID
-//  2. 如果文件存在、mtime 距今 < 1 小时、且 PID 进程还活着 → 放弃
-//  3. 否则写入自己的 PID
-//  4. 回读验证，PID 不是自己 → 竞争失败
+// Acquisition flow:
+//  1. Read the lock file's mtime and PID
+//  2. If the file exists, mtime is within 1 hour, and the PID process is alive -> give up
+//  3. Otherwise write own PID
+//  4. Read back to verify; if PID is not ours -> race lost
 func TryAcquireLock(memoryDir string) (priorMtime int64, err error) {
 	path := lockPath(memoryDir)
 
@@ -81,18 +81,18 @@ func TryAcquireLock(memoryDir string) (priorMtime int64, err error) {
 	return 0, nil
 }
 
-// RollbackLock 将锁文件的 mtime 回退到获取前的值，用于整理失败后恢复。
-// priorMtime 为 0 时直接删除锁文件。
+// RollbackLock restores the lock file's mtime to pre-acquisition value, used for recovery after consolidation failure.
+// When priorMtime is 0, the lock file is deleted directly.
 func RollbackLock(memoryDir string, priorMtime int64) {
 	path := lockPath(memoryDir)
 	if priorMtime == 0 {
 		os.Remove(path)
 		return
 	}
-	// 清空 PID，防止自己的 PID 被误认为还在持有
+	// Clear PID to prevent our own PID from being mistaken as still holding
 	os.WriteFile(path, []byte(""), 0o644)
 	t := time.UnixMilli(priorMtime)
 	os.Chtimes(path, t, t)
 }
 
-// isProcessRunning 在平台专属文件中实现（lock_unix.go / lock_windows.go）
+// isProcessRunning is implemented in platform-specific files (lock_unix.go / lock_windows.go)

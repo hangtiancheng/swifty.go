@@ -215,10 +215,10 @@ type Model struct {
 	memoryConsolidator *consolidation.Consolidator
 	teamMgr            *teams.TeamManager
 
-	sandboxDialog         bool                 // 沙箱模式选择对话框是否打开
-	sandboxCursor         int                  // 当前选中的沙箱模式索引
-	sandboxCfg            config.SandboxConfig // 配置文件中的沙箱设置
-	EnableCoordinatorMode bool                 // Coordinator 模式配置开关
+	sandboxDialog         bool                 // whether the sandbox mode selection dialog is open
+	sandboxCursor         int                  // currently selected sandbox mode index
+	sandboxCfg            config.SandboxConfig // sandbox settings from config file
+	EnableCoordinatorMode bool                 // Coordinator Mode toggle
 
 	resumeSessions  []session.SessionInfo
 	resumeFiltered  []session.SessionInfo
@@ -226,7 +226,7 @@ type Model struct {
 	resumeSearch    string
 	resumeScrollTop int
 
-	hasExitedPlanMode bool // 记录本次会话是否曾退出过 Plan Mode，用于重入时注入提示
+	hasExitedPlanMode bool // tracks whether Plan Mode was exited during this session, used to inject re-entry hint
 }
 
 func New(providers []config.ProviderConfig, mcpConfigs []config.MCPServerConfig, hookConfigs []hooks.Hook, sandboxCfg ...config.SandboxConfig) Model {
@@ -436,7 +436,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			},
 			permissions.ModeDefault,
 		)
-		// 根据配置文件初始化 OS 级沙箱
+		// Initialize OS-level sandbox from config file
 		if m.sandboxCfg.Enabled {
 			sb := sandbox.New()
 			if bashTool, ok := m.registry.Get("Bash").(*tools.BashTool); ok && sb != nil {
@@ -1046,7 +1046,7 @@ func (m *Model) installMemoryExtractor(ag *agent.Agent, wd, protocol string) *ex
 		AppendSystem:  func(s string) { conv.AddSystemReminder(s) },
 	})
 
-	// 记忆整理器：后台自动合并重复、删除过时、修正矛盾
+	// Memory consolidator: background auto-merge duplicates, prune stale, fix contradictions
 	consolidator := consolidation.NewConsolidator(consolidation.Deps{
 		MemoryDir:     memory.GetAutoMemPath(wd),
 		UserMemoryDir: memory.GetUserAutoMemPath(),
@@ -1260,7 +1260,7 @@ func (m Model) handleProviderSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			},
 			permissions.ModeDefault,
 		)
-		// 根据配置文件初始化 OS 级沙箱
+		// Initialize OS-level sandbox from config file
 		if m.sandboxCfg.Enabled {
 			sb := sandbox.New()
 			if bashTool, ok := m.registry.Get("Bash").(*tools.BashTool); ok && sb != nil {
@@ -1794,7 +1794,7 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 				m.ag.ClearActiveSkills()
 				m.ag.SetToolFilter(nil)
 			}
-			// 开启全新会话：重置 session ID 及关联的持久化存储
+			// Start a fresh session: reset session ID and associated persistent storage
 			wd, _ := os.Getwd()
 			m.sessionID = session.NewID()
 			m.fileHistory = file_history.New(wd, m.sessionID)
@@ -1806,7 +1806,7 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 			}
 			store := todo.NewStore(wd, m.sessionID)
 			m.todoList = todo.NewTaskList(store)
-			// 重置 token 计数
+			// Reset token counts
 			m.totalInput = 0
 			m.totalOutput = 0
 			m.updateViewport()
@@ -1826,7 +1826,7 @@ func (m Model) executeCommand(name, args string) (tea.Model, tea.Cmd) {
 					content: fmt.Sprintf("Entered Plan mode. Plan file: %s\nExplore the codebase and design your approach.", planPath),
 				})
 
-				// 重入检测：如果本次会话曾退出过 Plan Mode 且 plan 文件已存在，注入重入提示
+				// Re-entry detection: if Plan Mode was exited earlier this session and plan file exists, inject re-entry hint
 				if m.hasExitedPlanMode && plan_file.PlanExists(wd) {
 					reentryMsg := prompt.BuildPlanModeReentryReminder(planPath, true)
 					if reentryMsg != "" {
@@ -2074,7 +2074,7 @@ func (m Model) executePlanApproval() (tea.Model, tea.Cmd) {
 	plan_file.ResetPlanPath()
 
 	executeMsg := prompt.BuildPlanModeExitReminder(planPath, planExists)
-	// 标记本次会话已退出过 Plan Mode，后续重入时可注入提示
+	// Mark that Plan Mode was exited this session so re-entry can inject a hint
 	m.hasExitedPlanMode = true
 	executeMsg += "\n\nUser has approved your plan. You can now start coding."
 	if planContent != "" {
@@ -2161,7 +2161,7 @@ func (m Model) renderPlanApprovalDialog() string {
 	return sb.String()
 }
 
-// handleSandboxDialog 处理沙箱模式选择对话框的按键交互
+// handleSandboxDialog handles key interactions for the sandbox mode selection dialog
 func (m Model) handleSandboxDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	labels := commands.SandboxModeLabels()
 	switch msg.String() {
@@ -2189,7 +2189,7 @@ func (m Model) handleSandboxDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// applySandboxMode 根据选择的模式更新 BashTool 和权限检查器
+// applySandboxMode updates BashTool and permission checker based on the selected mode
 func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) {
 	bashTool, _ := m.registry.Get("Bash").(*tools.BashTool)
 	labels := commands.SandboxModeLabels()
@@ -2197,7 +2197,7 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 
 	switch mode {
 	case commands.SandboxAutoAllow:
-		// 启用沙箱 + 自动放行
+		// Enable sandbox + auto-allow
 		sb := sandbox.New()
 		if bashTool != nil {
 			bashTool.Sandbox = sb
@@ -2213,7 +2213,7 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 			m.ag.Checker.SandboxEnabled = true
 		}
 	case commands.SandboxRegular:
-		// 启用沙箱但保留常规权限确认
+		// Enable sandbox but keep regular permission confirmation
 		sb := sandbox.New()
 		if bashTool != nil {
 			bashTool.Sandbox = sb
@@ -2229,7 +2229,7 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 			m.ag.Checker.SandboxEnabled = false
 		}
 	case commands.SandboxOff:
-		// 关闭沙箱
+		// Disable sandbox
 		if bashTool != nil {
 			bashTool.Sandbox = nil
 			bashTool.SandboxConfig = sandbox.Config{}
@@ -2239,13 +2239,13 @@ func (m Model) applySandboxMode(mode commands.SandboxMode) (tea.Model, tea.Cmd) 
 		}
 	}
 
-	msg := fmt.Sprintf("沙箱模式已切换：%s\n%s", labels[mode], descriptions[mode])
+	msg := fmt.Sprintf("Sandbox mode switched: %s\n%s", labels[mode], descriptions[mode])
 	m.chatMessages = append(m.chatMessages, chatMessage{role: "system", content: msg})
 	m.updateViewport()
 	return m, nil
 }
 
-// renderSandboxDialog 渲染沙箱模式选择界面
+// renderSandboxDialog renders the sandbox mode selection UI
 func (m Model) renderSandboxDialog() string {
 	if !m.sandboxDialog {
 		return ""
@@ -2253,7 +2253,7 @@ func (m Model) renderSandboxDialog() string {
 	var sb strings.Builder
 
 	header := lipgloss.NewStyle().Foreground(brandPurple).Bold(true).Render(
-		" 选择沙箱模式",
+		" Select Sandbox Mode",
 	)
 	sb.WriteString(header)
 	sb.WriteString("\n\n")
@@ -2711,7 +2711,7 @@ func (m Model) sendMessage(text string) (tea.Model, tea.Cmd) {
 
 	conv := m.conversation
 	ag := m.ag
-	// 非阻塞 memory recall：prefetchCh 传给 agent，工具执行后注入
+	// Non-blocking memory recall: pass prefetchCh to agent, injected after tool execution
 	ag.MemoryRecallCh = prefetchCh
 	startAgentCmd := func() tea.Msg {
 		return agentReadyMsg{ch: ag.Run(ctx, conv)}
@@ -3037,7 +3037,7 @@ func (m Model) handleAgentEvent(ev agent.AgentEvent) (tea.Model, tea.Cmd) {
 		m.updateViewport()
 
 	case agent.ErrorEvent:
-		// 保留错误前已输出的流式文本
+		// Preserve streamed text emitted before the error
 		if m.streamBuf != "" {
 			m.chatMessages = append(m.chatMessages, chatMessage{role: "assistant", content: m.streamBuf})
 			m.streamBuf = ""
@@ -3155,13 +3155,13 @@ func isCollapsibleTool(name string) bool {
 	return false
 }
 
-// isDiffTool 判断该工具的 output 是不是 BuildDiff 生成的带行号 diff 文本。
+// isDiffTool returns true if the tool's output is a BuildDiff-produced line-numbered diff.
 func isDiffTool(name string) bool {
 	return name == "EditFile"
 }
 
-// renderDiffLines 把 tools.BuildDiff() 产出的带行号 diff 文本渲染成彩色行：
-// "+ " 开头绿色、"- " 开头红色，其余（上下文行/摘要行）走 toolDetailStyle。
+// renderDiffLines renders tools.BuildDiff() output as colored lines:
+// "+ " prefix green, "- " prefix red, context/summary lines use toolDetailStyle.
 func renderDiffLines(output string) string {
 	lines := strings.Split(output, "\n")
 	rendered := make([]string, len(lines))
@@ -3178,7 +3178,7 @@ func renderDiffLines(output string) string {
 	return strings.Join(rendered, "\n")
 }
 
-// appendEditDiff 在已渲染好的工具标题行后面追加 EditFile 的 diff 正文（如果有）。
+// appendEditDiff appends the EditFile diff body (if any) after the rendered tool title line.
 func appendEditDiff(sb *strings.Builder, toolGroup []toolBlockInfo) {
 	if len(toolGroup) != 1 {
 		return
@@ -4032,9 +4032,9 @@ func (m Model) doResumeSession(wd, targetID string, sessions []session.SessionIn
 	boundary, after, compacted := session.FindLastCompactBoundary(msgs)
 	var replay []session.Message
 	if compacted {
-		resumeSummary := "本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + boundary.Summary
+		resumeSummary := "This session is a continuation of a previous conversation that was compacted due to context window limits. Below is a summary of the earlier conversation:\n\n" + boundary.Summary
 		if len(boundary.Keep) > 0 {
-			resumeSummary += "\n\n近期消息已原样保留。"
+			resumeSummary += "\n\nRecent messages have been preserved verbatim."
 		}
 		replay = append(replay, session.Message{Role: "user", Content: resumeSummary})
 		for _, k := range boundary.Keep {

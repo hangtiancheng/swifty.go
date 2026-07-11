@@ -14,13 +14,14 @@ import (
 // freezes decisions, but the actual numerical limits stay the same as the
 // pre-state implementation so behavior on a fresh conversation is identical.
 const (
-	// SingleResultLimit 单条工具结果超过 50K 字符时溢写到文件，避免撑爆上下文。
-	// 阈值须严格大于 tools.MaxOutputChars (10000) + 截断后缀，否则截断后的结果
-	// 会反复触发溢写形成死循环。
+	// SingleResultLimit spills a single tool result to a file when it exceeds
+	// 50K characters, preventing context blow-up. The threshold must be
+	// strictly greater than tools.MaxOutputChars (10000) + truncation suffix
+	// to avoid a loop where truncated results repeatedly trigger spilling.
 	SingleResultLimit = 50000
 
-	// MessageAggregateLimit 单条消息中所有工具结果的总字符数超过 200K 时
-	// 触发 Pass 2 聚合溢写。
+	// MessageAggregateLimit triggers Pass 2 aggregate spilling when the total
+	// character count of all tool results in a single message exceeds 200K.
 	MessageAggregateLimit = 200000
 
 	// SpillSubdir lives under the agent's workdir.
@@ -35,12 +36,16 @@ func isAlreadyReplaced(s string) bool {
 	return strings.HasPrefix(s, persistedTagPrefix)
 }
 
-// Apply 是 Design A 实现：直接就地修改 conv 中超出预算的 tool_result 内容，
-// 不再生成新的 Manager 副本。state 的 SeenIDs/Replacements 记录本轮决策，
-// 后续调用逐字节回放相同预览字符串，保证 Prompt Cache 前缀稳定。
+// Apply implements Design A: it mutates conv in place, replacing tool_result
+// content that exceeds the budget without creating a new Manager copy.
+// state.SeenIDs / state.Replacements record decisions for this turn;
+// subsequent calls replay the same preview string byte-for-byte to keep the
+// Prompt Cache prefix stable.
 //
-// 返回本轮新增的替换记录（调用方追加到会话日志）和错误（仅文件系统
-// 灾难性错误；单条 spill 失败会静默冻结为原始内容，不中断整轮）。
+// Returns newly added replacement records (for the caller to append to the
+// session log) and any error (only filesystem-catastrophic errors; a single
+// spill failure silently freezes that record to raw content without aborting
+// the entire turn).
 func Apply(
 	conv *conversation.Manager,
 	workDir string,
@@ -67,18 +72,19 @@ func Apply(
 
 		for _, tr := range msg.ToolResults {
 			if rep, ok := state.Replacements[tr.ToolUseID]; ok {
-				// 已决策替换 — 回放精确预览。
+				// Previously decided replacement — replay the exact preview.
 				decisions[tr.ToolUseID] = rep
 				continue
 			}
 			if _, ok := state.SeenIDs[tr.ToolUseID]; ok {
-				// 已见但未替换 — 永久冻结为原始内容。
+				// Seen but not replaced — permanently frozen as raw content.
 				decisions[tr.ToolUseID] = tr.Content
 				continue
 			}
 			if isAlreadyReplaced(tr.Content) {
-				// 外部预标记内容（如从磁盘恢复时已写入预览）。
-				// 冻结为标记本身，后续轮次保持稳定。
+				// Externally pre-tagged content (e.g. preview already written
+				// when restored from disk). Freeze to the tag itself so
+				// subsequent turns remain stable.
 				state.SeenIDs[tr.ToolUseID] = struct{}{}
 				state.Replacements[tr.ToolUseID] = tr.Content
 				decisions[tr.ToolUseID] = tr.Content
@@ -189,7 +195,7 @@ func Apply(
 			decisions[tr.ToolUseID] = tr.Content
 		}
 
-		// 就地替换：按原始顺序写回 conv 的消息历史。
+		// In-place replacement: write back into the conv message history in original order.
 		newResults := make([]conversation.ToolResultBlock, len(msg.ToolResults))
 		for k, tr := range msg.ToolResults {
 			newResults[k] = conversation.ToolResultBlock{
@@ -204,12 +210,14 @@ func Apply(
 	return records, nil
 }
 
-// previewSize 是存盘预览的最大字符数，取前 2KB 兼顾可读性和空间占用。
+// previewSize is the maximum character count of the spill preview: the first
+// 2KB balances readability with space consumption.
 const previewSize = 2000
 
-// buildSpillPreview 构造存盘替换文本，包含前 2KB 预览。
-// 一旦写入 state.Replacements 就会逐字节回放，格式变更会导致
-// Prompt Cache 失效，不要轻易改动。
+// buildSpillPreview builds the replacement text for a spilled tool result,
+// including a 2KB preview. Once written into state.Replacements it is
+// replayed byte-for-byte, so format changes will invalidate the Prompt
+// Cache — do not alter lightly.
 func buildSpillPreview(content string, path string) string {
 	sizeKB := len(content) / 1024
 	preview := content
@@ -220,8 +228,8 @@ func buildSpillPreview(content string, path string) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "<persisted-output>\n")
-	fmt.Fprintf(&b, "输出太大（%dKB），完整内容已保存到：\n%s\n\n", sizeKB, path)
-	fmt.Fprintf(&b, "预览（前 2KB）：\n%s", preview)
+	fmt.Fprintf(&b, "Output too large (%dKB). Full content saved to:\n%s\n\n", sizeKB, path)
+	fmt.Fprintf(&b, "Preview (first 2KB):\n%s", preview)
 	if hasMore {
 		b.WriteString("\n...")
 	}

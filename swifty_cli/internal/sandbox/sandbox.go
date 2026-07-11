@@ -1,22 +1,23 @@
 package sandbox
 
-// Sandbox 定义 OS 级沙箱的统一接口。
-// 不同平台（macOS seatbelt / Linux bubblewrap）各自实现。
+// Sandbox defines the unified interface for OS-level sandboxing.
+// Each platform (macOS seatbelt / Linux bubblewrap) provides its own implementation.
 type Sandbox interface {
-	// Wrap 将原始命令包装成沙箱内执行的命令字符串
+	// Wrap wraps the original command into a sandbox-executed command string.
 	Wrap(command string, config Config) (string, error)
-	// Available 检查当前平台的沙箱工具是否可用
+	// Available checks whether the platform's sandbox tool is available.
 	Available() bool
 }
 
-// Config 控制沙箱的读写和网络权限
+// Config controls the sandbox's read, write, and network permissions.
 type Config struct {
-	AllowWrite     []string // 允许写入的路径列表
-	DenyWrite      []string // 始终只读的路径（优先级高于 AllowWrite）
-	NetworkEnabled bool     // 是否允许网络访问
+	AllowWrite     []string // paths where writing is permitted
+	DenyWrite      []string // paths that are always read-only (priority over AllowWrite)
+	NetworkEnabled bool     // whether network access is permitted
 }
 
-// New 返回当前平台对应的沙箱实现，不支持的平台返回 nil。
+// New returns the sandbox implementation for the current platform, or nil if
+// the platform is unsupported.
 func New() Sandbox {
 	return newPlatformSandbox()
 }

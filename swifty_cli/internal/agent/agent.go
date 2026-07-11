@@ -51,8 +51,9 @@ type Agent struct {
 	// Mode on or off (e.g., when a team is created/torn down) without restarting the agent.
 	Instructions  string
 	MemoryContent string
-	// MemoryRecallCh 非阻塞 memory recall：prefetch 与主 LLM 调用并行，
-	// 工具执行后从 channel 读取并注入
+	// MemoryRecallCh provides non-blocking memory recall: prefetch runs in
+	// parallel with the main LLM call and is consumed and injected after
+	// tool execution completes.
 	MemoryRecallCh <-chan string
 	ToolNameFilter func(name string) bool
 	// OnLoopComplete, when non-nil, is invoked fire-and-forget after the agent reaches LoopComplete
@@ -221,21 +222,23 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 
 			a.emitHook(hooks.EventPreSend, "", nil)
 
-			// Layer 1: apply tool-result budget（就地修改 conv）
-			// system reminders 已注入，直接在 conv 上替换超限内容
+			// Layer 1: apply tool-result budget (in-place mutation of conv).
+			// System reminders are already injected; replace over-budget
+			// content directly on the existing conversation.
 			newRecords, _ := tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
 			if len(newRecords) > 0 {
 				_ = tool_result.AppendRecords(a.WorkDir, newRecords)
 			}
 
-			// Layer 2: auto-compact
-			// conv 已经过 Layer 1 裁剪，直接用其消息估算 token
+			// Layer 2: auto-compact.
+			// conv has already been trimmed by Layer 1, so token estimation
+			// uses its current message list directly.
 			if msg, err := compact.ManageContext(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.MaxOutputTokens, &a.compactTracking, a.RecoveryState, toolSchemas, usageAnchor, nil); err == nil && msg != "" {
 				ch <- CompactEvent{Message: msg}
 				usageAnchor = compact.UsageAnchor{}
 				conv.InjectLongTermMemory(a.Instructions, a.MemoryContent)
-				// 压缩后 conv 已变，重新应用 Layer 1 budget
-				tool_result.Apply(conv, a.WorkDir, a.ReplacementState) //nolint:errcheck
+				// conv changed after compaction; re-apply Layer 1 budget.
+				tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
 			}
 
 			events, errs := a.Client.Stream(ctx, conv, toolSchemas)
@@ -426,16 +429,17 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			}
 			conv.AddToolResultsMessage(toolResults)
 
-			// 非阻塞 memory recall：工具执行完后检查 prefetch 是否就绪
+			// Non-blocking memory recall: after tool execution, check
+			// whether the prefetch result is ready to inject.
 			if a.MemoryRecallCh != nil {
 				select {
 				case recall := <-a.MemoryRecallCh:
 					if recall != "" {
 						conv.AddSystemReminder(recall)
 					}
-					a.MemoryRecallCh = nil // 只消费一次
+					a.MemoryRecallCh = nil // consume exactly once
 				default:
-					// prefetch 还没好，下轮再检查
+					// prefetch not ready yet; check again next iteration
 				}
 			}
 
@@ -486,7 +490,8 @@ func filterSchemasByName(schemas []map[string]any, allow func(name string) bool)
 func (a *Agent) handleStreamError(ctx context.Context, ch chan AgentEvent, conv *conversation.Manager, err error) (retry, compacted bool) {
 	var ctxErr *llm.ContextTooLongError
 	if errors.As(err, &ctxErr) {
-		// conv 已由 Layer 1 就地裁剪，直接传 nil 让 ForceCompact 使用 conv 自身消息
+		// conv has already been trimmed in place by Layer 1; pass nil so
+		// ForceCompact operates on conv's own message list.
 		msg, compactErr := compact.ForceCompact(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.RecoveryState, a.currentToolSchemas(), nil)
 		if compactErr == nil && msg != "" {
 			ch <- CompactEvent{Message: "Auto-compacted due to context length: " + msg}
@@ -568,7 +573,7 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 		}
 		if decision.Effect == permissions.Ask {
 			respCh := make(chan PermissionResponse, 1)
-			// 使用 DescribeToolAction 生成人类可读的操作描述
+			// Generate a human-readable action description via DescribeToolAction.
 			desc := permissions.DescribeToolAction(tc.ToolName, tc.Arguments)
 			eventCh <- PermissionRequestEvent{
 				ToolName:   tc.ToolName,
@@ -591,7 +596,8 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 				if len(content) > 60 {
 					pattern = content[:60] + "*"
 				}
-				// Layer 4b: 写入会话级放行集合（内存），同时持久化到规则引擎
+				// Layer 4b: add to the session-level allow set (in-memory)
+				// and persist to the rule engine at the same time.
 				a.Checker.AddSessionAllow(tc.ToolName, pattern)
 				a.Checker.RuleEngine.AppendLocalRule(permissions.Rule{
 					ToolName: tc.ToolName,

@@ -21,11 +21,12 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 )
 
-// TestE2E_ConsolidationMergesDuplicates 是真正的端到端测试：
-// 用真实 LLM 运行记忆整理子 Agent，验证它能合并重复记忆。
+// TestE2E_ConsolidationMergesDuplicates is a true end-to-end test:
+// runs the memory consolidation sub-agent with a real LLM and verifies that
+// it merges duplicate memories.
 //
-// 运行方式：go test -tags e2e -run TestE2E -v -timeout 120s
-// 需要环境变量 SWIFTY_TEST_API_KEY 和 SWIFTY_TEST_BASE_URL
+// Run with: go test -tags e2e -run TestE2E -v -timeout 120s
+// Requires env vars SWIFTY_TEST_API_KEY and SWIFTY_TEST_BASE_URL
 func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 	apiKey := os.Getenv("SWIFTY_TEST_API_KEY")
 	baseURL := os.Getenv("SWIFTY_TEST_BASE_URL")
@@ -40,35 +41,35 @@ func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 		model = "MiniMax-M3"
 	}
 
-	// 构造测试目录
+	// Set up test directory
 	dir := t.TempDir()
 	memDir := filepath.Join(dir, ".swifty", "memory")
 	os.MkdirAll(memDir, 0o755)
 
-	// 写两个重复的记忆文件
+	// Write two duplicate memory files
 	writeMemory(t, memDir, "feedback_no_push.md", "feedback", "no-push",
 		"Don't push without asking",
-		"用户不希望自动 push 代码")
+		"User does not want automatic git push")
 
 	writeMemory(t, memDir, "feedback_auto_push.md", "feedback", "auto-push",
 		"Don't auto push code",
-		"用户不喜欢自动 push，每次都要先问一下")
+		"User dislikes auto push, always ask first")
 
-	// 写一个过时的记忆
+	// Write a stale memory
 	writeMemory(t, memDir, "project_deadline.md", "project", "deadline",
 		"Project deadline is 2025-01-15",
-		"项目截止日期是 2025 年 1 月 15 日\n\n**Why:** 客户要求\n**How to apply:** 所有任务在此之前完成")
+		"Project deadline is January 15, 2025\n\n**Why:** Client requirement\n**How to apply:** All tasks must be completed before this date")
 
-	// 写一个正常的记忆
+	// Write a normal memory
 	writeMemory(t, memDir, "user_role.md", "user", "user-role",
 		"User is a backend engineer",
-		"用户是后端工程师，主要用 Go 和 Java")
+		"User is a backend engineer, primarily uses Go and Java")
 
-	// 写 MEMORY.md 索引
-	indexContent := `- [No push](feedback_no_push.md) — 不要自动 push
-- [Auto push](feedback_auto_push.md) — 不要自动 push 代码
-- [Deadline](project_deadline.md) — 项目截止日期 2025-01-15
-- [User role](user_role.md) — 后端工程师
+	// Write MEMORY.md index
+	indexContent := `- [No push](feedback_no_push.md) — Do not auto push
+- [Auto push](feedback_auto_push.md) — Do not auto push code
+- [Deadline](project_deadline.md) — Project deadline 2025-01-15
+- [User role](user_role.md) — Backend engineer
 `
 	os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte(indexContent), 0o644)
 
@@ -76,7 +77,7 @@ func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 	t.Logf("Memory files before consolidation:")
 	listMemoryFiles(t, memDir)
 
-	// 构建 LLM 客户端
+	// Build LLM client
 	cfg := &config.ProviderConfig{}
 	cfg.Protocol = "openai-compat"
 	cfg.BaseURL = baseURL
@@ -88,7 +89,7 @@ func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	// 构建工具注册表：注册整理需要的工具
+	// Build tool registry: register tools needed for consolidation
 	registry := tools.NewRegistry()
 	registry.Register(&tools.ReadFileTool{})
 	registry.Register(&tools.WriteFileTool{})
@@ -98,11 +99,11 @@ func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 	registry.Register(&tools.BashTool{})
 	subRegistry := subagent.FilterToolsForAgent(registry, nil, nil, true)
 
-	// 权限沙箱：只允许写记忆目录
+	// Permission sandbox: only allow writes to memory directory
 	sandbox := permissions.NewPathSandbox(memDir)
 	checker := permissions.NewChecker(sandbox, &permissions.RuleEngine{}, permissions.ModeBypass)
 
-	// 构建整理 prompt
+	// Build consolidation prompt
 	prompt := BuildConsolidationPrompt(memDir, "", "", nil)
 
 	conv := conversation.NewManager()
@@ -129,11 +130,11 @@ func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 		}
 	}
 
-	// 验证结果
+	// Verify results
 	t.Log("\n\nMemory files after consolidation:")
 	listMemoryFiles(t, memDir)
 
-	// 检查 1：重复记忆是否被合并（至少删了一个）
+	// Check 1: were duplicate memories merged (at least one deletion)
 	files := listMdFiles(memDir)
 	hasPush := false
 	pushCount := 0
@@ -150,14 +151,14 @@ func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 		t.Log("PASS: duplicate push memories merged")
 	}
 
-	// 检查 2：MEMORY.md 索引是否被更新
+	// Check 2: was MEMORY.md index updated
 	indexBytes, err := os.ReadFile(filepath.Join(memDir, "MEMORY.md"))
 	if err != nil {
 		t.Fatalf("MEMORY.md not found after consolidation")
 	}
 	t.Logf("MEMORY.md content:\n%s", string(indexBytes))
 
-	// 检查 3：索引行数是否合理
+	// Check 3: are index line counts reasonable
 	lines := strings.Split(strings.TrimSpace(string(indexBytes)), "\n")
 	nonEmpty := 0
 	for _, l := range lines {
@@ -169,7 +170,7 @@ func TestE2E_ConsolidationMergesDuplicates(t *testing.T) {
 		t.Errorf("MEMORY.md has %d lines, exceeds limit %d", nonEmpty, memory.MaxEntrypointLines)
 	}
 
-	// 检查 4：对话中是否有 WriteFile/EditFile 工具调用
+	// Check 4: were there WriteFile/EditFile tool calls in the conversation
 	writtenPaths := extractWrittenPaths(conv.GetMessages())
 	t.Logf("Files written by sub-agent: %v", writtenPaths)
 	if len(writtenPaths) == 0 {

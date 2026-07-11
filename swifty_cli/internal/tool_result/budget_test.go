@@ -29,7 +29,7 @@ func TestApplyMutatesConvInPlace(t *testing.T) {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
 
-	// conv 本身应已被就地修改，内容替换为 preview。
+	// conv itself should have been mutated in place, with content replaced by the preview.
 	got := conv.GetMessages()[0].ToolResults[0].Content
 	if !strings.HasPrefix(got, "<persisted-output>") {
 		t.Fatalf("conv tool_result not replaced in-place: %q", got)
@@ -51,7 +51,7 @@ func TestFirstCallFreezesUnreplaced(t *testing.T) {
 	if _, ok := state.Replacements["t1"]; ok {
 		t.Fatal("t1 should not be in Replacements when under budget")
 	}
-	// conv 内容未被替换（在预算内）
+	// conv content should not be replaced (within budget).
 	got := conv.GetMessages()[0].ToolResults[0].Content
 	if got != small {
 		t.Fatalf("conv mutated unexpectedly: got %q", got)
@@ -62,7 +62,7 @@ func TestReplacementByteIdentical(t *testing.T) {
 	big := strings.Repeat("z", SingleResultLimit+200)
 	dir := t.TempDir()
 
-	// 第一次调用：写入 spill，记录 preview。
+	// First call: write the spill file and record the preview.
 	conv1 := oneToolResultMsg(conversation.ToolResultBlock{ToolUseID: "t_big", Content: big})
 	state := New()
 
@@ -72,7 +72,7 @@ func TestReplacementByteIdentical(t *testing.T) {
 	}
 	c1 := conv1.GetMessages()[0].ToolResults[0].Content
 
-	// 第二次调用：相同 state，相同 id 已在 Replacements 中，回放精确预览。
+	// Second call: same state, same id already in Replacements — replay the exact preview.
 	conv2 := oneToolResultMsg(conversation.ToolResultBlock{ToolUseID: "t_big", Content: big})
 	recs2, err2 := Apply(conv2, dir, state)
 	if err2 != nil {

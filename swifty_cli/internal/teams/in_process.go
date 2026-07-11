@@ -37,7 +37,7 @@ func StartInProcessMember(
 	go func() {
 		defer close(eventCh)
 		defer func() {
-			// 队友退出时持久化对话记录，用于调试
+			// Persist conversation transcript when teammate exits, for debugging
 			if member.Conv != nil {
 				_, _ = SaveTranscript(team.Name, memberName, member.Conv)
 			}

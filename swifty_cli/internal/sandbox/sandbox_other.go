@@ -2,7 +2,7 @@
 
 package sandbox
 
-// 不支持沙箱的平台返回 nil，调用方需判空
+// Unsupported platforms return nil; callers must check for nil.
 func newPlatformSandbox() Sandbox {
 	return nil
 }

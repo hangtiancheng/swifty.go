@@ -12,20 +12,21 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/sandbox"
 )
 
-// commandErrorThresholds 定义特殊命令的退出码阈值，
-// 退出码 >= 阈值才视为真正的错误。
-// 例如 grep 退出码 1 表示"没有匹配"，不算错误；退出码 2 才是语法/IO 错误。
+// commandErrorThresholds defines exit code thresholds for special commands:
+// an exit code is only considered an error when it >= threshold.
+// For example, grep exit code 1 means "no match" (not an error); exit code 2 is a syntax/IO error.
 var commandErrorThresholds = map[string]int{
-	"grep": 2, // exit 1 = 无匹配
-	"rg":   2, // ripgrep，同 grep
-	"diff": 2, // exit 1 = 文件有差异
-	"find": 2, // exit 1 = 部分成功（权限不足等）
-	"test": 2, // exit 1 = 条件为假
-	"[":    2, // test 的别名写法
+	"grep": 2, // exit 1 = no matches
+	"rg":   2, // ripgrep, same as grep
+	"diff": 2, // exit 1 = files differ
+	"find": 2, // exit 1 = partial success (e.g. permission denied)
+	"test": 2, // exit 1 = condition is false
+	"[":    2, // alias for test
 }
 
-// interpretExitCode 根据命令语义判断退出码是否代表错误。
-// 管道场景取最后一个命令（bash 默认以最后一条的退出码作为管道退出码）。
+// interpretExitCode determines whether an exit code represents an error
+// based on command semantics. For pipelines, the last command's exit code
+// is used (bash default behaviour).
 func interpretExitCode(command string, exitCode int) bool {
 	if exitCode == 0 {
 		return false
@@ -34,20 +35,21 @@ func interpretExitCode(command string, exitCode int) bool {
 	if threshold, ok := commandErrorThresholds[base]; ok {
 		return exitCode >= threshold
 	}
-	// 默认：非零即错误
+	// Default: any non-zero exit code is an error.
 	return true
 }
 
-// extractLastCommand 从完整命令字符串中提取管道最后一段的基础命令名。
-// 例如 "cat file | grep foo" → "grep"，"timeout 5 rg pattern" → "rg"。
+// extractLastCommand extracts the base command name of the last segment of a
+// pipeline from the full command string.
+// For example, "cat file | grep foo" → "grep", "timeout 5 rg pattern" → "rg".
 func extractLastCommand(command string) string {
-	// 取管道最后一段
+	// Take the last segment of the pipeline.
 	parts := strings.Split(command, "|")
 	last := strings.TrimSpace(parts[len(parts)-1])
 	if last == "" {
 		return ""
 	}
-	// 取第一个 token 作为命令，再去掉路径前缀
+	// Take the first token as the command, then strip any path prefix.
 	fields := strings.Fields(last)
 	if len(fields) == 0 {
 		return ""
@@ -55,7 +57,7 @@ func extractLastCommand(command string) string {
 	return filepath.Base(fields[0])
 }
 
-// exitCodeHint 为特殊命令的非错误退出码提供语义提示。
+// exitCodeHint provides a semantic hint for non-error exit codes of well-known commands.
 func exitCodeHint(command string, exitCode int) string {
 	base := extractLastCommand(command)
 	switch base {
@@ -83,8 +85,8 @@ const maxTimeout = 600
 
 type BashTool struct {
 	WorkDir       string
-	Sandbox       sandbox.Sandbox // OS 级沙箱实例，nil 表示不启用
-	SandboxConfig sandbox.Config  // 沙箱的路径和网络权限配置
+	Sandbox       sandbox.Sandbox // OS-level sandbox instance; nil means disabled.
+	SandboxConfig sandbox.Config  // Sandbox path and network permission configuration.
 }
 
 func (t *BashTool) Name() string { return "Bash" }
@@ -122,7 +124,7 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) ToolResult 
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	// 如果沙箱可用，将命令包装到沙箱内执行
+	// If the sandbox is available, wrap the command for execution inside it.
 	actualCommand := command
 	if t.Sandbox != nil && t.Sandbox.Available() {
 		wrapped, err := t.Sandbox.Wrap(command, t.SandboxConfig)
@@ -132,7 +134,7 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) ToolResult 
 	}
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", actualCommand)
-	// stdout 和 stderr 合并到同一个流，简化输出解析
+	// Merge stdout and stderr into a single stream to simplify output parsing.
 	var combined bytes.Buffer
 	cmd.Stdout = &combined
 	cmd.Stderr = &combined
@@ -170,6 +172,6 @@ func (t *BashTool) Execute(ctx context.Context, args map[string]any) ToolResult 
 		}
 	}
 
-	// is_error 只在超时/中断时为 true，正常非零退出码不标 error
+	// is_error is only true on timeout/interrupt; normal non-zero exit codes are not flagged as errors.
 	return ToolResult{Output: sb.String(), IsError: false}
 }
