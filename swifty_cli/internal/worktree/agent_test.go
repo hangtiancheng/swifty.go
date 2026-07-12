@@ -16,6 +16,10 @@ func TestCreateAgentWorktree(t *testing.T) {
 	repo := t.TempDir()
 	initTestRepo(t, repo)
 
+	// Resolve symlinks so paths match what os.Getwd() returns (matters on
+	// macOS where /var -> /private/var and /tmp -> /private/tmp).
+	repo, _ = filepath.EvalSymlinks(repo)
+
 	// CreateAgentWorktree needs to be called from within a git repo
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)
