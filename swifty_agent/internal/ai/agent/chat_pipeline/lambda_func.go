@@ -6,7 +6,7 @@ import (
 )
 
 // newInputToRagLambda extracts the query string from the UserMessage for use
-// as the search input to the Milvus retriever.
+// as the search input to the Redis retriever.
 func newInputToRagLambda(ctx context.Context, input *UserMessage, opts ...any) (string, error) {
 	return input.Query, nil
 }

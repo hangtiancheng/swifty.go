@@ -1,52 +1,23 @@
-// Package indexer provides a Milvus-backed document indexer for storing knowledge base documents.
-// Documents are split, embedded, and stored in the Milvus collection with their vector representations.
+// Package indexer provides a Redis-backed document indexer for the knowledge base.
+// Documents are split, embedded, and stored as Redis hashes with their vector embeddings.
 package indexer
 
 import (
 	"context"
 
-	"github.com/cloudwego/eino-ext/components/indexer/milvus"
+	eino_redis "github.com/cloudwego/eino-ext/components/indexer/redis"
+	"github.com/cloudwego/eino/components/indexer"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/ai/embedder"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/consts"
-	swifty_milvus "github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/milvus"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	swifty_redis "github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/redis"
 )
 
-// indexFields defines the schema fields for the Milvus collection used by the indexer.
-var indexFields = []*entity.Field{
-	{
-		Name:     "id",
-		DataType: entity.FieldTypeVarChar,
-		TypeParams: map[string]string{
-			"max_length": "255",
-		},
-		PrimaryKey: true,
-	},
-	{
-		Name:     "vector",
-		DataType: entity.FieldTypeBinaryVector,
-		TypeParams: map[string]string{
-			"dim": "65536",
-		},
-	},
-	{
-		Name:     "content",
-		DataType: entity.FieldTypeVarChar,
-		TypeParams: map[string]string{
-			"max_length": "8192",
-		},
-	},
-	{
-		Name:     "metadata",
-		DataType: entity.FieldTypeJSON,
-	},
-}
-
-// NewMilvusIndexer creates an indexer that stores document chunks with their
-// vector embeddings into the Milvus knowledge base collection.
-func NewMilvusIndexer(ctx context.Context, cfg *config.Config) (*milvus.Indexer, error) {
-	cli, err := swifty_milvus.NewClient(ctx, cfg)
+// NewRedisIndexer creates an indexer that stores document chunks with their vector
+// embeddings into Redis using the Eino Redis indexer component (default field mapping:
+// content -> "content", embedding -> "vector_content", metadata passed through as-is).
+func NewRedisIndexer(ctx context.Context, cfg *config.Config) (indexer.Indexer, error) {
+	client, err := swifty_redis.NewClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -56,10 +27,10 @@ func NewMilvusIndexer(ctx context.Context, cfg *config.Config) (*milvus.Indexer,
 		return nil, err
 	}
 
-	return milvus.NewIndexer(ctx, &milvus.IndexerConfig{
-		Client:     cli,
-		Collection: consts.MilvusCollectionName,
-		Fields:     indexFields,
-		Embedding:  eb,
+	return eino_redis.NewIndexer(ctx, &eino_redis.IndexerConfig{
+		Client:    client,
+		KeyPrefix: consts.RedisKeyPrefix,
+		Embedding: eb,
+		BatchSize: 10,
 	})
 }

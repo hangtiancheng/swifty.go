@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/ai/models"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/ai/tools"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 )
@@ -25,11 +25,8 @@ func main() {
 	ctx := context.Background()
 
 	// Create the chat model using the quick (fast-response) configuration.
-	chatModel, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		Model:   cfg.QuickChatModel.Model,
-		APIKey:  cfg.QuickChatModel.APIKey,
-		BaseURL: cfg.QuickChatModel.BaseURL,
-	})
+	// This honors the configured model_provider (openai or anthropic).
+	chatModel, err := models.NewQuickChatModel(ctx, cfg)
 	if err != nil {
 		log.Fatalf("create chat model: %v", err)
 	}
@@ -50,8 +47,9 @@ func main() {
 		toolInfos = append(toolInfos, info)
 	}
 
-	// Bind tools to the chat model.
-	if err := chatModel.BindTools(toolInfos); err != nil {
+	// Bind tools to the chat model, obtaining a new instance with the tools bound.
+	chatModel, err = chatModel.WithTools(toolInfos)
+	if err != nil {
 		log.Fatalf("bind tools: %v", err)
 	}
 

@@ -1,5 +1,5 @@
 // Package embedder provides factory functions for creating text embedding models.
-// The embeddings are used to vectorize documents for storage and retrieval in Milvus.
+// The embeddings are used to vectorize documents for storage and retrieval in Redis.
 package embedder
 
 import (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/compose"
@@ -11,10 +12,10 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/consts"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/log_callback"
-	swifty_milvus "github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/milvus"
+	swifty_redis "github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/redis"
 )
 
-// IndexFile indexes a single document file into the Milvus knowledge base.
+// IndexFile indexes a single document file into the Redis knowledge base.
 // Before indexing, it removes any existing documents that share the same
 // "_source" metadata value, ensuring re-indexing a file does not produce
 // duplicate entries.
@@ -37,33 +38,28 @@ func IndexFile(ctx context.Context, cfg *config.Config, path string) error {
 		return err
 	}
 
-	// Connect to Milvus and remove existing documents with the same source.
-	cli, err := swifty_milvus.NewClient(ctx, cfg)
+	// Connect to Redis and remove existing documents with the same source.
+	client, err := swifty_redis.NewClient(ctx, cfg)
 	if err != nil {
 		return err
 	}
 
-	source := docs[0].MetaData["_source"]
-	expr := fmt.Sprintf(`metadata["_source"] == "%s"`, source)
-	queryResult, err := cli.Query(ctx, consts.MilvusCollectionName, []string{}, expr, []string{"id"})
-	if err == nil && len(queryResult) > 0 {
-		var idsToDelete []string
-		for _, column := range queryResult {
-			if column.Name() == "id" {
-				for i := 0; i < column.Len(); i++ {
-					id, err := column.GetAsString(i)
-					if err == nil {
-						idsToDelete = append(idsToDelete, id)
-					}
-				}
+	source, _ := docs[0].MetaData[consts.RedisSourceField].(string)
+	query := fmt.Sprintf("@%s:{%s}", consts.RedisSourceField, escapeTag(source))
+	res, err := client.Do(ctx, "FT.SEARCH", consts.RedisIndexName, query,
+		"NOCONTENT", "LIMIT", "0", "10000").Slice()
+	if err == nil && len(res) > 1 {
+		keys := make([]string, 0, len(res)-1)
+		for _, v := range res[1:] { // res[0] is the total count.
+			if k, ok := v.(string); ok {
+				keys = append(keys, k)
 			}
 		}
-		if len(idsToDelete) > 0 {
-			deleteExpr := fmt.Sprintf(`id in ["%s"]`, strings.Join(idsToDelete, `","`))
-			if err := cli.Delete(ctx, consts.MilvusCollectionName, "", deleteExpr); err != nil {
+		if len(keys) > 0 {
+			if n, err := client.Del(ctx, keys...).Result(); err != nil {
 				fmt.Printf("[warn] delete existing data failed: %v\n", err)
 			} else {
-				fmt.Printf("[info] deleted %d existing records with _source: %s\n", len(idsToDelete), source)
+				fmt.Printf("[info] deleted %d existing records with _source: %s\n", n, source)
 			}
 		}
 	}
@@ -75,4 +71,17 @@ func IndexFile(ctx context.Context, cfg *config.Config, path string) error {
 	}
 	fmt.Printf("[done] indexing file: %s, len of parts: %d\n", path, len(ids))
 	return nil
+}
+
+// escapeTag escapes RediSearch TAG special characters (DIALECT 2) so that file
+// paths (containing '/', '.', '-', spaces, etc.) can be matched exactly.
+func escapeTag(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

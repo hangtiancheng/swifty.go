@@ -1,5 +1,5 @@
 // Command knowledge batch-indexes all Markdown documents in the configured
-// file directory into the Milvus knowledge base. It walks the directory tree,
+// file directory into the Redis knowledge base. It walks the directory tree,
 // and for each .md file, removes any existing documents with the same source
 // (deduplication) before indexing the new content.
 //

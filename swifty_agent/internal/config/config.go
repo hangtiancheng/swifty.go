@@ -9,19 +9,30 @@ import (
 	"os"
 )
 
+// Model provider identifiers selectable via the model_provider config field.
+const (
+	// ModelProviderOpenAI selects the OpenAI-compatible chat model implementation.
+	ModelProviderOpenAI = "openai"
+	// ModelProviderAnthropic selects the Anthropic Claude chat model implementation.
+	ModelProviderAnthropic = "anthropic"
+)
+
 // Config holds all application configuration values.
 type Config struct {
 	// ServerAddr is the address the HTTP server listens on (e.g., ":6872").
 	ServerAddr string `json:"server_addr"`
 
+	// ModelProvider selects the chat model implementation: "openai" (default) or "anthropic".
+	ModelProvider string `json:"model_provider"`
+
 	// ThinkChatModel configures the LLM used for deep reasoning tasks (planning, replanning).
-	ThinkChatModel ChatModelConfig `json:"ds_think_chat_model"`
+	ThinkChatModel ChatModelConfig `json:"think_chat_model"`
 
 	// QuickChatModel configures the LLM used for fast chat responses and tool execution.
-	QuickChatModel ChatModelConfig `json:"ds_quick_chat_model"`
+	QuickChatModel ChatModelConfig `json:"quick_chat_model"`
 
 	// EmbeddingModel configures the embedding model used for vectorization.
-	EmbeddingModel EmbeddingConfig `json:"doubao_embedding_model"`
+	EmbeddingModel EmbeddingConfig `json:"embedding_model"`
 
 	// FileDir is the directory path for storing uploaded knowledge base files.
 	FileDir string `json:"file_dir"`
@@ -29,15 +40,19 @@ type Config struct {
 	// MCP_URL is the Server-Sent Events endpoint for the MCP (Model Context Protocol) tool server.
 	MCP_URL string `json:"mcp_url"`
 
-	// Milvus configures the connection to the Milvus vector database.
-	Milvus MilvusConfig `json:"milvus"`
+	// Redis configures the connection to the Redis Stack (RediSearch) vector store.
+	Redis RedisConfig `json:"redis"`
 }
 
-// ChatModelConfig holds LLM connection settings for OpenAI-compatible API endpoints.
+// ChatModelConfig holds LLM connection settings for OpenAI-compatible and Anthropic API endpoints.
 type ChatModelConfig struct {
 	APIKey  string `json:"api_key"`
 	BaseURL string `json:"base_url"`
 	Model   string `json:"model"`
+
+	// MaxTokens caps the response length. Required by the Anthropic provider
+	// (defaults to 4096 when unset); ignored by the OpenAI provider.
+	MaxTokens int `json:"max_tokens"`
 }
 
 // EmbeddingConfig holds embedding model settings including dimension parameters.
@@ -48,10 +63,11 @@ type EmbeddingConfig struct {
 	Dimensions int    `json:"dimensions"`
 }
 
-// MilvusConfig holds Milvus vector database connection settings.
-type MilvusConfig struct {
-	Address string `json:"address"`
-	DBName  string `json:"db_name"`
+// RedisConfig holds Redis Stack connection settings.
+type RedisConfig struct {
+	Addr     string `json:"addr"`     // Redis address, default "localhost:6379".
+	Password string `json:"password"` // Redis password, default "".
+	DB       int    `json:"db"`       // Redis DB number, default 0.
 }
 
 // Load reads and parses the configuration file at the given path.
@@ -76,14 +92,20 @@ func applyDefaults(cfg *Config) {
 	if cfg.ServerAddr == "" {
 		cfg.ServerAddr = ":6872"
 	}
+	if cfg.ModelProvider == "" {
+		cfg.ModelProvider = ModelProviderOpenAI
+	}
+	if cfg.ThinkChatModel.MaxTokens == 0 {
+		cfg.ThinkChatModel.MaxTokens = 4096
+	}
+	if cfg.QuickChatModel.MaxTokens == 0 {
+		cfg.QuickChatModel.MaxTokens = 4096
+	}
 	if cfg.FileDir == "" {
 		cfg.FileDir = "./docs"
 	}
-	if cfg.Milvus.Address == "" {
-		cfg.Milvus.Address = "localhost:19530"
-	}
-	if cfg.Milvus.DBName == "" {
-		cfg.Milvus.DBName = "agent"
+	if cfg.Redis.Addr == "" {
+		cfg.Redis.Addr = "localhost:6379"
 	}
 	if cfg.EmbeddingModel.Dimensions == 0 {
 		cfg.EmbeddingModel.Dimensions = 2048

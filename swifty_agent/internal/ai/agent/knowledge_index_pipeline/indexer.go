@@ -8,8 +8,8 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 )
 
-// newIndexer creates a Milvus-backed indexer that stores document chunks
-// with their vector embeddings into the knowledge base collection.
+// newIndexer creates a Redis-backed indexer that stores document chunks
+// with their vector embeddings into the knowledge base.
 func newIndexer(ctx context.Context, cfg *config.Config) (indexer.Indexer, error) {
-	return swifty_indexer.NewMilvusIndexer(ctx, cfg)
+	return swifty_indexer.NewRedisIndexer(ctx, cfg)
 }

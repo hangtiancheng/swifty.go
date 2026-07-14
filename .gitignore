@@ -197,3 +197,4 @@ rules.ninja
 raw
 
 !swifty_cli/internal/remote/fe/dist
+old/

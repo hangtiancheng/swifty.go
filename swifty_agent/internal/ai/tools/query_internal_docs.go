@@ -24,7 +24,7 @@ func NewQueryInternalDocsTool(cfg *config.Config) tool.InvokableTool {
 		"query_internal_docs",
 		"Search internal documentation and knowledge base for relevant information. Performs RAG to find similar documents and extract processing steps. Useful for understanding internal procedures, best practices, or step-by-step guides.",
 		func(ctx context.Context, input *QueryInternalDocsInput, opts ...tool.Option) (string, error) {
-			rr, err := retriever.NewMilvusRetriever(ctx, cfg)
+			rr, err := retriever.NewRedisRetriever(ctx, cfg)
 			if err != nil {
 				log.Fatal(err)
 			}

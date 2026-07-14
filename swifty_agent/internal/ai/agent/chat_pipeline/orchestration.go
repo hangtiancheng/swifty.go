@@ -5,7 +5,7 @@
 // Pipeline flow:
 //
 //	Input -> [InputToRag, InputToChat] (parallel)
-//	        -> [MilvusRetriever] -> [ChatTemplate] -> [ReactAgent] -> Output
+//	        -> [RedisRetriever] -> [ChatTemplate] -> [ReactAgent] -> Output
 package chat_pipeline
 
 import (
@@ -17,15 +17,15 @@ import (
 )
 
 // BuildChatAgent constructs and compiles the chat agent computation graph.
-// The graph retrieves relevant documents from Milvus, merges them with conversation
+// The graph retrieves relevant documents from Redis, merges them with conversation
 // history via a chat template, and passes the result to a ReAct agent for response generation.
 func BuildChatAgent(ctx context.Context, cfg *config.Config) (compose.Runnable[*UserMessage, *schema.Message], error) {
 	const (
-		InputToRag      = "InputToRag"
-		ChatTemplate    = "ChatTemplate"
-		ReactAgent      = "ReactAgent"
-		MilvusRetriever = "MilvusRetriever"
-		InputToChat     = "InputToChat"
+		InputToRag     = "InputToRag"
+		ChatTemplate   = "ChatTemplate"
+		ReactAgent     = "ReactAgent"
+		RedisRetriever = "RedisRetriever"
+		InputToChat    = "InputToChat"
 	)
 
 	g := compose.NewGraph[*UserMessage, *schema.Message]()
@@ -44,12 +44,12 @@ func BuildChatAgent(ctx context.Context, cfg *config.Config) (compose.Runnable[*
 	}
 	_ = g.AddLambdaNode(ReactAgent, reactAgent, compose.WithNodeName("ReActAgent"))
 
-	milvusRetriever, err := newRetriever(ctx, cfg)
+	redisRetriever, err := newRetriever(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	// Output key "documents" matches the {documents} placeholder in the chat template.
-	_ = g.AddRetrieverNode(MilvusRetriever, milvusRetriever, compose.WithOutputKey("documents"))
+	_ = g.AddRetrieverNode(RedisRetriever, redisRetriever, compose.WithOutputKey("documents"))
 
 	_ = g.AddLambdaNode(InputToChat, compose.InvokableLambdaWithOption(newInputToChatLambda), compose.WithNodeName("UserMessageToChat"))
 
@@ -57,8 +57,8 @@ func BuildChatAgent(ctx context.Context, cfg *config.Config) (compose.Runnable[*
 	_ = g.AddEdge(compose.START, InputToRag)
 	_ = g.AddEdge(compose.START, InputToChat)
 	_ = g.AddEdge(ReactAgent, compose.END)
-	_ = g.AddEdge(InputToRag, MilvusRetriever)
-	_ = g.AddEdge(MilvusRetriever, ChatTemplate)
+	_ = g.AddEdge(InputToRag, RedisRetriever)
+	_ = g.AddEdge(RedisRetriever, ChatTemplate)
 	_ = g.AddEdge(InputToChat, ChatTemplate)
 	_ = g.AddEdge(ChatTemplate, ReactAgent)
 

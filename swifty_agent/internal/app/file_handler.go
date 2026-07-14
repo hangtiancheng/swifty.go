@@ -11,7 +11,7 @@ import (
 )
 
 // handleFileUpload processes file uploads for the knowledge base.
-// It saves the file to disk and indexes it into the Milvus vector database
+// It saves the file to disk and indexes it into the Redis vector store
 // via the shared IndexFile function (which handles deduplication).
 func (a *App) handleFileUpload(ctx *swifty_http.Context, next func()) {
 	file, header, err := ctx.FormFile("file")

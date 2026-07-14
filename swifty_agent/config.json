@@ -1,16 +1,17 @@
 {
   "server_addr": ":6872",
-  "ds_think_chat_model": {
+  "model_provider": "openai",
+  "think_chat_model": {
     "api_key": "your-api-key",
     "base_url": "https://ark.cn-beijing.volces.com/api/v3",
     "model": "deepseek-v3-2-251201"
   },
-  "ds_quick_chat_model": {
+  "quick_chat_model": {
     "api_key": "your-api-key",
     "base_url": "https://ark.cn-beijing.volces.com/api/v3",
     "model": "deepseek-v3-2-251201"
   },
-  "doubao_embedding_model": {
+  "embedding_model": {
     "api_key": "your-api-key",
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "model": "text-embedding-v4",
@@ -18,8 +19,9 @@
   },
   "file_dir": "./docs",
   "mcp_url": "http://localhost:3000/sse",
-  "milvus": {
-    "address": "localhost:19530",
-    "db_name": "agent"
+  "redis": {
+    "addr": "localhost:6379",
+    "password": "",
+    "db": 0
   }
 }

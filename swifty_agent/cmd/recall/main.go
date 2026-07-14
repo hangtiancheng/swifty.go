@@ -1,4 +1,4 @@
-// Command recall tests the Milvus vector retriever by running a sample
+// Command recall tests the Redis vector retriever by running a sample
 // query against the knowledge base and printing the retrieved documents.
 // It is useful for verifying that document indexing and retrieval work correctly.
 package main
@@ -19,7 +19,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	r, err := retriever.NewMilvusRetriever(ctx, cfg)
+	r, err := retriever.NewRedisRetriever(ctx, cfg)
 	if err != nil {
 		log.Fatalf("create retriever: %v", err)
 	}
