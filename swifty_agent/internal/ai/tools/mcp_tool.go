@@ -6,6 +6,8 @@ package tools
 
 import (
 	"context"
+	"log"
+	"sync"
 
 	eino_mcp "github.com/cloudwego/eino-ext/components/tool/mcp"
 	"github.com/cloudwego/eino/components/tool"
@@ -13,13 +15,54 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// GetLogMcpTool connects to an MCP (Model Context Protocol) server via SSE
-// and returns the available tools from that server.
+// MCP tool cache. The MCP server provides log querying capabilities; it is a
+// non-essential dependency, so connection failures degrade gracefully (empty tool
+// set) rather than failing the whole chat/agent build. Successful connections are
+// cached per URL so we don't reopen the SSE client on every request.
+var (
+	mcpMu        sync.Mutex
+	cachedTools  []tool.BaseTool
+	cachedURL    string
+	mcpConnected bool
+)
+
+// GetLogMcpTool connects to an MCP (Model Context Protocol) server via SSE and
+// returns the available tools from that server. Results are cached per mcpURL.
 //
-// The MCP server provides log querying capabilities. See:
+// If the MCP server is unreachable, it logs a warning and returns an empty tool
+// slice with a nil error, so the chat / plan-execute pipelines keep working
+// without log-querying capabilities. This mirrors the Next.js graceful-degradation
+// behavior in lib/ai/tools/query-log.ts.
+//
+// See:
 //   - https://www.cloudwego.io/zh/docs/eino/ecosystem_integration/tool/tool_mcp/
 //   - https://mcp-go.dev/clients
 func GetLogMcpTool(ctx context.Context, mcpURL string) ([]tool.BaseTool, error) {
+	mcpMu.Lock()
+	defer mcpMu.Unlock()
+
+	// Serve from cache when we already connected to the same URL.
+	if mcpConnected && cachedURL == mcpURL && cachedTools != nil {
+		return cachedTools, nil
+	}
+
+	tools, err := buildMcpTools(ctx, mcpURL)
+	if err != nil {
+		// Degrade gracefully: log and return an empty tool set. Do not cache the
+		// failure so the next request can retry once the MCP server comes back.
+		log.Printf("[mcp] failed to connect to %s, skipping log tools: %v", mcpURL, err)
+		return []tool.BaseTool{}, nil
+	}
+
+	cachedTools = tools
+	cachedURL = mcpURL
+	mcpConnected = true
+	return tools, nil
+}
+
+// buildMcpTools opens a fresh SSE connection to the MCP server, initializes the
+// session, and returns the tools advertised by that server.
+func buildMcpTools(ctx context.Context, mcpURL string) ([]tool.BaseTool, error) {
 	cli, err := client.NewSSEMCPClient(mcpURL)
 	if err != nil {
 		return nil, err

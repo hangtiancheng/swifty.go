@@ -49,13 +49,13 @@ type PrometheusAlertsOutput struct {
 	Error   string            `json:"error,omitempty"`
 }
 
-// queryPrometheusAlerts queries the Prometheus alerts API.
-// Currently returns empty results; enable by starting a Prometheus instance.
-func queryPrometheusAlerts() (PrometheusAlertsResult, error) {
-	// Toggle: start a Prometheus container before using this.
-	return PrometheusAlertsResult{}, nil
-	// FIXME: unreachable
-	baseURL := "http://127.0.0.1:9090"
+// queryPrometheusAlerts queries the Prometheus alerts API at the given base URL.
+// An empty baseURL disables the query and returns an empty result, so the tool
+// degrades gracefully when Prometheus is not configured.
+func queryPrometheusAlerts(baseURL string) (PrometheusAlertsResult, error) {
+	if baseURL == "" {
+		return PrometheusAlertsResult{}, nil
+	}
 	apiURL := fmt.Sprintf("%s/api/v1/alerts", baseURL)
 
 	log.Printf("Querying Prometheus alerts: %s", apiURL)
@@ -104,22 +104,26 @@ func calculateDuration(activeAtStr string) string {
 
 // NewPrometheusAlertsQueryTool creates a tool that queries active Prometheus alerts.
 // For alerts with the same alertname, only the first occurrence is returned.
-func NewPrometheusAlertsQueryTool() tool.InvokableTool {
+// prometheusURL is the base URL (e.g. "http://127.0.0.1:9090"); empty disables queries.
+// Construction errors are returned to the caller instead of terminating the process.
+func NewPrometheusAlertsQueryTool(prometheusURL string) (tool.InvokableTool, error) {
 	t, err := utils.InferOptionableTool(
 		"query_prometheus_alerts",
-		"Query active alerts from Prometheus alerting system. Returns all currently active/firing alerts including labels, annotations, state, and values. Use when checking what alerts are firing, investigating alert conditions, or monitoring alert status.",
+		"Query active alerts from Prometheus alerting system. Retrieves all currently active/firing alerts including name, description, state, active_at, and duration. Same alert name only kept once.",
 		func(ctx context.Context, input *struct{}, opts ...tool.Option) (string, error) {
 			log.Printf("Querying Prometheus active alerts")
 
-			result, err := queryPrometheusAlerts()
+			result, err := queryPrometheusAlerts(prometheusURL)
 			if err != nil {
+				// Return a JSON error payload to the LLM instead of a tool error, so
+				// the agent can reason about the failure rather than aborting.
 				out := PrometheusAlertsOutput{
 					Success: false,
 					Error:   err.Error(),
 					Message: "Failed to query Prometheus alerts",
 				}
 				b, _ := json.MarshalIndent(out, "", "  ")
-				return string(b), err
+				return string(b), nil
 			}
 
 			// Deduplicate by alertname, keeping only the first occurrence.
@@ -147,15 +151,14 @@ func NewPrometheusAlertsQueryTool() tool.InvokableTool {
 			}
 			b, err := json.MarshalIndent(out, "", "  ")
 			if err != nil {
-				log.Printf("Error marshaling alerts result: %v", err)
-				return "", err
+				return "", fmt.Errorf("marshal alerts result: %w", err)
 			}
 			log.Printf("Prometheus alerts query completed: %d alerts found", len(simplified))
 			return string(b), nil
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("infer query_prometheus_alerts tool: %w", err)
 	}
-	return t
+	return t, nil
 }

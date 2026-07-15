@@ -2,9 +2,11 @@ package chat_pipeline
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/schema"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 )
 
 // ChatTemplateConfig defines the prompt template structure for the chat agent.
@@ -17,21 +19,29 @@ type ChatTemplateConfig struct {
 // - A system prompt with role definition and context information
 // - A placeholder for conversation history
 // - A user message template with the current query
-func newChatTemplate(ctx context.Context) (prompt.ChatTemplate, error) {
-	config := &ChatTemplateConfig{
+//
+// The log topic line is injected only when both LogTopicRegion and LogTopicID
+// are configured; otherwise it is omitted (mirrors Next.js LOG_TOPIC_* behavior).
+func newChatTemplate(ctx context.Context, cfg *config.Config) (prompt.ChatTemplate, error) {
+	tplCfg := &ChatTemplateConfig{
 		FormatType: schema.FString,
 		Templates: []schema.MessagesTemplate{
-			schema.SystemMessage(systemPrompt),
+			schema.SystemMessage(buildSystemPrompt(cfg)),
 			schema.MessagesPlaceholder("history", false),
 			schema.UserMessage("{content}"),
 		},
 	}
-	return prompt.FromMessages(config.FormatType, config.Templates...), nil
+	return prompt.FromMessages(tplCfg.FormatType, tplCfg.Templates...), nil
 }
 
-// systemPrompt defines the AI assistant's behavior and context.
-var systemPrompt = `
-# Role: Conversational Assistant
+// buildSystemPrompt assembles the system prompt string. The log topic line is
+// conditionally included based on configuration.
+func buildSystemPrompt(cfg *config.Config) string {
+	logTopicLine := ""
+	if cfg.LogTopicRegion != "" && cfg.LogTopicID != "" {
+		logTopicLine = "  * Log topic region: " + cfg.LogTopicRegion + "; log topic ID: " + cfg.LogTopicID
+	}
+	return fmt.Sprintf(`# Role: Conversational Assistant
 ## Core Capabilities
 - Context-aware conversation and dialogue
 - Web search for information retrieval
@@ -39,7 +49,7 @@ var systemPrompt = `
 - Before responding, ensure you:
   * Fully understand the user's needs and questions; ask for clarification if unclear
   * Consider the most appropriate solution approach
-  * Log topic region: ap-guangzhou; log topic ID: 869830db-a055-4479-963b-3c898d27e755
+%s
 - When providing assistance:
   * Use clear and concise language
   * Provide practical examples when appropriate
@@ -50,11 +60,12 @@ var systemPrompt = `
 - For complex or compound questions, think step by step rather than rushing to a low-quality answer.
 ## Output Requirements
   * Readable and well-structured with line breaks where necessary
-  * Output must not contain markdown syntax; use plain text only
+  * Output markdown only
 ## Context Information
 - Current date: {date}
 - Related documents: |-
 ==== Documents Start ====
   {documents}
 ==== Documents End ====
-`
+`, logTopicLine)
+}

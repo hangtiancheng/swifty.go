@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/consts"
@@ -14,12 +15,19 @@ import (
 
 // NewClient creates a Redis client configured for vector search and ensures the
 // RediSearch vector index exists (creating it on first connection if necessary).
+//
+// Reconnection uses exponential backoff (mirrors the Next.js socket
+// reconnectStrategy: retries*100ms capped at 5s) so transient network blips or
+// Redis restarts don't permanently break the singleton.
 func NewClient(ctx context.Context, cfg *config.Config) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.Redis.Addr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-		Protocol: 2, // Required: FT.SEARCH needs RESP2, otherwise results are raw.
+		Addr:            cfg.Redis.Addr,
+		Password:        cfg.Redis.Password,
+		DB:              cfg.Redis.DB,
+		Protocol:        2, // Required: FT.SEARCH needs RESP2, otherwise results are raw.
+		MaxRetries:      3,
+		MinRetryBackoff: 100 * time.Millisecond,
+		MaxRetryBackoff: 5 * time.Second,
 	})
 	client.Options().UnstableResp3 = true // Required for vector search.
 
@@ -32,15 +40,30 @@ func NewClient(ctx context.Context, cfg *config.Config) (*redis.Client, error) {
 	return client, nil
 }
 
-// ensureIndex creates the HNSW/COSINE vector index if it does not already exist.
+// ensureIndex verifies that the RediSearch vector index exists and that its
+// vector dimension matches the configured embedding dimension. If the index is
+// missing it is created; if the dimension differs (e.g. after switching the
+// embedding provider from dashscope-2048d to ollama-768d) the index is dropped
+// and recreated so searches do not silently fail. This mirrors the Next.js
+// ensureIndex dimension-check logic in lib/redis/client.ts.
 func ensureIndex(ctx context.Context, client *redis.Client, cfg *config.Config) error {
-	if err := client.Do(ctx, "FT.INFO", consts.RedisIndexName).Err(); err == nil {
-		return nil // Index already exists.
+	wantDim := cfg.EmbeddingModel.Dimensions
+	if wantDim == 0 {
+		wantDim = 2048
 	}
 
-	dim := cfg.EmbeddingModel.Dimensions
-	if dim == 0 {
-		dim = 2048
+	if info, err := client.Do(ctx, "FT.INFO", consts.RedisIndexName).Result(); err == nil {
+		// Index exists; verify the stored vector dimension.
+		if storedDim, ok := parseVectorDim(info); ok && storedDim != wantDim {
+			fmt.Printf("[redis] index dimension mismatch: stored=%d, expected=%d; dropping and recreating index\n", storedDim, wantDim)
+			if derr := client.Do(ctx, "FT.DROPINDEX", consts.RedisIndexName).Err(); derr != nil {
+				return fmt.Errorf("drop index on dimension mismatch: %w", derr)
+			}
+			// Fall through to recreate the index below.
+		} else {
+			// Dimension matches (or could not be parsed — keep the existing index).
+			return nil
+		}
 	}
 
 	return client.Do(ctx, "FT.CREATE", consts.RedisIndexName,
@@ -51,7 +74,60 @@ func ensureIndex(ctx context.Context, client *redis.Client, cfg *config.Config) 
 		consts.RedisSourceField, "TAG",
 		consts.RedisVectorField, "VECTOR", "HNSW", "6",
 		"TYPE", "FLOAT32",
-		"DIM", strconv.Itoa(dim),
+		"DIM", strconv.Itoa(wantDim),
 		"DISTANCE_METRIC", "COSINE",
 	).Err()
+}
+
+// parseVectorDim extracts the VECTOR field dimension from an FT.INFO result.
+// FT.INFO (RESP2) returns a flat [key, value, key, value, ...] array at the top
+// level; the "attributes" value is a list of attribute arrays, each itself a
+// flat [key, value, ...] array. We locate the attribute whose type is VECTOR and
+// return its DIM/DIMS value. Returns ok=false if the dimension cannot be determined.
+func parseVectorDim(info any) (int, bool) {
+	arr, ok := info.([]any)
+	if !ok {
+		return 0, false
+	}
+	for i := 0; i+1 < len(arr); i += 2 {
+		key, _ := arr[i].(string)
+		if key != "attributes" {
+			continue
+		}
+		attrs, ok := arr[i+1].([]any)
+		if !ok {
+			continue
+		}
+		for _, a := range attrs {
+			attr, ok := a.([]any)
+			if !ok {
+				continue
+			}
+			if !attrHasType(attr, "VECTOR") {
+				continue
+			}
+			for j := 0; j+1 < len(attr); j += 2 {
+				k, _ := attr[j].(string)
+				if k == "DIM" || k == "DIMS" {
+					if d, err := strconv.Atoi(fmt.Sprintf("%v", attr[j+1])); err == nil {
+						return d, true
+					}
+				}
+			}
+		}
+	}
+	return 0, false
+}
+
+// attrHasType reports whether a flat attribute [key, value, ...] array has a
+// "type" key equal to the given value.
+func attrHasType(attr []any, want string) bool {
+	for j := 0; j+1 < len(attr); j += 2 {
+		k, _ := attr[j].(string)
+		v := fmt.Sprintf("%v", attr[j+1])
+		if k == "type" && v == want {
+			return true
+		}
+	}
+	return false
 }

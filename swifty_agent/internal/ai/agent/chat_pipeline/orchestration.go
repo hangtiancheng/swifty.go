@@ -32,7 +32,7 @@ func BuildChatAgent(ctx context.Context, cfg *config.Config) (compose.Runnable[*
 
 	_ = g.AddLambdaNode(InputToRag, compose.InvokableLambdaWithOption(newInputToRagLambda), compose.WithNodeName("UserMessageToRag"))
 
-	chatTemplate, err := newChatTemplate(ctx)
+	chatTemplate, err := newChatTemplate(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

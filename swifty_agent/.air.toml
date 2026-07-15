@@ -1,0 +1,43 @@
+# air — 开发热重载配置 (swifty_agent)
+# 安装: go install github.com/air-verse/air@latest
+# 启动: 在 swifty_agent/ 目录执行 air
+#
+# 监听 .go 文件变化,自动 go build 并重启服务。前端目录 (fe/)、文档 (docs/)
+# 和构建产物 (tmp/) 被排除,避免无关触发。config.json 改动不会触发重启
+# (运行时已加载),如改配置请手动重启。
+
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+# 编译命令:生成 tmp/main
+cmd = "go build -o ./tmp/main ."
+# 运行的二进制
+bin = "./tmp/main"
+# 监听的文件扩展名
+include_ext = ["go", "tpl", "tmpl", "html"]
+# 排除的文件扩展名
+exclude_ext = []
+# 排除的目录:前端、文档、构建产物、依赖
+exclude_dir = ["tmp", "fe", "docs", "node_modules", ".swifty", ".omo"]
+# 包含的目录(空 = 全部,受 exclude_dir 约束)
+include_dir = []
+# 排除正则
+exclude_regex = ["_test\\.go"]
+# 触发延迟(ms),避免保存时多次触发
+delay = 1000
+# 构建失败时停止旧进程
+stop_on_error = true
+# 发送中断信号
+send_interrupt_signal = true
+# 杀掉延迟(ms)
+kill_delay = 500
+
+[log]
+# 日志显示时间戳
+time = true
+
+[misc]
+# 退出时清理 tmp
+clean_on_exit = true

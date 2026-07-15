@@ -15,6 +15,12 @@ import (
 
 // NewRedisRetriever creates a retriever that searches the Redis knowledge base using
 // KNN vector similarity search. It returns the top-1 most relevant document for each query.
+//
+// ReturnFields includes "metadata" so downstream consumers (e.g. the
+// query_internal_docs tool) can access the stored metadata. The relevance score
+// is NOT returned because the Eino redis retriever hardcodes WithScores=false;
+// exposing it would require a custom DocumentConverter or a fork — tracked as a
+// known limitation (review Q-5).
 func NewRedisRetriever(ctx context.Context, cfg *config.Config) (retriever.Retriever, error) {
 	client, err := swifty_redis.NewClient(ctx, cfg)
 	if err != nil {
@@ -29,8 +35,8 @@ func NewRedisRetriever(ctx context.Context, cfg *config.Config) (retriever.Retri
 	return eino_redis.NewRetriever(ctx, &eino_redis.RetrieverConfig{
 		Client:       client,
 		Index:        consts.RedisIndexName,
-		VectorField:  consts.RedisVectorField,            // "vector_content"
-		ReturnFields: []string{consts.RedisContentField}, // content only, avoids missing-field errors
+		VectorField:  consts.RedisVectorField, // "vector"
+		ReturnFields: []string{consts.RedisContentField, "metadata"},
 		TopK:         1,
 		Embedding:    eb,
 	})

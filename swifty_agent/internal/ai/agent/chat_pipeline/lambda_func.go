@@ -18,6 +18,6 @@ func newInputToChatLambda(ctx context.Context, input *UserMessage, opts ...any) 
 	return map[string]any{
 		"content": input.Query,
 		"history": input.History,
-		"date":    time.Now().Format("2006-01-02 15:04:05"),
+		"date":    time.Now().Format("1/2/2006, 3:04:05 PM"),
 	}, nil
 }

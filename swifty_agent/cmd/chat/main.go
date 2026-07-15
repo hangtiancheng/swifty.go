@@ -62,6 +62,6 @@ func ask(ctx context.Context, runner compose.Runnable[*chat_pipeline.UserMessage
 	fmt.Println("----------------")
 
 	mem.Get(sessionID).Append(schema.UserMessage(question))
-	mem.Get(sessionID).Append(schema.SystemMessage(out.Content))
+	mem.Get(sessionID).Append(schema.AssistantMessage(out.Content, nil))
 	return nil
 }

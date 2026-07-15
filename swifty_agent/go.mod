@@ -7,13 +7,12 @@ require (
 	github.com/cloudwego/eino-examples v0.0.0-20260616021822-52beba708842
 	github.com/cloudwego/eino-ext/components/document/loader/file v0.0.0-20260616080858-ab17b7308bf8
 	github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown v0.0.0-20260616080858-ab17b7308bf8
-	github.com/cloudwego/eino-ext/components/embedding/dashscope v0.0.0-20260616080858-ab17b7308bf8
 	github.com/cloudwego/eino-ext/components/indexer/redis v0.0.0-20260711013131-550170e5a9e0
 	github.com/cloudwego/eino-ext/components/model/claude v0.1.22
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
 	github.com/cloudwego/eino-ext/components/retriever/redis v0.0.0-20260711013131-550170e5a9e0
-	github.com/cloudwego/eino-ext/components/tool/duckduckgo/v2 v2.0.0-20251117090452-bd6375a0b3cf
 	github.com/cloudwego/eino-ext/components/tool/mcp v0.0.8
+	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17
 	github.com/google/uuid v1.6.0
 	github.com/hangtiancheng/swifty.go/swifty_http v0.0.0
 	github.com/mark3labs/mcp-go v0.55.0
@@ -27,8 +26,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.7 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/PuerkitoBio/goquery v1.10.3 // indirect
-	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.56.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
@@ -51,8 +48,6 @@ require (
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17 // indirect
-	github.com/corpix/uarand v0.2.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -85,6 +80,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
+	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect

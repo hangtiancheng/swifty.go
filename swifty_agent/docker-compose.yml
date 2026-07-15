@@ -1,0 +1,53 @@
+# Swifty Agent 基础设施
+# 提供 Redis Stack (RediSearch 向量搜索) + Prometheus + Grafana
+# 对齐 Next.js 项目 docker-compose.yml,便于本地开发与测试
+#
+# 启动: docker compose up -d
+# 停止: docker compose down
+# 清空数据(DEC-1=A 迁移时): docker compose down -v && rm -rf volumes/
+
+services:
+  redis:
+    container_name: swifty-redis
+    image: redis/redis-stack:latest
+    ports:
+      - "6379:6379"
+      - "8001:8001" # RedisInsight UI
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: swifty-prometheus
+    hostname: prometheus
+    ports:
+      - "9090:9090"
+    privileged: true
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: swifty-grafana
+    hostname: grafana
+    ports:
+      - "3000:3000"
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=root
+      - GF_SECURITY_ADMIN_PASSWORD=pass
+    depends_on:
+      - prometheus
+
+networks:
+  default:
+    name: swifty-agent

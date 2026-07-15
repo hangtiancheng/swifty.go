@@ -1,22 +1,76 @@
 // Package embedder provides factory functions for creating text embedding models.
 // The embeddings are used to vectorize documents for storage and retrieval in Redis.
+//
+// Two providers are supported via the OpenAI-compatible /v1/embeddings protocol
+// (both use the eino-ext libs/acl/openai client under the hood):
+//   - "dashscope" (default): Alibaba Bailian DashScope (text-embedding-v4, 2048d)
+//   - "ollama": local Ollama instance (e.g. nomic-embed-text, 768d)
+//
+// This mirrors the Next.js lib/ai/embedder.ts provider switch.
 package embedder
 
 import (
 	"context"
+	"net/http"
+	"strings"
+	"time"
 
-	"github.com/cloudwego/eino-ext/components/embedding/dashscope"
+	"github.com/cloudwego/eino-ext/libs/acl/openai"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 )
 
-// New creates a text embedding model using the configured DashScope-compatible endpoint.
-// The embedding dimensions are taken from the application configuration.
+// Embedder wraps the OpenAI-compatible embedding client. It implements
+// embedding.Embedder so it can be used by Eino indexers and retrievers.
+type Embedder struct {
+	cli *openai.EmbeddingClient
+}
+
+// New creates a text embedding model based on cfg.EmbeddingModel.Provider.
 func New(ctx context.Context, cfg *config.Config) (embedding.Embedder, error) {
-	dims := cfg.EmbeddingModel.Dimensions
-	return dashscope.NewEmbedder(ctx, &dashscope.EmbeddingConfig{
-		Model:      cfg.EmbeddingModel.Model,
-		APIKey:     cfg.EmbeddingModel.APIKey,
-		Dimensions: &dims,
-	})
+	provider := cfg.EmbeddingModel.Provider
+	if provider == "" {
+		provider = "dashscope"
+	}
+
+	var baseURL, apiKey, model string
+	var dims *int
+
+	switch provider {
+	case "ollama":
+		// Ollama exposes an OpenAI-compatible /v1/embeddings endpoint (v0.1.24+).
+		// No API key is required, but the client demands a non-empty string.
+		baseURL = strings.TrimRight(cfg.EmbeddingModel.OllamaBaseURL, "/") + "/v1"
+		apiKey = "ollama"
+		model = cfg.EmbeddingModel.OllamaModel
+		// Ollama dimension is determined by the model; do not send Dimensions.
+		dims = nil
+	default: // dashscope
+		baseURL = cfg.EmbeddingModel.BaseURL
+		apiKey = cfg.EmbeddingModel.APIKey
+		model = cfg.EmbeddingModel.Model
+		d := cfg.EmbeddingModel.Dimensions
+		dims = &d
+	}
+
+	encFmt := openai.EmbeddingEncodingFormatFloat
+	ecfg := &openai.EmbeddingConfig{
+		BaseURL:        baseURL,
+		APIKey:         apiKey,
+		HTTPClient:     &http.Client{Timeout: 60 * time.Second},
+		Model:          model,
+		EncodingFormat: &encFmt,
+		Dimensions:     dims,
+	}
+
+	cli, err := openai.NewEmbeddingClient(ctx, ecfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Embedder{cli: cli}, nil
+}
+
+// EmbedStrings returns the embeddings for the given texts.
+func (e *Embedder) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) ([][]float64, error) {
+	return e.cli.EmbedStrings(ctx, texts, opts...)
 }

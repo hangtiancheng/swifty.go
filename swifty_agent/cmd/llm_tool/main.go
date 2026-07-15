@@ -36,7 +36,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("get mcp tools: %v", err)
 	}
-	toolList = append(toolList, tools.NewGetCurrentTimeTool())
+	timeTool, err := tools.NewGetCurrentTimeTool()
+	if err != nil {
+		log.Fatalf("create get_current_time tool: %v", err)
+	}
+	toolList = append(toolList, timeTool)
 
 	toolInfos := make([]*schema.ToolInfo, 0, len(toolList))
 	for _, t := range toolList {

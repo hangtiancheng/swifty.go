@@ -40,6 +40,16 @@ type Config struct {
 	// MCP_URL is the Server-Sent Events endpoint for the MCP (Model Context Protocol) tool server.
 	MCP_URL string `json:"mcp_url"`
 
+	// PrometheusURL is the base URL of the Prometheus server used by the
+	// query_prometheus_alerts tool (e.g. "http://127.0.0.1:9090"). Empty disables queries.
+	PrometheusURL string `json:"prometheus_url"`
+
+	// LogTopicRegion / LogTopicID configure the log topic context injected into
+	// the chat system prompt. Both must be set to include the line; empty omits
+	// it (mirrors Next.js LOG_TOPIC_REGION / LOG_TOPIC_ID env vars).
+	LogTopicRegion string `json:"log_topic_region"`
+	LogTopicID     string `json:"log_topic_id"`
+
 	// Redis configures the connection to the Redis Stack (RediSearch) vector store.
 	Redis RedisConfig `json:"redis"`
 }
@@ -53,14 +63,27 @@ type ChatModelConfig struct {
 	// MaxTokens caps the response length. Required by the Anthropic provider
 	// (defaults to 4096 when unset); ignored by the OpenAI provider.
 	MaxTokens int `json:"max_tokens"`
+
+	// Thinking enables Anthropic extended thinking (only applies when
+	// model_provider=anthropic). When enabled, budgetTokens = MaxTokens-1,
+	// mirroring the Next.js ANTHROPIC_THINKING config.
+	Thinking bool `json:"thinking"`
 }
 
 // EmbeddingConfig holds embedding model settings including dimension parameters.
 type EmbeddingConfig struct {
+	// Provider selects the embedding backend: "dashscope" (default) or "ollama".
+	Provider string `json:"provider"`
+
+	// DashScope fields (OpenAI-compatible endpoint).
 	APIKey     string `json:"api_key"`
 	BaseURL    string `json:"base_url"`
 	Model      string `json:"model"`
 	Dimensions int    `json:"dimensions"`
+
+	// Ollama fields (OpenAI-compatible /v1/embeddings endpoint).
+	OllamaBaseURL string `json:"ollama_base_url"`
+	OllamaModel   string `json:"ollama_model"`
 }
 
 // RedisConfig holds Redis Stack connection settings.
@@ -102,12 +125,24 @@ func applyDefaults(cfg *Config) {
 		cfg.QuickChatModel.MaxTokens = 4096
 	}
 	if cfg.FileDir == "" {
-		cfg.FileDir = "./docs"
+		cfg.FileDir = "./data/docs"
 	}
 	if cfg.Redis.Addr == "" {
 		cfg.Redis.Addr = "localhost:6379"
 	}
+	if cfg.PrometheusURL == "" {
+		cfg.PrometheusURL = "http://127.0.0.1:9090"
+	}
 	if cfg.EmbeddingModel.Dimensions == 0 {
 		cfg.EmbeddingModel.Dimensions = 2048
+	}
+	if cfg.EmbeddingModel.Provider == "" {
+		cfg.EmbeddingModel.Provider = "dashscope"
+	}
+	if cfg.EmbeddingModel.OllamaBaseURL == "" {
+		cfg.EmbeddingModel.OllamaBaseURL = "http://localhost:11434"
+	}
+	if cfg.EmbeddingModel.OllamaModel == "" {
+		cfg.EmbeddingModel.OllamaModel = "nomic-embed-text"
 	}
 }

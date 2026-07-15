@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -19,19 +20,20 @@ type GetCurrentTimeOutput struct {
 	Seconds      int64  `json:"seconds" jsonschema:"description=Current Unix timestamp in seconds"`
 	Milliseconds int64  `json:"milliseconds" jsonschema:"description=Current Unix timestamp in milliseconds"`
 	Microseconds int64  `json:"microseconds" jsonschema:"description=Current Unix timestamp in microseconds"`
-	Timestamp    string `json:"timestamp" jsonschema:"description=Human-readable timestamp in YYYY-MM-DD HH:MM:SS.microseconds format"`
+	Timestamp    string `json:"timestamp" jsonschema:"description=Human-readable timestamp in YYYY-MM-DD HH:MM:SS.milliseconds format"`
 	Message      string `json:"message" jsonschema:"description=Status message"`
 }
 
 // NewGetCurrentTimeTool creates a tool that returns the current system time
 // in multiple formats (Unix seconds, milliseconds, microseconds, and human-readable).
-func NewGetCurrentTimeTool() tool.InvokableTool {
+// Construction errors are returned to the caller instead of terminating the process.
+func NewGetCurrentTimeTool() (tool.InvokableTool, error) {
 	t, err := utils.InferOptionableTool(
 		"get_current_time",
 		"Get current system time in multiple formats. Returns Unix timestamp in seconds, milliseconds, and microseconds. Use when you need current time for logging, timing operations, or timestamping events.",
 		func(ctx context.Context, input *GetCurrentTimeInput, opts ...tool.Option) (string, error) {
 			now := time.Now()
-			timestamp := now.Format("2006-01-02 15:04:05.000000")
+			timestamp := now.Format("2006-01-02 15:04:05.000")
 			log.Printf("Getting current time: %s", timestamp)
 
 			out := GetCurrentTimeOutput{
@@ -51,7 +53,7 @@ func NewGetCurrentTimeTool() tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("infer get_current_time tool: %w", err)
 	}
-	return t
+	return t, nil
 }

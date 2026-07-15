@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -17,8 +18,8 @@ import (
 
 // chatRequest is the JSON body for chat and chat_stream endpoints.
 type chatRequest struct {
-	ID       string `json:"Id"`
-	Question string `json:"Question"`
+	ID       string `json:"id"`
+	Question string `json:"question"`
 }
 
 // handleChat processes a synchronous chat request using the RAG-enhanced agent pipeline.
@@ -27,6 +28,10 @@ func (a *App) handleChat(ctx *swifty_http.Context, next func()) {
 	var req chatRequest
 	if err := ctx.BindJSON(&req); err != nil {
 		ctx.Throw(http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.ID == "" || req.Question == "" {
+		ctx.Throw(http.StatusBadRequest, "missing id or question")
 		return
 	}
 
@@ -50,7 +55,7 @@ func (a *App) handleChat(ctx *swifty_http.Context, next func()) {
 	}
 
 	mem.Get(req.ID).Append(schema.UserMessage(req.Question))
-	mem.Get(req.ID).Append(schema.SystemMessage(out.Content))
+	mem.Get(req.ID).Append(schema.AssistantMessage(out.Content, nil))
 
 	ctx.Status = http.StatusOK
 	ctx.JSON(swifty_http.H{
@@ -62,17 +67,29 @@ func (a *App) handleChat(ctx *swifty_http.Context, next func()) {
 // handleChatStream processes a streaming chat request using Server-Sent Events.
 // It creates an SSE connection, streams the agent's response chunks, and stores
 // the complete response in conversation memory.
+//
+// SSE framing is aligned with the Next.js /api/chat_stream route: each event is
+// "event: <name>\ndata: <payload>\n\n" with no separate id line and no trailing
+// "[DONE]" frame. The connected payload is JSON-encoded via json.Marshal (not
+// string concatenation) so special characters in the session id are safe.
 func (a *App) handleChatStream(ctx *swifty_http.Context, next func()) {
 	var req chatRequest
 	if err := ctx.BindJSON(&req); err != nil {
 		ctx.Throw(http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.ID == "" || req.Question == "" {
+		ctx.Throw(http.StatusBadRequest, "missing id or question")
+		return
+	}
 
 	appCtx := context.WithValue(ctx.Request.Context(), "client_id", req.ID)
 	sse := ctx.SSE()
-	sse.ID(req.ID)
-	sse.Event("connected", `{"status":"connected","client_id":"`+req.ID+`"}`)
+	connectedPayload, _ := json.Marshal(map[string]string{
+		"status":    "connected",
+		"client_id": req.ID,
+	})
+	sse.Event("connected", string(connectedPayload))
 
 	userMsg := &chat_pipeline.UserMessage{
 		ID:      req.ID,
@@ -83,14 +100,12 @@ func (a *App) handleChatStream(ctx *swifty_http.Context, next func()) {
 	runner, err := chat_pipeline.BuildChatAgent(appCtx, a.cfg)
 	if err != nil {
 		sse.Event("error", err.Error())
-		sse.Done()
 		return
 	}
 
 	sr, err := runner.Stream(appCtx, userMsg, compose.WithCallbacks(log_callback.NewHandler(nil)))
 	if err != nil {
 		sse.Event("error", err.Error())
-		sse.Done()
 		return
 	}
 	defer sr.Close()
@@ -100,7 +115,7 @@ func (a *App) handleChatStream(ctx *swifty_http.Context, next func()) {
 		resp := fullResponse.String()
 		if resp != "" {
 			mem.Get(req.ID).Append(schema.UserMessage(req.Question))
-			mem.Get(req.ID).Append(schema.SystemMessage(resp))
+			mem.Get(req.ID).Append(schema.AssistantMessage(resp, nil))
 		}
 	}()
 
@@ -108,12 +123,10 @@ func (a *App) handleChatStream(ctx *swifty_http.Context, next func()) {
 		chunk, err := sr.Recv()
 		if errors.Is(err, io.EOF) {
 			sse.Event("done", "Stream completed")
-			sse.Done()
 			return
 		}
 		if err != nil {
 			sse.Event("error", err.Error())
-			sse.Done()
 			return
 		}
 		fullResponse.WriteString(chunk.Content)

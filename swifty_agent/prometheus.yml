@@ -1,0 +1,13 @@
+# Prometheus 抓取配置
+# 抓取 Prometheus 自身 + Redis Stack (通过 redis_stack_host)
+# 注意: redis/redis-stack 镜像不内置 exporter;如需 Redis 指标可另起
+# redis_exporter 容器并加入 targets。当前仅抓取 Prometheus 自身用于验证。
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["swifty-redis:6379"]

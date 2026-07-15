@@ -51,7 +51,9 @@ func newContext(w http.ResponseWriter, req *http.Request) *Context {
 func (ctx *Context) Throw(status int, msg string) {
 	ctx.Status = status
 	ctx.statusSet = true
-	ctx.Body = H{"message": msg}
+	// Include "data": nil so error responses match the unified {message, data}
+	// shape returned by Next.js and by the success-path ctx.JSON calls.
+	ctx.Body = H{"message": msg, "data": nil}
 }
 
 func (ctx *Context) Get(header string) string {

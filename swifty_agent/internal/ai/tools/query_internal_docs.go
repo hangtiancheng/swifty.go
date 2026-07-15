@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -16,28 +16,67 @@ type QueryInternalDocsInput struct {
 	Query string `json:"query" jsonschema:"description=The query string to search in internal documentation for relevant information and processing steps"`
 }
 
+// queryInternalDocResult is the per-document result returned to the LLM.
+// Aligned with the Next.js retrieveDocs output shape (id/content/metadata).
+type queryInternalDocResult struct {
+	ID       string         `json:"id"`
+	Content  string         `json:"content"`
+	Metadata map[string]any `json:"metadata"`
+}
+
 // NewQueryInternalDocsTool creates a tool that searches the internal knowledge base
 // using RAG (Retrieval-Augmented Generation) to find relevant documents and
 // extract processing steps from the company's documentation.
-func NewQueryInternalDocsTool(cfg *config.Config) tool.InvokableTool {
+// Construction errors are returned to the caller instead of terminating the process.
+func NewQueryInternalDocsTool(cfg *config.Config) (tool.InvokableTool, error) {
 	t, err := utils.InferOptionableTool(
 		"query_internal_docs",
 		"Search internal documentation and knowledge base for relevant information. Performs RAG to find similar documents and extract processing steps. Useful for understanding internal procedures, best practices, or step-by-step guides.",
 		func(ctx context.Context, input *QueryInternalDocsInput, opts ...tool.Option) (string, error) {
 			rr, err := retriever.NewRedisRetriever(ctx, cfg)
 			if err != nil {
-				log.Fatal(err)
+				return "", fmt.Errorf("create retriever: %w", err)
 			}
 			resp, err := rr.Retrieve(ctx, input.Query)
 			if err != nil {
-				log.Fatal(err)
+				return "", fmt.Errorf("retrieve docs: %w", err)
 			}
-			b, _ := json.Marshal(resp)
+
+			// Map Eino documents to the {id, content, metadata} shape expected by
+			// the Next.js retrieveDocs tool. The stored metadata is a JSON string
+			// (see indexer.documentToHashes); parse it into a map for the LLM.
+			results := make([]queryInternalDocResult, 0, len(resp))
+			for _, d := range resp {
+				results = append(results, queryInternalDocResult{
+					ID:       d.ID,
+					Content:  d.Content,
+					Metadata: parseMetadataField(d.MetaData["metadata"]),
+				})
+			}
+
+			b, err := json.Marshal(results)
+			if err != nil {
+				return "", fmt.Errorf("marshal docs: %w", err)
+			}
 			return string(b), nil
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("infer query_internal_docs tool: %w", err)
 	}
-	return t
+	return t, nil
+}
+
+// parseMetadataField converts the stored metadata value (a JSON string produced
+// by the indexer) into a map. Non-string or unparseable values yield an empty map.
+func parseMetadataField(v any) map[string]any {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return map[string]any{}
+	}
+	return m
 }

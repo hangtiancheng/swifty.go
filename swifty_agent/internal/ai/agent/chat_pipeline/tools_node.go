@@ -13,7 +13,8 @@ import (
 // to answer questions. The agent iteratively reasons about the problem, selects tools,
 // observes results, and generates a final response.
 func newReactAgentLambda(ctx context.Context, cfg *config.Config) (*compose.Lambda, error) {
-	config := &react.AgentConfig{
+	// Use agentCfg (not config) to avoid shadowing the imported config package.
+	agentCfg := &react.AgentConfig{
 		MaxStep:            25,
 		ToolReturnDirectly: map[string]struct{}{},
 	}
@@ -22,22 +23,42 @@ func newReactAgentLambda(ctx context.Context, cfg *config.Config) (*compose.Lamb
 	if err != nil {
 		return nil, err
 	}
-	config.ToolCallingModel = chatModel
+	agentCfg.ToolCallingModel = chatModel
 
-	// Register MCP tools (log querying).
+	// Register MCP tools (log querying). GetLogMcpTool degrades to an empty set
+	// when the MCP server is unreachable, so it never blocks agent construction.
 	mcpTools, err := tools.GetLogMcpTool(ctx, cfg.MCP_URL)
 	if err != nil {
 		return nil, err
 	}
-	config.ToolsConfig.Tools = mcpTools
+	agentCfg.ToolsConfig.Tools = mcpTools
 
 	// Register additional tools.
-	config.ToolsConfig.Tools = append(config.ToolsConfig.Tools, tools.NewPrometheusAlertsQueryTool())
-	config.ToolsConfig.Tools = append(config.ToolsConfig.Tools, tools.NewMysqlCrudTool())
-	config.ToolsConfig.Tools = append(config.ToolsConfig.Tools, tools.NewGetCurrentTimeTool())
-	config.ToolsConfig.Tools = append(config.ToolsConfig.Tools, tools.NewQueryInternalDocsTool(cfg))
+	promTool, err := tools.NewPrometheusAlertsQueryTool(cfg.PrometheusURL)
+	if err != nil {
+		return nil, err
+	}
+	agentCfg.ToolsConfig.Tools = append(agentCfg.ToolsConfig.Tools, promTool)
 
-	agent, err := react.NewAgent(ctx, config)
+	mysqlTool, err := tools.NewMysqlCrudTool()
+	if err != nil {
+		return nil, err
+	}
+	agentCfg.ToolsConfig.Tools = append(agentCfg.ToolsConfig.Tools, mysqlTool)
+
+	timeTool, err := tools.NewGetCurrentTimeTool()
+	if err != nil {
+		return nil, err
+	}
+	agentCfg.ToolsConfig.Tools = append(agentCfg.ToolsConfig.Tools, timeTool)
+
+	docsTool, err := tools.NewQueryInternalDocsTool(cfg)
+	if err != nil {
+		return nil, err
+	}
+	agentCfg.ToolsConfig.Tools = append(agentCfg.ToolsConfig.Tools, docsTool)
+
+	agent, err := react.NewAgent(ctx, agentCfg)
 	if err != nil {
 		return nil, err
 	}

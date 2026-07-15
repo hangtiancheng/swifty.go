@@ -4,21 +4,31 @@
   "think_chat_model": {
     "api_key": "your-api-key",
     "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-    "model": "deepseek-v3-2-251201"
+    "model": "deepseek-v3-2-251201",
+    "max_tokens": 4096,
+    "thinking": false
   },
   "quick_chat_model": {
     "api_key": "your-api-key",
     "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-    "model": "deepseek-v3-2-251201"
+    "model": "deepseek-v3-2-251201",
+    "max_tokens": 4096,
+    "thinking": false
   },
   "embedding_model": {
+    "provider": "dashscope",
     "api_key": "your-api-key",
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "model": "text-embedding-v4",
-    "dimensions": 2048
+    "dimensions": 2048,
+    "ollama_base_url": "http://localhost:11434",
+    "ollama_model": "nomic-embed-text"
   },
-  "file_dir": "./docs",
+  "file_dir": "./data/docs",
   "mcp_url": "http://localhost:3000/sse",
+  "prometheus_url": "http://127.0.0.1:9090",
+  "log_topic_region": "",
+  "log_topic_id": "",
   "redis": {
     "addr": "localhost:6379",
     "password": "",

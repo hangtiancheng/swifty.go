@@ -4,7 +4,13 @@
 package models
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/cloudwego/eino-ext/components/model/claude"
 	"github.com/cloudwego/eino-ext/components/model/openai"
@@ -27,6 +33,12 @@ func NewQuickChatModel(ctx context.Context, cfg *config.Config) (model.ToolCalli
 // newChatModel builds a chat model from the given model settings, selecting the
 // underlying implementation based on cfg.ModelProvider. It defaults to the
 // OpenAI-compatible implementation unless "anthropic" is explicitly configured.
+//
+// For Anthropic, extended thinking is enabled when mc.Thinking is set, with
+// budgetTokens = mc.MaxTokens - 1 (mirrors Next.js ANTHROPIC_THINKING). A
+// signature-patching HTTP transport is injected to backfill the missing
+// `signature` field on thinking blocks returned by non-official Anthropic
+// gateways, mirroring the Next.js createAnthropicFetch workaround.
 func newChatModel(ctx context.Context, cfg *config.Config, mc config.ChatModelConfig) (model.ToolCallingChatModel, error) {
 	if cfg.ModelProvider == config.ModelProviderAnthropic {
 		// Claude's BaseURL is optional; nil falls back to the default Anthropic endpoint.
@@ -34,16 +46,104 @@ func newChatModel(ctx context.Context, cfg *config.Config, mc config.ChatModelCo
 		if mc.BaseURL != "" {
 			baseURL = &mc.BaseURL
 		}
-		return claude.NewChatModel(ctx, &claude.Config{
+		claudeCfg := &claude.Config{
 			APIKey:    mc.APIKey,
 			BaseURL:   baseURL,
 			Model:     mc.Model,
 			MaxTokens: mc.MaxTokens,
-		})
+			HTTPClient: &http.Client{
+				Transport: &signaturePatchingTransport{base: http.DefaultTransport},
+			},
+		}
+		if mc.Thinking && mc.MaxTokens > 1 {
+			claudeCfg.Thinking = &claude.Thinking{
+				Enable:       true,
+				BudgetTokens: mc.MaxTokens - 1,
+			}
+		}
+		return claude.NewChatModel(ctx, claudeCfg)
 	}
 	return openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		Model:   mc.Model,
 		APIKey:  mc.APIKey,
 		BaseURL: mc.BaseURL,
 	})
+}
+
+// signaturePatchingTransport wraps an http.RoundTripper to backfill the
+// `signature` field on thinking content blocks returned by non-official
+// Anthropic-compatible gateways. The official Anthropic API always includes
+// `signature` on non-streaming thinking blocks; some proxies omit it, which
+// makes the Anthropic SDK reject the response with "Invalid JSON response".
+// Streaming (SSE) responses are passed through unchanged.
+//
+// Mirrors the Next.js createAnthropicFetch workaround in lib/ai/models.ts.
+type signaturePatchingTransport struct {
+	base http.RoundTripper
+}
+
+func (t *signaturePatchingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil || resp == nil {
+		return resp, err
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		return resp, nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return resp, err
+	}
+
+	patched, changed := patchThinkingSignature(body)
+	if !changed {
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		return resp, nil
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(patched))
+	resp.Header.Set("Content-Length", strconv.Itoa(len(patched)))
+	resp.ContentLength = int64(len(patched))
+	return resp, nil
+}
+
+// patchThinkingSignature parses an Anthropic message response and backfills
+// `signature: ""` on any thinking content block missing it. Returns the
+// (possibly modified) body bytes and whether a change was made.
+func patchThinkingSignature(body []byte) ([]byte, bool) {
+	var obj map[string]any
+	if err := json.Unmarshal(body, &obj); err != nil {
+		return body, false
+	}
+	if obj["type"] != "message" {
+		return body, false
+	}
+	content, ok := obj["content"].([]any)
+	if !ok {
+		return body, false
+	}
+	changed := false
+	for _, c := range content {
+		block, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		if block["type"] != "thinking" {
+			continue
+		}
+		if _, has := block["signature"]; !has {
+			block["signature"] = ""
+			changed = true
+		}
+	}
+	if !changed {
+		return body, false
+	}
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return body, false
+	}
+	return out, true
 }

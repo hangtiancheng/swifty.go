@@ -3,7 +3,9 @@ package consts
 
 const (
 	// RedisKeyPrefix is the key prefix for document hashes in Redis.
-	RedisKeyPrefix = "doc:"
+	// Aligned with the Next.js keyPrefix "biz:" so the two backends share the
+	// same keyspace when needed (DEC-1=A: Go takes over and flushes/rebuilds).
+	RedisKeyPrefix = "biz:"
 
 	// RedisIndexName is the RediSearch index name used for vector search.
 	RedisIndexName = "idx:biz"
@@ -12,9 +14,16 @@ const (
 	RedisContentField = "content"
 
 	// RedisVectorField stores the content embedding (indexed as VECTOR).
-	// It must match the eino redis default field name "vector_content".
-	RedisVectorField = "vector_content"
+	// Aligned with the Next.js vector field name "vector" (the Eino redis
+	// indexer default is "vector_content"; we override it via DocumentToHashes
+	// so both backends use the same field).
+	RedisVectorField = "vector"
 
 	// RedisSourceField stores the document source path (indexed as TAG, used for dedup).
 	RedisSourceField = "_source"
+
+	// MaxContentLength caps the stored content length (in bytes) to match the
+	// Next.js MAX_CONTENT_LENGTH = 8192. Redis TEXT has no built-in limit, so we
+	// truncate here before storing/embedding.
+	MaxContentLength = 8192
 )

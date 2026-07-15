@@ -1,12 +1,9 @@
 package tools
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"os"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -22,44 +19,57 @@ type MysqlCrudInput struct {
 }
 
 // NewMysqlCrudTool creates a tool that executes SQL queries against a MySQL database.
-// For safety, it prompts for user confirmation before executing any SQL statement.
-// Query results are returned in JSON format.
-func NewMysqlCrudTool() tool.InvokableTool {
+// The web version removes the interactive stdin confirmation present in the source
+// project and executes the SQL directly. Query results are returned in JSON format.
+// Construction errors (rare; only JSON-schema inference) are returned to the caller
+// instead of terminating the process via log.Fatal.
+func NewMysqlCrudTool() (tool.InvokableTool, error) {
 	t, err := utils.InferOptionableTool(
 		"mysql_crud",
 		"Execute SQL queries against a MySQL database and return results in JSON format. Supports query, insert, update, and delete operations. Results are formatted as JSON for easy parsing.",
 		func(ctx context.Context, input *MysqlCrudInput, opts ...tool.Option) (string, error) {
-			db, err := gorm.Open(mysql.Open(input.DSN), &gorm.Config{})
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			// Prompt for user confirmation before executing SQL.
-			scanner := bufio.NewScanner(os.Stdin)
-			fmt.Print("\nConfirm SQL execution (y/n): ", input.SQL)
-			scanner.Scan()
-			fmt.Println()
-			if scanner.Text() != "y" {
-				return "User cancelled SQL execution", nil
-			}
-
-			if err := db.Exec(input.SQL).Error; err != nil {
-				log.Fatal(err)
-			}
-
-			if input.OperateType == "query" {
-				var results []interface{}
-				if err := db.Raw(input.SQL).Scan(&results).Error; err != nil {
-					log.Fatal(err)
-				}
-				b, err := json.Marshal(results)
-				return string(b), err
-			}
-			return "", nil
+			return execMysqlSql(input)
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("infer mysql_crud tool: %w", err)
 	}
-	return t
+	return t, nil
+}
+
+// execMysqlSql opens a GORM connection and executes the SQL exactly once based on
+// operate_type: "query" returns rows as JSON; insert/update/delete return a success
+// message. The previous implementation ran db.Exec then db.Raw for queries (double
+// execution) and blocked on stdin for confirmation — both are fixed here.
+func execMysqlSql(input *MysqlCrudInput) (string, error) {
+	db, err := gorm.Open(mysql.Open(input.DSN), &gorm.Config{})
+	if err != nil {
+		return "", fmt.Errorf("open mysql: %w", err)
+	}
+
+	if input.OperateType == "query" {
+		var results []map[string]any
+		if err := db.Raw(input.SQL).Scan(&results).Error; err != nil {
+			return "", fmt.Errorf("query mysql: %w", err)
+		}
+		b, err := json.Marshal(results)
+		if err != nil {
+			return "", fmt.Errorf("marshal query result: %w", err)
+		}
+		return string(b), nil
+	}
+
+	// insert / update / delete
+	if err := db.Exec(input.SQL).Error; err != nil {
+		return "", fmt.Errorf("exec mysql: %w", err)
+	}
+	resp := map[string]any{
+		"success": true,
+		"message": fmt.Sprintf("Executed %s sql", input.OperateType),
+	}
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return "", fmt.Errorf("marshal exec result: %w", err)
+	}
+	return string(b), nil
 }
