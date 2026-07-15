@@ -1,10 +1,10 @@
-# Swifty Agent Infrastructure
-# Provides Redis Stack (RediSearch vector search) + Prometheus + Grafana
-# Aligned with the Next.js project docker-compose.yml for local development and testing
+# Swifty Agent 基础设施
+# 提供 Redis Stack (RediSearch 向量搜索) + Prometheus + Grafana
+# 对齐 Next.js 项目 docker-compose.yml,便于本地开发与测试
 #
-# Start:  docker compose up -d
-# Stop:   docker compose down
-# Purge data (DEC-1=A migration): docker compose down -v && rm -rf volumes/
+# 启动: docker compose up -d
+# 停止: docker compose down
+# 清空数据(DEC-1=A 迁移时): docker compose down -v && rm -rf volumes/
 
 services:
   redis:

@@ -1,97 +1,100 @@
 # Swifty Agent
 
-基于 Go 的 AI 智能运维助手,从 Next.js 项目 (`swifty-cli/apps/swifty-agent`) 迁移而来。提供 RAG 增强对话、知识库索引、告警自动分析能力,使用 [swifty_http](../swifty_http) 框架与 [Eino](https://www.cloudwego.io/zh/docs/eino/) AI 编排。
+*Author: Swifty*
 
-## 功能
+A Go-based AI-powered intelligent operations assistant, migrated from the Next.js project (`swifty-cli/apps/swifty-agent`). Provides RAG-enhanced conversations, knowledge base indexing, and automated alert analysis capabilities, built with the [swifty_http](../swifty_http) framework and [Eino](https://www.cloudwego.io/docs/eino/) AI orchestration.
 
-- **/api/chat** — 同步 RAG 对话(ReAct agent + 工具调用)
-- **/api/chat_stream** — SSE 流式对话
-- **/api/upload** — 上传文档到知识库(Markdown 按标题切分 + 向量索引)
-- **/api/ai_ops** — Plan-Execute-Replan 告警分析
+## Features
 
-## 技术栈
+- **/api/chat** — Synchronous RAG conversation (ReAct agent + tool calling)
+- **/api/chat_stream** — SSE streaming conversation
+- **/api/upload** — Upload documents to the knowledge base (Markdown split by headings + vector indexing)
+- **/api/ai_ops** — Plan-Execute-Replan alert analysis
 
-- Go 1.25+ / [swifty_http](../swifty_http) HTTP 框架
-- [Eino](https://github.com/cloudwego/eino) AI pipeline 编排
-- Redis Stack (RediSearch 向量搜索)
-- OpenAI / Anthropic Claude / DashScope / Ollama 多 provider 支持
+## Tech Stack
 
-## 快速开始
+- Go 1.25+ / [swifty_http](../swifty_http) HTTP framework
+- [Eino](https://github.com/cloudwego/eino) AI pipeline orchestration
+- Redis Stack (RediSearch vector search)
+- OpenAI / Anthropic Claude / DashScope / Ollama multi-provider support
 
-### 1. 环境准备
+## Getting Started
+
+### 1. Prerequisites
 
 ```bash
-# 启动基础设施(Redis/Prometheus/Grafana)
+# Start infrastructure (Redis/Prometheus/Grafana)
 make docker-up
 
-# 安装热重载工具(可选)
+# Install hot-reload tool (optional)
 go install github.com/air-verse/air@latest
 ```
 
-### 2. 配置
+### 2. Configuration
 
-编辑 [config.json](./config.json),至少填写:
-- `think_chat_model.api_key` / `quick_chat_model.api_key` — LLM API Key
-- `embedding_model.api_key` — DashScope API Key
+Edit [config.json](./config.json) and provide at minimum:
 
-配置字段对照见 [.env.example](./.env.example)。
+- `think_chat_model.api_key` / `quick_chat_model.api_key` — LLM API key
+- `embedding_model.api_key` — DashScope API key
 
-### 3. 运行
+See [.env.example](./.env.example) for a configuration field reference.
+
+### 3. Run
 
 ```bash
-# 热重载开发
-make dev          # 或 air
+# Hot-reload development
+make dev          # or air
 
-# 普通运行
-make run          # 或 go run .
+# Standard run
+make run          # or go run .
 
-# 编译
-make build        # 产出 bin/swifty-agent
+# Build
+make build        # outputs bin/swifty-agent
 ```
 
-服务监听 `:6872`。
+The server listens on `:6872`.
 
-### 4. 索引知识库(可选)
+### 4. Index Knowledge Base (Optional)
 
-将 Markdown 文档放入 `./data/docs/`,批量索引:
+Place Markdown documents in `./data/docs/` and batch-index them:
 
 ```bash
 go run ./cmd/knowledge
 ```
 
-## 配置说明
+## Configuration Reference
 
-| config.json 字段 | 说明 | 默认值 |
-|---|---|---|
-| `server_addr` | 监听地址 | `:6872` |
-| `model_provider` | LLM provider: `openai`/`anthropic` | `openai` |
-| `think_chat_model` | 规划/replan 模型(支持 `thinking` 字段开启 Anthropic 扩展思考) | — |
-| `quick_chat_model` | 聊天/工具执行模型 | — |
-| `embedding_model.provider` | embedding 后端: `dashscope`/`ollama` | `dashscope` |
-| `embedding_model.dimensions` | 向量维度(切换 provider 后需重建索引,服务会自动检测) | `2048` |
-| `redis` | Redis Stack 连接 | `localhost:6379` |
-| `mcp_url` | MCP 日志工具 SSE 端点(不可用时自动降级) | `http://localhost:3000/sse` |
-| `prometheus_url` | Prometheus 地址(空则禁用告警查询工具) | `http://127.0.0.1:9090` |
-| `log_topic_region` / `log_topic_id` | 注入 system prompt 的日志主题(两者都非空才生效) | 空 |
-| `file_dir` | 知识库文档目录 | `./data/docs` |
+| config.json Field                   | Description                                                                                  | Default                     |
+| ----------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------- |
+| `server_addr`                       | Listen address                                                                               | `:6872`                     |
+| `model_provider`                    | LLM provider: `openai` / `anthropic`                                                         | `openai`                    |
+| `think_chat_model`                  | Planning/replan model (supports `thinking` field to enable Anthropic extended thinking)      | —                           |
+| `quick_chat_model`                  | Chat/tool execution model                                                                    | —                           |
+| `embedding_model.provider`          | Embedding backend: `dashscope` / `ollama`                                                    | `dashscope`                 |
+| `embedding_model.dimensions`        | Vector dimensions (index must be rebuilt after switching providers; auto-detected by server) | `2048`                      |
+| `redis`                             | Redis Stack connection                                                                       | `localhost:6379`            |
+| `mcp_url`                           | MCP log tool SSE endpoint (gracefully degrades when unavailable)                             | `http://localhost:3000/sse` |
+| `prometheus_url`                    | Prometheus URL (leave empty to disable the alert query tool)                                 | `http://127.0.0.1:9090`     |
+| `log_topic_region` / `log_topic_id` | Log topic injected into the system prompt (takes effect only when both fields are non-empty) | Empty                       |
+| `file_dir`                          | Knowledge base document directory                                                            | `./data/docs`               |
 
 ## API
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/chat` | `{"id","question"}` → `{"message","data":{"answer"}}` |
-| POST | `/api/chat_stream` | SSE: `connected`/`message`/`done`/`error` |
-| POST | `/api/upload` | multipart `file` → `{"message","data":{"fileName,filePath,fileSize}}` |
-| POST | `/api/ai_ops` | → `{"message","data":{"result","detail"}}` |
+| Method | Path               | Description                                                            |
+| ------ | ------------------ | ---------------------------------------------------------------------- |
+| POST   | `/api/chat`        | `{"id","question"}` → `{"message","data":{"answer"}}`                  |
+| POST   | `/api/chat_stream` | SSE: `connected` / `message` / `done` / `error`                        |
+| POST   | `/api/upload`      | multipart `file` → `{"message","data":{"fileName,filePath,fileSize"}}` |
+| POST   | `/api/ai_ops`      | → `{"message","data":{"result","detail"}}`                             |
 
-## CLI 工具
+## CLI Tools
 
 ```bash
-go run ./cmd/chat        # 交互测试 chat pipeline
-go run ./cmd/knowledge   # 批量索引 ./data/docs
-go run ./cmd/recall      # 测试向量检索
-go run ./cmd/ai_ops      # 独立运行告警分析
-go run ./cmd/llm_tool    # 测试工具绑定
+go run ./cmd/chat        # Interactive testing of the chat pipeline
+go run ./cmd/knowledge   # Batch-index ./data/docs
+go run ./cmd/recall      # Test vector retrieval
+go run ./cmd/ai_ops      # Run alert analysis standalone
+go run ./cmd/llm_tool    # Test tool binding
 ```
 
 ## Docker
@@ -101,33 +104,33 @@ make docker-build
 docker run -p 6872:6872 -v $(pwd)/config.json:/app/config.json swifty-agent
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 swifty_agent/
-├── main.go                      # 入口
-├── config.json                  # 配置
+├── main.go                      # Entry point
+├── config.json                  # Configuration
 ├── internal/
-│   ├── app/                     # HTTP handler (chat/upload/ai_ops)
-│   ├── config/                  # 配置加载
-│   ├── consts/                  # 常量(Redis key/field)
+│   ├── app/                     # HTTP handlers (chat/upload/ai_ops)
+│   ├── config/                  # Configuration loading
+│   ├── consts/                  # Constants (Redis keys/fields)
 │   ├── ai/
-│   │   ├── agent/               # pipeline (chat/knowledge_index/plan_execute_replan)
-│   │   ├── tools/               # 工具 (mysql/prometheus/mcp/docs/time)
-│   │   ├── models/              # LLM 模型工厂(含 Anthropic signature 修补)
-│   │   ├── embedder/            # embedding(dashscope/ollama)
-│   │   ├── indexer/             # Redis 向量索引器
-│   │   ├── retriever/           # Redis 向量检索器
-│   │   └── loader/              # 文档加载
+│   │   ├── agent/               # Pipelines (chat/knowledge_index/plan_execute_replan)
+│   │   ├── tools/               # Tools (mysql/prometheus/mcp/docs/time)
+│   │   ├── models/              # LLM model factory (incl. Anthropic signature patching)
+│   │   ├── embedder/            # Embedding (dashscope/ollama)
+│   │   ├── indexer/             # Redis vector indexer
+│   │   ├── retriever/           # Redis vector retriever
+│   │   └── loader/              # Document loader
 │   └── utility/                 # redis/mem/log_callback
-├── cmd/                         # CLI 工具
-├── fe/                          # 前端(独立)
+├── cmd/                         # CLI tools
+├── fe/                          # Frontend (standalone)
 ├── docker-compose.yml           # Redis/Prometheus/Grafana
-├── Dockerfile                   # 容器构建
-├── Makefile                     # 构建入口
-└── .air.toml                    # 热重载配置
+├── Dockerfile                   # Container build
+├── Makefile                     # Build entry point
+└── .air.toml                    # Hot-reload configuration
 ```
 
-## 迁移说明
+## Migration Notes
 
-本项目从 Next.js 迁移,对齐情况见 [review.md](./review.md),对齐任务跟踪见 [checklist.md](./checklist.md)。
+This project was migrated from Next.js. See [review.md](./review.md) for alignment details and [checklist.md](./checklist.md) for the alignment task tracker.

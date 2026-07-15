@@ -1,36 +1,37 @@
-# Swifty Agent 多阶段构建
-# 构建: docker build -t swifty-agent .
-# 运行: docker run -p 6872:6872 -v $(pwd)/config.json:/app/config.json swifty-agent
+# Swifty Agent multi-stage build
+# Build: docker build -t swifty-agent .
+# Run:   docker run -p 6872:6872 -v $(pwd)/config.json:/app/config.json swifty-agent
 
-# ---- 构建阶段 ----
+# ---- Build stage ----
 FROM golang:1.25-alpine AS builder
 
-# 安装 git(go mod 需要)和 ca-certificates
+# Install git (required by go mod) and ca-certificates
 RUN apk add --no-cache git ca-certificates
 
 WORKDIR /app
 
-# 先拷贝 go.mod/go.sum 利用缓存
+# Copy go.mod/go.sum first to leverage Docker layer caching
 COPY go.mod go.sum ./
 RUN go mod download
 
-# 拷贝源码
+# Copy source code
 COPY . .
 
-# 静态编译(go work 在容器内需单独处理;此处假定 swifty_agent 模块可独立构建)
+# Static compilation (go work requires separate handling inside the container;
+# this assumes the swifty_agent module can be built independently)
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/swifty-agent .
 
-# ---- 运行阶段 ----
+# ---- Runtime stage ----
 FROM alpine:latest
 
 RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 
-# 拷贝二进制
+# Copy binary from builder
 COPY --from=builder /out/swifty-agent /app/swifty-agent
 
-# 默认配置(可被 volume 覆盖)
+# Default configuration (can be overridden via volume mount)
 COPY config.json /app/config.json
 
 EXPOSE 6872

@@ -323,11 +323,6 @@
 - [ ] `internal/utility/log_callback/log_callback.go` 改用 slog
 - ref: review 七
 
-### I-7 对话记忆持久化(可选)
-
-- [ ] 评估是否需 Redis 持久化(Next.js 也未做,可降级)
-- ref: review 七
-
 ### I-8 Redis 重连策略
 
 - [x] `internal/utility/redis/redis.go:18-23` `redis.Options` 增 `MaxRetries`/`MinRetryBackoff`/`MaxRetryBackoff`

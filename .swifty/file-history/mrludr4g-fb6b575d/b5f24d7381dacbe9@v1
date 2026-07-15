@@ -1,5 +1,5 @@
 # Swifty Agent Makefile
-# Unified build / run / test entry points
+# 统一构建/运行/测试入口
 
 GO ?= go
 APP := swifty-agent
@@ -9,19 +9,19 @@ PKG := ./...
 
 all: build
 
-# Compile binary to bin/
+# 编译二进制到 bin/
 build:
 	$(GO) build -o bin/$(APP) .
 
-# Run directly
+# 直接运行
 run:
 	$(GO) run .
 
-# Hot-reload development with air
+# air 热重载开发
 dev:
 	air
 
-# Run tests
+# 运行测试
 test:
 	$(GO) test $(PKG) -race -cover
 
@@ -33,36 +33,36 @@ vet:
 tidy:
 	$(GO) mod tidy
 
-# Format code
+# 格式化
 fmt:
 	$(GO) fmt $(PKG)
 
-# Clean build artifacts
+# 清理构建产物
 clean:
 	rm -rf bin/ tmp/
 
-# Start infrastructure (Redis/Prometheus/Grafana)
+# 启动基础设施(Redis/Prometheus/Grafana)
 docker-up:
 	docker compose up -d
 
-# Stop infrastructure
+# 停止基础设施
 docker-down:
 	docker compose down
 
-# Build Docker image
+# 构建镜像
 docker-build:
 	docker build -t $(APP) .
 
 help:
 	@echo "Swifty Agent Makefile targets:"
-	@echo "  make build        Compile to bin/$(APP)"
+	@echo "  make build        编译到 bin/$(APP)"
 	@echo "  make run          go run ."
-	@echo "  make dev          Hot-reload with air"
-	@echo "  make test         Run tests"
+	@echo "  make dev          air 热重载"
+	@echo "  make test         运行测试"
 	@echo "  make vet          go vet"
 	@echo "  make tidy         go mod tidy"
 	@echo "  make fmt          go fmt"
-	@echo "  make clean        Clean bin/ tmp/"
-	@echo "  make docker-up    Start Redis/Prometheus/Grafana"
-	@echo "  make docker-down  Stop infrastructure"
-	@echo "  make docker-build Build Docker image"
+	@echo "  make clean        清理 bin/ tmp/"
+	@echo "  make docker-up    启动 Redis/Prometheus/Grafana"
+	@echo "  make docker-down  停止基础设施"
+	@echo "  make docker-build 构建镜像"

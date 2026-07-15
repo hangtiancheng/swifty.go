@@ -1,43 +1,44 @@
-# air — 开发热重载配置 (swifty_agent)
-# 安装: go install github.com/air-verse/air@latest
-# 启动: 在 swifty_agent/ 目录执行 air
+# air — Development hot-reload configuration (swifty_agent)
+# Install: go install github.com/air-verse/air@latest
+# Start:   run air in the swifty_agent/ directory
 #
-# 监听 .go 文件变化,自动 go build 并重启服务。前端目录 (fe/)、文档 (docs/)
-# 和构建产物 (tmp/) 被排除,避免无关触发。config.json 改动不会触发重启
-# (运行时已加载),如改配置请手动重启。
+# Watches .go file changes, automatically runs go build and restarts the server.
+# The frontend directory (fe/), documentation (docs/), and build artifacts (tmp/)
+# are excluded to avoid unnecessary triggers. Changes to config.json do not trigger
+# a restart (already loaded at runtime); restart manually after config changes.
 
 root = "."
 testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-# 编译命令:生成 tmp/main
+# Build command: outputs tmp/main
 cmd = "go build -o ./tmp/main ."
-# 运行的二进制
+# Binary to run
 bin = "./tmp/main"
-# 监听的文件扩展名
+# Watched file extensions
 include_ext = ["go", "tpl", "tmpl", "html"]
-# 排除的文件扩展名
+# Excluded file extensions
 exclude_ext = []
-# 排除的目录:前端、文档、构建产物、依赖
+# Excluded directories: frontend, docs, build artifacts, dependencies
 exclude_dir = ["tmp", "fe", "docs", "node_modules", ".swifty", ".omo"]
-# 包含的目录(空 = 全部,受 exclude_dir 约束)
+# Included directories (empty = all, subject to exclude_dir constraints)
 include_dir = []
-# 排除正则
+# Exclude regex
 exclude_regex = ["_test\\.go"]
-# 触发延迟(ms),避免保存时多次触发
+# Trigger delay (ms) to avoid multiple triggers on save
 delay = 1000
-# 构建失败时停止旧进程
+# Stop the old process on build failure
 stop_on_error = true
-# 发送中断信号
+# Send interrupt signal
 send_interrupt_signal = true
-# 杀掉延迟(ms)
+# Kill delay (ms)
 kill_delay = 500
 
 [log]
-# 日志显示时间戳
+# Show timestamps in logs
 time = true
 
 [misc]
-# 退出时清理 tmp
+# Clean up tmp on exit
 clean_on_exit = true

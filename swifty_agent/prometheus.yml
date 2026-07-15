@@ -1,7 +1,8 @@
-# Prometheus 抓取配置
-# 抓取 Prometheus 自身 + Redis Stack (通过 redis_stack_host)
-# 注意: redis/redis-stack 镜像不内置 exporter;如需 Redis 指标可另起
-# redis_exporter 容器并加入 targets。当前仅抓取 Prometheus 自身用于验证。
+# Prometheus scrape configuration
+# Scrapes Prometheus itself + Redis Stack (via redis_stack_host)
+# Note: the redis/redis-stack image does not include a built-in exporter;
+# to collect Redis metrics, run a separate redis_exporter container and add it to targets.
+# Currently only scrapes Prometheus itself for verification.
 
 scrape_configs:
   - job_name: "prometheus"

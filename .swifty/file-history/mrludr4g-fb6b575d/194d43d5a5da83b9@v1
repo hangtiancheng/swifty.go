@@ -1,0 +1,134 @@
+# Swifty Agent
+
+基于 Go 的 AI 智能运维助手,从 Next.js 项目 (`swifty-cli/apps/swifty-agent`) 迁移而来。提供 RAG 增强对话、知识库索引、告警自动分析能力,使用 [swifty_http](../swifty_http) 框架与 [Eino](https://www.cloudwego.io/zh/docs/eino/) AI 编排。
+
+## 功能
+
+- **/api/chat** — 同步 RAG 对话(ReAct agent + 工具调用)
+- **/api/chat_stream** — SSE 流式对话
+- **/api/upload** — 上传文档到知识库(Markdown 按标题切分 + 向量索引)
+- **/api/ai_ops** — Plan-Execute-Replan 告警分析
+
+## 技术栈
+
+- Go 1.25+ / [swifty_http](../swifty_http) HTTP 框架
+- [Eino](https://github.com/cloudwego/eino) AI pipeline 编排
+- Redis Stack (RediSearch 向量搜索)
+- OpenAI / Anthropic Claude / DashScope / Ollama 多 provider 支持
+
+## 快速开始
+
+### 1. 环境准备
+
+```bash
+# 启动基础设施(Redis/Prometheus/Grafana)
+make docker-up
+
+# 安装热重载工具(可选)
+go install github.com/air-verse/air@latest
+```
+
+### 2. 配置
+
+编辑 [config.json](./config.json),至少填写:
+
+- `think_chat_model.api_key` / `quick_chat_model.api_key` — LLM API Key
+- `embedding_model.api_key` — DashScope API Key
+
+配置字段对照见 [.env.example](./.env.example)。
+
+### 3. 运行
+
+```bash
+# 热重载开发
+make dev          # 或 air
+
+# 普通运行
+make run          # 或 go run .
+
+# 编译
+make build        # 产出 bin/swifty-agent
+```
+
+服务监听 `:6872`。
+
+### 4. 索引知识库(可选)
+
+将 Markdown 文档放入 `./data/docs/`,批量索引:
+
+```bash
+go run ./cmd/knowledge
+```
+
+## 配置说明
+
+| config.json 字段                    | 说明                                                          | 默认值                      |
+| ----------------------------------- | ------------------------------------------------------------- | --------------------------- |
+| `server_addr`                       | 监听地址                                                      | `:6872`                     |
+| `model_provider`                    | LLM provider: `openai`/`anthropic`                            | `openai`                    |
+| `think_chat_model`                  | 规划/replan 模型(支持 `thinking` 字段开启 Anthropic 扩展思考) | —                           |
+| `quick_chat_model`                  | 聊天/工具执行模型                                             | —                           |
+| `embedding_model.provider`          | embedding 后端: `dashscope`/`ollama`                          | `dashscope`                 |
+| `embedding_model.dimensions`        | 向量维度(切换 provider 后需重建索引,服务会自动检测)           | `2048`                      |
+| `redis`                             | Redis Stack 连接                                              | `localhost:6379`            |
+| `mcp_url`                           | MCP 日志工具 SSE 端点(不可用时自动降级)                       | `http://localhost:3000/sse` |
+| `prometheus_url`                    | Prometheus 地址(空则禁用告警查询工具)                         | `http://127.0.0.1:9090`     |
+| `log_topic_region` / `log_topic_id` | 注入 system prompt 的日志主题(两者都非空才生效)               | 空                          |
+| `file_dir`                          | 知识库文档目录                                                | `./data/docs`               |
+
+## API
+
+| 方法 | 路径               | 说明                                                                  |
+| ---- | ------------------ | --------------------------------------------------------------------- |
+| POST | `/api/chat`        | `{"id","question"}` → `{"message","data":{"answer"}}`                 |
+| POST | `/api/chat_stream` | SSE: `connected`/`message`/`done`/`error`                             |
+| POST | `/api/upload`      | multipart `file` → `{"message","data":{"fileName,filePath,fileSize}}` |
+| POST | `/api/ai_ops`      | → `{"message","data":{"result","detail"}}`                            |
+
+## CLI 工具
+
+```bash
+go run ./cmd/chat        # 交互测试 chat pipeline
+go run ./cmd/knowledge   # 批量索引 ./data/docs
+go run ./cmd/recall      # 测试向量检索
+go run ./cmd/ai_ops      # 独立运行告警分析
+go run ./cmd/llm_tool    # 测试工具绑定
+```
+
+## Docker
+
+```bash
+make docker-build
+docker run -p 6872:6872 -v $(pwd)/config.json:/app/config.json swifty-agent
+```
+
+## 项目结构
+
+```
+swifty_agent/
+├── main.go                      # 入口
+├── config.json                  # 配置
+├── internal/
+│   ├── app/                     # HTTP handler (chat/upload/ai_ops)
+│   ├── config/                  # 配置加载
+│   ├── consts/                  # 常量(Redis key/field)
+│   ├── ai/
+│   │   ├── agent/               # pipeline (chat/knowledge_index/plan_execute_replan)
+│   │   ├── tools/               # 工具 (mysql/prometheus/mcp/docs/time)
+│   │   ├── models/              # LLM 模型工厂(含 Anthropic signature 修补)
+│   │   ├── embedder/            # embedding(dashscope/ollama)
+│   │   ├── indexer/             # Redis 向量索引器
+│   │   ├── retriever/           # Redis 向量检索器
+│   │   └── loader/              # 文档加载
+│   └── utility/                 # redis/mem/log_callback
+├── cmd/                         # CLI 工具
+├── fe/                          # 前端(独立)
+├── docker-compose.yml           # Redis/Prometheus/Grafana
+├── Dockerfile                   # 容器构建
+├── Makefile                     # 构建入口
+└── .air.toml                    # 热重载配置
+```
+
+## 迁移说明
+
+本项目从 Next.js 迁移,对齐情况见 [review.md](./review.md),对齐任务跟踪见 [checklist.md](./checklist.md)。
