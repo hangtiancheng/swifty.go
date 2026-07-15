@@ -1,13 +1,14 @@
 // Package log_callback provides a callback handler for the Eino framework
-// that logs pipeline component lifecycle events (start/end) to stdout.
+// that logs pipeline component lifecycle events (start/end) via the unified
+// slog logger.
 package log_callback
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/cloudwego/eino/callbacks"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 )
 
 // Config controls the verbosity of the log callback handler.
@@ -27,7 +28,11 @@ func NewHandler(config *Config) callbacks.Handler {
 
 	builder := callbacks.NewHandlerBuilder()
 	builder.OnStartFn(func(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
-		fmt.Printf("[view start]:[%s:%s:%s]\n", info.Component, info.Type, info.Name)
+		logger.L().Info("view start",
+			"component", info.Component,
+			"type", info.Type,
+			"name", info.Name,
+		)
 		if config.Detail {
 			var b []byte
 			if config.Debug {
@@ -35,12 +40,16 @@ func NewHandler(config *Config) callbacks.Handler {
 			} else {
 				b, _ = json.Marshal(input)
 			}
-			fmt.Printf("%s\n", string(b))
+			logger.L().Info("callback input", "payload", string(b))
 		}
 		return ctx
 	})
 	builder.OnEndFn(func(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
-		fmt.Printf("[view end]:[%s:%s:%s]\n", info.Component, info.Type, info.Name)
+		logger.L().Info("view end",
+			"component", info.Component,
+			"type", info.Type,
+			"name", info.Name,
+		)
 		return ctx
 	})
 	return builder.Build()

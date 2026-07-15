@@ -6,13 +6,13 @@ package tools
 
 import (
 	"context"
-	"log"
 	"sync"
 
 	eino_mcp "github.com/cloudwego/eino-ext/components/tool/mcp"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 )
 
 // MCP tool cache. The MCP server provides log querying capabilities; it is a
@@ -50,7 +50,7 @@ func GetLogMcpTool(ctx context.Context, mcpURL string) ([]tool.BaseTool, error) 
 	if err != nil {
 		// Degrade gracefully: log and return an empty tool set. Do not cache the
 		// failure so the next request can retry once the MCP server comes back.
-		log.Printf("[mcp] failed to connect to %s, skipping log tools: %v", mcpURL, err)
+		logger.L().Warn("mcp connect failed, skipping log tools", "url", mcpURL, "err", err)
 		return []tool.BaseTool{}, nil
 	}
 

@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 )
 
 // PrometheusAlert represents a single alert from the Prometheus alerts API.
@@ -58,7 +58,7 @@ func queryPrometheusAlerts(baseURL string) (PrometheusAlertsResult, error) {
 	}
 	apiURL := fmt.Sprintf("%s/api/v1/alerts", baseURL)
 
-	log.Printf("Querying Prometheus alerts: %s", apiURL)
+	logger.L().Info("querying prometheus alerts", "url", apiURL)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	var result PrometheusAlertsResult
@@ -111,7 +111,7 @@ func NewPrometheusAlertsQueryTool(prometheusURL string) (tool.InvokableTool, err
 		"query_prometheus_alerts",
 		"Query active alerts from Prometheus alerting system. Retrieves all currently active/firing alerts including name, description, state, active_at, and duration. Same alert name only kept once.",
 		func(ctx context.Context, input *struct{}, opts ...tool.Option) (string, error) {
-			log.Printf("Querying Prometheus active alerts")
+			logger.L().Info("querying prometheus active alerts")
 
 			result, err := queryPrometheusAlerts(prometheusURL)
 			if err != nil {
@@ -153,7 +153,7 @@ func NewPrometheusAlertsQueryTool(prometheusURL string) (tool.InvokableTool, err
 			if err != nil {
 				return "", fmt.Errorf("marshal alerts result: %w", err)
 			}
-			log.Printf("Prometheus alerts query completed: %d alerts found", len(simplified))
+			logger.L().Info("prometheus alerts query completed", "count", len(simplified))
 			return string(b), nil
 		},
 	)

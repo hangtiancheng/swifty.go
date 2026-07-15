@@ -13,6 +13,7 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/consts"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/log_callback"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 	swifty_redis "github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/redis"
 	"github.com/redis/go-redis/v9"
 )
@@ -53,7 +54,7 @@ func IndexFile(ctx context.Context, cfg *config.Config, path string) error {
 		source = filepath.Base(source)
 	}
 	if err := deleteBySource(ctx, client, source); err != nil {
-		fmt.Printf("[warn] delete existing data failed: %v\n", err)
+		logger.L().Warn("delete existing data failed", "err", err)
 	}
 
 	// Index the new document through the pipeline.
@@ -61,7 +62,7 @@ func IndexFile(ctx context.Context, cfg *config.Config, path string) error {
 	if err != nil {
 		return fmt.Errorf("invoke index graph: %w", err)
 	}
-	fmt.Printf("[done] indexing file: %s, len of parts: %d\n", path, len(ids))
+	logger.L().Info("indexing file done", "path", path, "parts", len(ids))
 	return nil
 }
 
@@ -107,7 +108,7 @@ func deleteBySource(ctx context.Context, client *redis.Client, source string) er
 		if err != nil {
 			return fmt.Errorf("delete docs: %w", err)
 		}
-		fmt.Printf("[info] deleted %d existing records with _source: %s\n", n, source)
+		logger.L().Info("deleted existing records", "count", n, "source", source)
 		if len(keys) < batchSize {
 			return nil // last batch
 		}

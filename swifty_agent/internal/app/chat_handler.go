@@ -44,13 +44,13 @@ func (a *App) handleChat(ctx *swifty_http.Context, next func()) {
 
 	runner, err := chat_pipeline.BuildChatAgent(appCtx, a.cfg)
 	if err != nil {
-		ctx.Throw(http.StatusInternalServerError, err.Error())
+		ctx.Throw(http.StatusInternalServerError, structuredErrorMessage(err))
 		return
 	}
 
 	out, err := runner.Invoke(appCtx, userMsg, compose.WithCallbacks(log_callback.NewHandler(nil)))
 	if err != nil {
-		ctx.Throw(http.StatusInternalServerError, err.Error())
+		ctx.Throw(http.StatusInternalServerError, structuredErrorMessage(err))
 		return
 	}
 

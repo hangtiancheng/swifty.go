@@ -11,9 +11,12 @@ import (
 
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/app"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 )
 
 func main() {
+	logger.Init()
+
 	cfg, err := config.Load("config.json")
 	if err != nil {
 		log.Fatalf("load config: %v", err)
@@ -21,7 +24,7 @@ func main() {
 
 	application := app.New(cfg)
 
-	log.Printf("swifty_agent listening on %s", cfg.ServerAddr)
+	logger.L().Info("swifty_agent listening", "addr", cfg.ServerAddr)
 	if err := application.Engine().Listen(cfg.ServerAddr); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

@@ -309,18 +309,10 @@
 - [x] 项目简介、配置说明、启动步骤、API 列表
 - ref: review 七
 
-### I-5 补测试文件
-
-- [ ] `internal/app/*_test.go`: chat/upload/ai_ops handler
-- [ ] `internal/ai/tools/*_test.go`: mysql_crud(用 sqlmock)/get_current_time
-- [ ] `internal/utility/mem/mem_test.go`: LRU 淘汰
-- [ ] `internal/utility/redis/redis_test.go`: ensureIndex 维度检测
-- ref: review 七
-
 ### I-6 统一日志
 
-- [ ] 引入 `log/slog`,替换 `fmt.Printf`/`log.Printf`
-- [ ] `internal/utility/log_callback/log_callback.go` 改用 slog
+- [x] 引入 `log/slog`,替换 `fmt.Printf`/`log.Printf`
+- [x] `internal/utility/log_callback/log_callback.go` 改用 slog
 - ref: review 七
 
 ### I-8 Redis 重连策略

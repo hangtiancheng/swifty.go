@@ -12,6 +12,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	plan_execute "github.com/cloudwego/eino/adk/prebuilt/planexecute"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 )
 
 // BuildPlanAgent creates and runs a plan-execute-replan agent pipeline.
@@ -51,7 +52,7 @@ func BuildPlanAgent(ctx context.Context, cfg *config.Config, query string) (stri
 		if !ok {
 			break
 		}
-		fmt.Println("------------- Event -------------")
+		logger.L().Info("event")
 		prints.Event(event)
 		if event.Output != nil {
 			lastMessage, _, err = adk.GetMessage(event)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/consts"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -55,7 +56,7 @@ func ensureIndex(ctx context.Context, client *redis.Client, cfg *config.Config) 
 	if info, err := client.Do(ctx, "FT.INFO", consts.RedisIndexName).Result(); err == nil {
 		// Index exists; verify the stored vector dimension.
 		if storedDim, ok := parseVectorDim(info); ok && storedDim != wantDim {
-			fmt.Printf("[redis] index dimension mismatch: stored=%d, expected=%d; dropping and recreating index\n", storedDim, wantDim)
+			logger.L().Warn("redis index dimension mismatch; dropping and recreating", "stored", storedDim, "expected", wantDim)
 			if derr := client.Do(ctx, "FT.DROPINDEX", consts.RedisIndexName).Err(); derr != nil {
 				return fmt.Errorf("drop index on dimension mismatch: %w", derr)
 			}

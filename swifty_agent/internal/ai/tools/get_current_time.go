@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 )
 
 // GetCurrentTimeInput is empty as no input parameters are needed.
@@ -34,7 +34,7 @@ func NewGetCurrentTimeTool() (tool.InvokableTool, error) {
 		func(ctx context.Context, input *GetCurrentTimeInput, opts ...tool.Option) (string, error) {
 			now := time.Now()
 			timestamp := now.Format("2006-01-02 15:04:05.000")
-			log.Printf("Getting current time: %s", timestamp)
+			logger.L().Info("getting current time", "timestamp", timestamp)
 
 			out := GetCurrentTimeOutput{
 				Success:      true,
@@ -46,7 +46,7 @@ func NewGetCurrentTimeTool() (tool.InvokableTool, error) {
 			}
 			b, err := json.MarshalIndent(out, "", "  ")
 			if err != nil {
-				log.Printf("Error marshaling result: %v", err)
+				logger.L().Warn("marshal current time result", "err", err)
 				return "", err
 			}
 			return string(b), nil
