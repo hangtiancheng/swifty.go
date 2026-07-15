@@ -52,5 +52,14 @@ func NewHandler(config *Config) callbacks.Handler {
 		)
 		return ctx
 	})
+	builder.OnErrorFn(func(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
+		logger.L().Error("view error",
+			"component", info.Component,
+			"type", info.Type,
+			"name", info.Name,
+			"error", err,
+		)
+		return ctx
+	})
 	return builder.Build()
 }
