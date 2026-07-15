@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "swifty.go",
+      "path": "."
+    },
+    {
+      "name": "swifty-agent",
+      "path": "../swifty-cli/apps/swifty-agent"
+    }
+  ]
+}
