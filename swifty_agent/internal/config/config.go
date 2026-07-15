@@ -19,7 +19,7 @@ const (
 
 // Config holds all application configuration values.
 type Config struct {
-	// ServerAddr is the address the HTTP server listens on (e.g., ":6872").
+	// ServerAddr is the address the HTTP server listens on (e.g., ":8123").
 	ServerAddr string `json:"server_addr"`
 
 	// ModelProvider selects the chat model implementation: "openai" (default) or "anthropic".
@@ -113,7 +113,7 @@ func Load(path string) (*Config, error) {
 // applyDefaults fills in zero-valued fields with sensible defaults.
 func applyDefaults(cfg *Config) {
 	if cfg.ServerAddr == "" {
-		cfg.ServerAddr = ":6872"
+		cfg.ServerAddr = ":8123"
 	}
 	if cfg.ModelProvider == "" {
 		cfg.ModelProvider = ModelProviderOpenAI
