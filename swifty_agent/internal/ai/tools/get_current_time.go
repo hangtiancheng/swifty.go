@@ -27,6 +27,9 @@ type GetCurrentTimeOutput struct {
 // NewGetCurrentTimeTool creates a tool that returns the current system time
 // in multiple formats (Unix seconds, milliseconds, microseconds, and human-readable).
 // Construction errors are returned to the caller instead of terminating the process.
+//
+// The tool input is parameter-less, so TolerateEmptyArguments is used to handle
+// models that return an empty Arguments string (see empty_arguments.go).
 func NewGetCurrentTimeTool() (tool.InvokableTool, error) {
 	t, err := utils.InferOptionableTool(
 		"get_current_time",
@@ -51,6 +54,7 @@ func NewGetCurrentTimeTool() (tool.InvokableTool, error) {
 			}
 			return string(b), nil
 		},
+		utils.WithUnmarshalArguments(TolerateEmptyArguments[*GetCurrentTimeInput]()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("infer get_current_time tool: %w", err)

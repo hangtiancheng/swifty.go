@@ -41,6 +41,9 @@ type SimplifiedAlert struct {
 	Duration    string `json:"duration" jsonschema:"description=Time since activation, e.g. 2h30m15s"`
 }
 
+// PrometheusAlertsInput is empty as no input parameters are needed.
+type PrometheusAlertsInput struct{}
+
 // PrometheusAlertsOutput is the tool's output structure.
 type PrometheusAlertsOutput struct {
 	Success bool              `json:"success"`
@@ -106,11 +109,14 @@ func calculateDuration(activeAtStr string) string {
 // For alerts with the same alertname, only the first occurrence is returned.
 // prometheusURL is the base URL (e.g. "http://127.0.0.1:9090"); empty disables queries.
 // Construction errors are returned to the caller instead of terminating the process.
+//
+// The tool input is parameter-less, so TolerateEmptyArguments is used to handle
+// models that return an empty Arguments string (see empty_arguments.go).
 func NewPrometheusAlertsQueryTool(prometheusURL string) (tool.InvokableTool, error) {
 	t, err := utils.InferOptionableTool(
 		"query_prometheus_alerts",
 		"Query active alerts from Prometheus alerting system. Retrieves all currently active/firing alerts including name, description, state, active_at, and duration. Same alert name only kept once.",
-		func(ctx context.Context, input *struct{}, opts ...tool.Option) (string, error) {
+		func(ctx context.Context, input *PrometheusAlertsInput, opts ...tool.Option) (string, error) {
 			logger.L().Info("querying prometheus active alerts")
 
 			result, err := queryPrometheusAlerts(prometheusURL)
@@ -156,6 +162,7 @@ func NewPrometheusAlertsQueryTool(prometheusURL string) (tool.InvokableTool, err
 			logger.L().Info("prometheus alerts query completed", "count", len(simplified))
 			return string(b), nil
 		},
+		utils.WithUnmarshalArguments(TolerateEmptyArguments[*PrometheusAlertsInput]()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("infer query_prometheus_alerts tool: %w", err)

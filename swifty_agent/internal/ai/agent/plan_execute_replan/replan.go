@@ -104,12 +104,19 @@ func (r *customReplanner) Run(ctx context.Context, input *adk.AgentInput, _ ...a
 		}
 
 		planBytes, _ := planObj.MarshalJSON()
-		var stepsStr strings.Builder
-		for _, step := range executedSteps {
-			stepsStr.WriteString(fmt.Sprintf("Step: %s\nResult: %s\n\n", step.Step, step.Result))
+
+		// Present completed steps and their results as two separate sections,
+		// mirroring the Next.js pipeline (index.ts): steps are enumerated,
+		// results are listed in the same order, one per line.
+		var completedStepsStr strings.Builder
+		var resultsStr strings.Builder
+		for i, step := range executedSteps {
+			fmt.Fprintf(&completedStepsStr, "%d. %s\n", i+1, step.Step)
+			resultsStr.WriteString(step.Result)
+			resultsStr.WriteString("\n")
 		}
 
-		promptText := fmt.Sprintf(`You are reviewing progress on a task. Based on the completed steps, determine if the task is complete or needs more work.
+		promptText := fmt.Sprintf(`You are a replanning agent reviewing execution progress toward an objective. Analyze the completed steps and their outcomes to decide whether the objective is fully achieved or further action is required.
 
 Task:
 %s
@@ -117,19 +124,19 @@ Task:
 Original Plan:
 %s
 
-Completed Steps & Results:
+Completed Steps:
 %s
-
-Respond with ONLY a JSON object in this exact format:
+Results So Far:
+%s
+Based on the progress above, respond with ONLY a JSON object matching this schema:
 {
-  "done": true/false,
-  "remaining": ["remaining step 1", "remaining step 2", ...],
-  "summary": "final report if done, empty string if not done"
+  "done": <boolean>,
+  "remaining": ["<step>", ...],
+  "summary": "<final report when done, otherwise empty string>"
 }
 
-If the task is complete, set "done" to true and provide a comprehensive summary.
-If more work is needed, set "done" to false and list the remaining steps.
-Do not include any other text, explanations, or markdown formatting. Only output the JSON object.`, userInputStr.String(), string(planBytes), stepsStr.String())
+Set "done" to true and provide a comprehensive summary only when the objective is fully achieved. Otherwise, set "done" to false and list only the remaining steps. Do not include any text, explanations, or markdown formatting outside the JSON object.`,
+			userInputStr.String(), string(planBytes), completedStepsStr.String(), resultsStr.String())
 
 		// Call the model
 		msgs := []*schema.Message{schema.UserMessage(promptText)}
