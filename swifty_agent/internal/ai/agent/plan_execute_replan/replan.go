@@ -2,22 +2,172 @@ package plan_execute_replan
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"runtime/debug"
+	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	plan_execute "github.com/cloudwego/eino/adk/prebuilt/planexecute"
+	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/ai/models"
 	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/config"
 )
 
+// replanResponse is the structured output format for the replanner.
+type replanResponse struct {
+	Done      bool     `json:"done"`
+	Remaining []string `json:"remaining"`
+	Summary   string   `json:"summary"`
+}
+
 // NewRePlanAgent creates the replanning agent that adjusts the execution plan
-// based on the results of completed steps. It uses the think model for
-// reasoning about whether the plan needs modification.
+// based on the results of completed steps. It uses structured output instead
+// of tool calling for better compatibility with different LLM providers.
 func NewRePlanAgent(ctx context.Context, cfg *config.Config) (adk.Agent, error) {
-	model, err := models.NewThinkChatModel(ctx, cfg)
+	chatModel, err := models.NewThinkChatModel(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return plan_execute.NewReplanner(ctx, &plan_execute.ReplannerConfig{
-		ChatModel: model,
-	})
+
+	return &customReplanner{
+		chatModel: chatModel,
+	}, nil
+}
+
+type customReplanner struct {
+	chatModel model.ToolCallingChatModel
+}
+
+func (r *customReplanner) Name(_ context.Context) string {
+	return "replanner"
+}
+
+func (r *customReplanner) Description(_ context.Context) string {
+	return "a replanner agent that uses structured output"
+}
+
+func (r *customReplanner) Run(ctx context.Context, input *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	iterator, generator := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+
+	go func() {
+		defer func() {
+			panicErr := recover()
+			if panicErr != nil {
+				e := fmt.Errorf("panic in replanner: %v\n%s", panicErr, debug.Stack())
+				generator.Send(&adk.AgentEvent{Err: e})
+			}
+			generator.Close()
+		}()
+
+		// Get session values
+		executedStep, ok := adk.GetSessionValue(ctx, plan_execute.ExecutedStepSessionKey)
+		if !ok {
+			generator.Send(&adk.AgentEvent{Err: fmt.Errorf("executed step not found")})
+			return
+		}
+		executedStepStr := executedStep.(string)
+
+		plan, ok := adk.GetSessionValue(ctx, plan_execute.PlanSessionKey)
+		if !ok {
+			generator.Send(&adk.AgentEvent{Err: fmt.Errorf("plan not found")})
+			return
+		}
+		planObj := plan.(plan_execute.Plan)
+
+		var executedSteps []plan_execute.ExecutedStep
+		executedStepsVal, ok := adk.GetSessionValue(ctx, plan_execute.ExecutedStepsSessionKey)
+		if ok {
+			executedSteps = executedStepsVal.([]plan_execute.ExecutedStep)
+		}
+
+		// Add current step to executed steps
+		executedSteps = append(executedSteps, plan_execute.ExecutedStep{
+			Step:   planObj.FirstStep(),
+			Result: executedStepStr,
+		})
+		adk.AddSessionValue(ctx, plan_execute.ExecutedStepsSessionKey, executedSteps)
+
+		userInput, ok := adk.GetSessionValue(ctx, plan_execute.UserInputSessionKey)
+		if !ok {
+			generator.Send(&adk.AgentEvent{Err: fmt.Errorf("user input not found")})
+			return
+		}
+		userInputMsgs := userInput.([]adk.Message)
+
+		// Build prompt for structured output
+		var userInputStr strings.Builder
+		for _, msg := range userInputMsgs {
+			userInputStr.WriteString(msg.Content)
+			userInputStr.WriteString("\n")
+		}
+
+		planBytes, _ := planObj.MarshalJSON()
+		var stepsStr strings.Builder
+		for _, step := range executedSteps {
+			stepsStr.WriteString(fmt.Sprintf("Step: %s\nResult: %s\n\n", step.Step, step.Result))
+		}
+
+		promptText := fmt.Sprintf(`You are reviewing progress on a task. Based on the completed steps, determine if the task is complete or needs more work.
+
+Task:
+%s
+
+Original Plan:
+%s
+
+Completed Steps & Results:
+%s
+
+Respond with ONLY a JSON object in this exact format:
+{
+  "done": true/false,
+  "remaining": ["remaining step 1", "remaining step 2", ...],
+  "summary": "final report if done, empty string if not done"
+}
+
+If the task is complete, set "done" to true and provide a comprehensive summary.
+If more work is needed, set "done" to false and list the remaining steps.
+Do not include any other text, explanations, or markdown formatting. Only output the JSON object.`, userInputStr.String(), string(planBytes), stepsStr.String())
+
+		// Call the model
+		msgs := []*schema.Message{schema.UserMessage(promptText)}
+		resp, err := r.chatModel.Generate(ctx, msgs)
+		if err != nil {
+			generator.Send(&adk.AgentEvent{Err: err})
+			return
+		}
+
+		// Parse the structured output. extractJSONObject tolerates ```json fences
+		// and leading/trailing reasoning that some models (e.g. Qwen3.7) emit
+		// even when asked to output JSON only.
+		clean, extractErr := extractJSONObject(resp.Content)
+		if extractErr != nil {
+			generator.Send(&adk.AgentEvent{Err: fmt.Errorf("extract replan JSON: %w (raw output: %q)", extractErr, resp.Content)})
+			return
+		}
+		var replanResp replanResponse
+		if err := json.Unmarshal([]byte(clean), &replanResp); err != nil {
+			generator.Send(&adk.AgentEvent{Err: fmt.Errorf("failed to parse replan response: %w", err)})
+			return
+		}
+
+		if replanResp.Done {
+			// Task complete - send response and break loop
+			output := schema.AssistantMessage(replanResp.Summary, nil)
+			generator.Send(adk.EventFromMessage(output, nil, schema.Assistant, ""))
+			generator.Send(&adk.AgentEvent{Action: adk.NewBreakLoopAction(r.Name(ctx))})
+		} else {
+			// Need replanning - create new plan
+			newPlan := &customPlan{Steps: replanResp.Remaining}
+			adk.AddSessionValue(ctx, plan_execute.PlanSessionKey, newPlan)
+
+			planJSON, _ := newPlan.MarshalJSON()
+			output := schema.AssistantMessage(string(planJSON), nil)
+			generator.Send(adk.EventFromMessage(output, nil, schema.Assistant, ""))
+		}
+	}()
+
+	return iterator
 }
