@@ -10,9 +10,9 @@ import (
 
 	eino_mcp "github.com/cloudwego/eino-ext/components/tool/mcp"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/hangtiancheng/swifty.go/swifty_agent/internal/utility/logger"
 )
 
 // MCP tool cache. The MCP server provides log querying capabilities; it is a
