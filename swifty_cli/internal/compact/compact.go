@@ -213,7 +213,7 @@ func BaselineFromUsage(u llm.UsageInfo) int {
 // baselineTokens + an estimate of only the messages appended after the anchor
 // (incremental estimate). Without an anchor (cold start, first turn) it falls
 // back to a full character estimate over every message, matching the original
-// behaviour so the agent stays usable before the first usage report lands.
+// behavior so the agent stays usable before the first usage report lands.
 func ComputeUsedTokens(messages []conversation.Message, anchor UsageAnchor) int {
 	if !anchor.HasUsage {
 		return EstimateTokens(messages)
@@ -227,11 +227,23 @@ func ComputeUsedTokens(messages []conversation.Message, anchor UsageAnchor) int 
 	return anchor.BaselineTokens + EstimateTokens(messages[anchor.AnchorCount:])
 }
 
+// ComputeUsedTokensFromConv 从 ConversationManager 读取锚点状态来计算
+// 当前 token 用量。这是 ComputeUsedTokens 的便捷封装，避免调用方
+// 手动传递 UsageAnchor 参数。
+func ComputeUsedTokensFromConv(conv *conversation.Manager) int {
+	baseline, count, has := conv.UsageAnchorState()
+	return ComputeUsedTokens(conv.GetMessages(), UsageAnchor{
+		BaselineTokens: baseline,
+		AnchorCount:    count,
+		HasUsage:       has,
+	})
+}
+
 // ManageContext runs Layer 2 (autoCompact) when used tokens reach the
 // auto-compact threshold (effectiveWindow − auto margin); once they cross the
 // hard-block line (effectiveWindow − manual margin) it forces a compaction.
 // See computeCompactThreshold. Layer 1 (tool-result budget) is invoked by the
-// caller directly via toolresult.Apply before this function — they're
+// caller directly via tool_result.Apply before this function — they're
 // independent now because Layer 1 needs to thread ContentReplacementState
 // across turns, which sits naturally on the Agent rather than buried inside
 // a compact helper.
@@ -250,7 +262,7 @@ func ComputeUsedTokens(messages []conversation.Message, anchor UsageAnchor) int 
 // non-empty, a successful compaction appends a compact_boundary record there so
 // a later resume can rebuild the compacted state instead of replaying the full
 // pre-compaction transcript. When either is empty, boundary persistence is
-// skipped (tests, one-shot callers) and behaviour is unchanged.
+// skipped (tests, one-shot callers) and behavior is unchanged.
 func ManageContext(
 	ctx context.Context,
 	conv *conversation.Manager,
@@ -262,12 +274,13 @@ func ManageContext(
 	tracking *AutoCompactTrackingState,
 	recovery *RecoveryState,
 	toolSchemas []map[string]any,
-	anchor UsageAnchor,
 	budgetMessages []conversation.Message,
 ) (string, error) {
 	// Budget-trimmed messages better reflect the actual payload sent, yielding
 	// more accurate token estimates and avoiding unnecessary compaction caused
 	// by untrimmed large tool results.
+	baseline, count, has := conv.UsageAnchorState()
+	anchor := UsageAnchor{BaselineTokens: baseline, AnchorCount: count, HasUsage: has}
 	estimateFrom := conv.GetMessages()
 	if len(budgetMessages) > 0 {
 		estimateFrom = budgetMessages

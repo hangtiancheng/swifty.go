@@ -66,7 +66,7 @@ func (t *WriteFileTool) Execute(_ context.Context, args map[string]any) ToolResu
 
 	// Update cache after successful write
 	if t.FileStateCache != nil {
-		t.FileStateCache.Update(filePath, content)
+		t.FileStateCache.Update(filePath)
 	}
 
 	return ToolResult{Output: fmt.Sprintf("Successfully wrote to %s", filePath)}

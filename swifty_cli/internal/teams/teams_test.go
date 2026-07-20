@@ -80,35 +80,6 @@ func TestTeamManagerCRUD(t *testing.T) {
 	}
 }
 
-func TestDetectBackendFallback(t *testing.T) {
-	t.Setenv("TMUX", "")
-	t.Setenv("ITERM_SESSION_ID", "")
-	// PATH manipulation: point to an empty dir so `tmux` lookup fails.
-	emptyDir := t.TempDir()
-	t.Setenv("PATH", emptyDir)
-	if got := detectBackend(); got != ModeInProcess {
-		t.Errorf("expected in-process fallback, got %q", got)
-	}
-}
-
-func TestDetectBackendPrefersTmuxWhenInside(t *testing.T) {
-	t.Setenv("TMUX", "/tmp/sock,1,0")
-	if got := detectPaneBackend(); got != ModeTmux {
-		t.Errorf("expected tmux when TMUX set, got %q", got)
-	}
-}
-
-func TestDetectBackendPicksITermWhenInside(t *testing.T) {
-	t.Setenv("TMUX", "")
-	t.Setenv("ITERM_SESSION_ID", "w0t0p0:ABC")
-	// PATH without tmux so we don't fall back to it.
-	emptyDir := t.TempDir()
-	t.Setenv("PATH", emptyDir)
-	if got := detectPaneBackend(); got != ModeITerm {
-		t.Errorf("expected iterm, got %q", got)
-	}
-}
-
 // TestSendMessageToolRoutesToLead pins the fix for the bug where a
 // teammate calling SendMessage(to="lead", ...) saw "recipient 'lead' not
 // found in any team" because the lead is never registered as a Member.

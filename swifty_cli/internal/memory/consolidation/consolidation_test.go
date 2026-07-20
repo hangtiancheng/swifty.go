@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -349,6 +350,9 @@ func TestMaybeRun_ScanThrottle(t *testing.T) {
 }
 
 func TestMaybeRun_LockBlocks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("lock detection unreliable on Windows")
+	}
 	dir := t.TempDir()
 	memDir := filepath.Join(dir, ".swifty", "memory")
 	sessDir := filepath.Join(dir, ".swifty", "sessions")

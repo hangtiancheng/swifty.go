@@ -80,7 +80,7 @@ func (t *EditFileTool) Execute(_ context.Context, args map[string]any) ToolResul
 
 	// Update cache after successful edit
 	if t.FileStateCache != nil {
-		t.FileStateCache.Update(filePath, newContent)
+		t.FileStateCache.Update(filePath)
 	}
 
 	// Attach the concrete diff rather than just a "done" message:

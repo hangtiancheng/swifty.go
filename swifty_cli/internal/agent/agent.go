@@ -174,11 +174,6 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 		consecutiveUnknown := 0
 		maxTokensEscalated := false
 		outputRecoveries := 0
-		// usageAnchor pins the last real API usage to the conversation length at
-		// the moment it was reported, so the compaction check can use
-		// baseline + incremental estimate instead of estimating every message.
-		// Zero-value (HasUsage false) on the first iteration → full estimate fallback.
-		var usageAnchor compact.UsageAnchor
 
 		for iteration := 1; ; iteration++ {
 			if a.MaxIterations > 0 && iteration > a.MaxIterations {
@@ -233,9 +228,9 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			// Layer 2: auto-compact.
 			// conv has already been trimmed by Layer 1, so token estimation
 			// uses its current message list directly.
-			if msg, err := compact.ManageContext(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.MaxOutputTokens, &a.compactTracking, a.RecoveryState, toolSchemas, usageAnchor, nil); err == nil && msg != "" {
+			if msg, err := compact.ManageContext(ctx, conv, a.Client, a.WorkDir, a.SessionID, a.ContextWindow, a.MaxOutputTokens, &a.compactTracking, a.RecoveryState, toolSchemas, nil); err == nil && msg != "" {
 				ch <- CompactEvent{Message: msg}
-				usageAnchor = compact.UsageAnchor{}
+				conv.ClearUsageAnchor()
 				conv.InjectLongTermMemory(a.Instructions, a.MemoryContent)
 				// conv changed after compaction; re-apply Layer 1 budget.
 				tool_result.Apply(conv, a.WorkDir, a.ReplacementState)
@@ -249,7 +244,7 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			var stopReason string
 			var usage llm.UsageInfo
 
-			executor := NewStreamingExecutor(a.Registry, a.Checker, ch)
+			executor := NewStreamingExecutor(a.Registry, ch)
 
 			for ev := range events {
 				switch e := ev.(type) {
@@ -275,7 +270,12 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 						Args:     e.Arguments,
 					}
 					// Start executing immediately while LLM continues streaming.
-					executor.Submit(ctx, a, e)
+					// 收集工具调用，等流式结束后按安全性分批执行
+          executor.Submit(toolCallInfo{
+						toolID:    e.ToolID,
+						toolName:  e.ToolName,
+						arguments: e.Arguments,
+					})
 				case llm.StreamEnd:
 					stopReason = e.StopReason
 					usage = e.Usage
@@ -289,10 +289,7 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 				if err != nil {
 					if retry, compacted := a.handleStreamError(ctx, ch, conv, err); retry {
 						if compacted {
-							// ForceCompact rewrote the conversation; the prior
-							// anchor's AnchorCount no longer maps to it. Drop it
-							// so the next check falls back to a full estimate.
-							usageAnchor = compact.UsageAnchor{}
+							conv.ClearUsageAnchor()
 							conv.InjectLongTermMemory(a.Instructions, a.MemoryContent)
 						}
 						continue // retry the turn
@@ -307,22 +304,13 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			totalOutput += usage.OutputTokens
 			ch <- UsageEvent{InputTokens: totalInput, OutputTokens: totalOutput}
 
-			// Real-usage baseline for this turn: input + cache_read +
-			// cache_creation + output. Covers every message that existed when the
-			// prompt was sent plus the assistant message about to be appended.
-			// anchorBaseline is only adopted as the anchor once that assistant
-			// message lands (see anchorAfterAssistant), so anchorCount lines up
-			// with the messages the baseline accounts for. Zero usage (compat
-			// endpoints that don't report it) leaves the prior anchor in place.
-			anchorBaseline := compact.BaselineFromUsage(usage)
 			anchorAfterAssistant := func() {
-				if anchorBaseline > 0 {
-					usageAnchor = compact.UsageAnchor{
-						BaselineTokens: anchorBaseline,
-						AnchorCount:    conv.Len(),
-						HasUsage:       true,
-					}
-				}
+				conv.RecordUsageAnchor(
+					usage.InputTokens,
+					usage.OutputTokens,
+					usage.CacheReadTokens,
+					usage.CacheCreationTokens,
+				)
 			}
 
 			// Handle max_tokens stop reason.
@@ -385,8 +373,8 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			// estimated incrementally on top of this baseline.
 			anchorAfterAssistant()
 
-			// Collect results from streaming executor (tools already started during LLM streaming).
-			results := executor.CollectResults()
+			// 按安全性分批执行：只读工具并发，写/命令工具串行
+      results := executor.ExecuteAll(ctx, a)
 
 			var toolResults []conversation.ToolResultBlock
 			for _, r := range results {
@@ -404,13 +392,13 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 					Elapsed:  r.elapsed,
 				}
 
-				truncated := r.output
-				if len(truncated) > tools.MaxOutputChars {
-					truncated = truncated[:tools.MaxOutputChars] + "\n… (output truncated)"
+				content := r.output
+				if len(content) > tools.MaxOutputChars {
+					content = tool_result.PersistLargeResult(a.WorkDir, r.toolID, r.output)
 				}
 				toolResults = append(toolResults, conversation.ToolResultBlock{
 					ToolUseID: r.toolID,
-					Content:   truncated,
+					Content:   content,
 					IsError:   r.isError,
 				})
 			}
@@ -545,15 +533,15 @@ func extractFilePath(args map[string]any) string {
 	return ""
 }
 
-func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, tc llm.ToolCallComplete) toolExecResult {
-	tool := a.Registry.Get(tc.ToolName)
+func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, tc toolCallInfo) toolExecResult {
+	tool := a.Registry.Get(tc.toolName)
 	start := time.Now()
 
 	if tool == nil {
 		return toolExecResult{
-			toolID:    tc.ToolID,
-			toolName:  tc.ToolName,
-			output:    fmt.Sprintf("Error: unknown tool '%s'", tc.ToolName),
+			toolID:    tc.toolID,
+			toolName:  tc.toolName,
+			output:    fmt.Sprintf("Error: unknown tool '%s'", tc.toolName),
 			isError:   true,
 			elapsed:   time.Since(start),
 			isUnknown: true,
@@ -561,11 +549,11 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 	}
 
 	if a.Checker != nil {
-		decision := a.Checker.Check(tool, tc.Arguments)
+		decision := a.Checker.Check(tool, tc.arguments)
 		if decision.Effect == permissions.Deny {
 			return toolExecResult{
-				toolID:   tc.ToolID,
-				toolName: tc.ToolName,
+				toolID:   tc.toolID,
+				toolName: tc.toolName,
 				output:   fmt.Sprintf("Permission denied: %s", decision.Reason),
 				isError:  true,
 				elapsed:  time.Since(start),
@@ -574,33 +562,33 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 		if decision.Effect == permissions.Ask {
 			respCh := make(chan PermissionResponse, 1)
 			// Generate a human-readable action description via DescribeToolAction.
-			desc := permissions.DescribeToolAction(tc.ToolName, tc.Arguments)
+			desc := permissions.DescribeToolAction(tc.toolName, tc.arguments)
 			eventCh <- PermissionRequestEvent{
-				ToolName:   tc.ToolName,
+				ToolName:   tc.toolName,
 				Desc:       desc,
 				ResponseCh: respCh,
 			}
 			resp := <-respCh
 			if resp == PermDeny {
 				return toolExecResult{
-					toolID:   tc.ToolID,
-					toolName: tc.ToolName,
+					toolID:   tc.toolID,
+					toolName: tc.toolName,
 					output:   "Permission denied by user",
 					isError:  true,
 					elapsed:  time.Since(start),
 				}
 			}
 			if resp == PermAllowAlways {
-				content := permissions.ExtractContent(tc.ToolName, tc.Arguments)
+				content := permissions.ExtractContent(tc.toolName, tc.arguments)
 				pattern := content + "*"
 				if len(content) > 60 {
 					pattern = content[:60] + "*"
 				}
 				// Layer 4b: add to the session-level allow set (in-memory)
 				// and persist to the rule engine at the same time.
-				a.Checker.AddSessionAllow(tc.ToolName, pattern)
+				a.Checker.AddSessionAllow(tc.toolName, pattern)
 				a.Checker.RuleEngine.AppendLocalRule(permissions.Rule{
-					ToolName: tc.ToolName,
+					ToolName: tc.toolName,
 					Pattern:  pattern,
 					Effect:   permissions.RuleAllow,
 				})
@@ -609,16 +597,16 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 	}
 
 	if a.Hooks != nil {
-		hctx := hooks.HookContext{
+		hookCtx := hooks.HookContext{
 			EventName: hooks.EventPreToolUse,
-			ToolName:  tc.ToolName,
-			ToolArgs:  tc.Arguments,
-			FilePath:  extractFilePath(tc.Arguments),
+			ToolName:  tc.toolName,
+			ToolArgs:  tc.arguments,
+			FilePath:  extractFilePath(tc.arguments),
 		}
-		if rejected, msg := a.Hooks.RunPreToolHooks(hctx); rejected {
+		if rejected, msg := a.Hooks.RunPreToolHooks(hookCtx); rejected {
 			return toolExecResult{
-				toolID:   tc.ToolID,
-				toolName: tc.ToolName,
+				toolID:   tc.toolID,
+				toolName: tc.toolName,
 				output:   "Blocked by hook: " + msg,
 				isError:  true,
 				elapsed:  time.Since(start),
@@ -626,14 +614,14 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 		}
 	}
 
-	result := tool.Execute(ctx, tc.Arguments)
+	result := tool.Execute(ctx, tc.arguments)
 
 	// Snapshot what ReadFile just handed to the model so the compact
 	// recovery block can replay it after a Layer 2 summary wipes the
 	// transcript. Re-reading from disk is one extra open per ReadFile —
 	// cheaper than parsing line numbers back out of the tool output.
-	if !result.IsError && tc.ToolName == "ReadFile" {
-		if p, _ := tc.Arguments["file_path"].(string); p != "" {
+	if !result.IsError && tc.toolName == "ReadFile" {
+		if p, _ := tc.arguments["file_path"].(string); p != "" {
 			if data, err := os.ReadFile(p); err == nil {
 				a.RecoveryState.RecordFileRead(p, string(data))
 			}
@@ -643,16 +631,16 @@ func (a *Agent) executeSingleTool(ctx context.Context, eventCh chan AgentEvent, 
 	if a.Hooks != nil {
 		a.Hooks.RunHooks(hooks.HookContext{
 			EventName: hooks.EventPostToolUse,
-			ToolName:  tc.ToolName,
-			ToolArgs:  tc.Arguments,
-			FilePath:  extractFilePath(tc.Arguments),
+			ToolName:  tc.toolName,
+			ToolArgs:  tc.arguments,
+			FilePath:  extractFilePath(tc.arguments),
 			Message:   result.Output,
 		})
 	}
 
 	return toolExecResult{
-		toolID:   tc.ToolID,
-		toolName: tc.ToolName,
+		toolID:   tc.toolID,
+		toolName: tc.toolName,
 		output:   result.Output,
 		isError:  result.IsError,
 		elapsed:  time.Since(start),

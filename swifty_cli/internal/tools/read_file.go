@@ -69,7 +69,7 @@ func (t *ReadFileTool) Execute(_ context.Context, args map[string]any) ToolResul
 
 	// Record file state for read-before-edit enforcement
 	if t.FileStateCache != nil {
-		t.FileStateCache.Record(filePath, string(data), info.ModTime().UnixMilli())
+		t.FileStateCache.Record(filePath, info.ModTime().UnixMilli())
 	}
 
 	var sb strings.Builder

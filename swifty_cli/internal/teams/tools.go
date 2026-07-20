@@ -48,6 +48,32 @@ func (t *SendMessageTool) Execute(ctx context.Context, args map[string]any) tool
 		return tools.ToolResult{Output: "Error: 'to' and 'content' are required", IsError: true}
 	}
 
+	// 广播：把消息发给发送者所在团队的所有其它成员
+	if to == "*" {
+		for _, teamName := range t.TeamMgr.ListTeams() {
+			team := t.TeamMgr.GetTeam(teamName)
+			if team == nil {
+				continue
+			}
+			if _, ok := team.Members[t.SenderName]; !ok {
+				continue
+			}
+			count := 0
+			for member := range team.Members {
+				if member == t.SenderName {
+					continue
+				}
+				team.SendMessage(t.SenderName, member, content)
+				count++
+			}
+			return tools.ToolResult{Output: fmt.Sprintf("Message broadcast to %d teammate(s).", count)}
+		}
+		return tools.ToolResult{
+			Output:  fmt.Sprintf("Error: cannot find team for sender '%s'", t.SenderName),
+			IsError: true,
+		}
+	}
+
 	// The lead is not registered as a Member (it lives in the parent
 	// process and only reads from its own mailbox), so route to it by
 	// finding any team the sender belongs to.
@@ -70,6 +96,12 @@ func (t *SendMessageTool) Execute(ctx context.Context, args map[string]any) tool
 		}
 	}
 
+	// 通过全局名称注册表把收件人名字解析成投递用的标识；解析不到就按原名兜底。
+	recipient := to
+	if resolved := GetNameRegistry().Resolve(to); resolved != "" {
+		recipient = resolved
+	}
+
 	// Find a registered teammate with this name, or fall back to the
 	// file-based mailbox. In tmux/iTerm mode each teammate runs in a
 	// separate process and only knows about itself in Members, so the
@@ -80,8 +112,8 @@ func (t *SendMessageTool) Execute(ctx context.Context, args map[string]any) tool
 		if team == nil {
 			continue
 		}
-		if _, ok := team.Members[to]; ok {
-			team.SendMessage(t.SenderName, to, content)
+		if _, ok := team.Members[recipient]; ok {
+			team.SendMessage(t.SenderName, recipient, content)
 			return tools.ToolResult{
 				Output: fmt.Sprintf("Message sent to %s.", to),
 			}
@@ -90,7 +122,7 @@ func (t *SendMessageTool) Execute(ctx context.Context, args map[string]any) tool
 		// directly to the file mailbox so external-process peers pick
 		// it up on their next poll.
 		if _, ok := team.Members[t.SenderName]; ok {
-			team.SendMessage(t.SenderName, to, content)
+			team.SendMessage(t.SenderName, recipient, content)
 			return tools.ToolResult{
 				Output: fmt.Sprintf("Message sent to %s.", to),
 			}

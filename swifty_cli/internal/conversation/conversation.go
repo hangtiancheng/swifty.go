@@ -31,8 +31,11 @@ type Message struct {
 }
 
 type Manager struct {
-	history     []Message
-	ltmInjected bool
+	history        []Message
+	ltmInjected    bool
+	baselineTokens int
+	anchorCount    int
+	hasUsage       bool
 }
 
 func NewManager() *Manager {
@@ -159,4 +162,28 @@ func (m *Manager) ReplaceToolResults(msgIndex int, newResults []ToolResultBlock)
 		return
 	}
 	m.history[msgIndex].ToolResults = newResults
+}
+
+// RecordUsageAnchor 锚定本轮 API 返回的真实 token 用量。
+// 调用时机：assistant 消息已追加到 history 之后。
+func (m *Manager) RecordUsageAnchor(input, output, cacheRead, cacheCreation int) {
+	baseline := input + cacheRead + cacheCreation + output
+	if baseline <= 0 {
+		return
+	}
+	m.baselineTokens = baseline
+	m.anchorCount = len(m.history)
+	m.hasUsage = true
+}
+
+// ClearUsageAnchor 压缩后清零锚点，下次估算回退到全量字符估算。
+func (m *Manager) ClearUsageAnchor() {
+	m.baselineTokens = 0
+	m.anchorCount = 0
+	m.hasUsage = false
+}
+
+// UsageAnchorState 返回当前锚点状态，供 compact 层读取。
+func (m *Manager) UsageAnchorState() (baselineTokens, anchorCount int, hasUsage bool) {
+	return m.baselineTokens, m.anchorCount, m.hasUsage
 }

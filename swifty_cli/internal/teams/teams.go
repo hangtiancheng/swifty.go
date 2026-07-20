@@ -137,12 +137,20 @@ func (t *Team) SendMessage(from, to, content string) {
 }
 
 type TeamManager struct {
-	mu    sync.Mutex
-	teams map[string]*Team
+	mu         sync.Mutex
+	teams      map[string]*Team
+	taskStores map[string]*SharedTaskStore // 每团队一份共享任务库
 }
 
 func NewTeamManager() *TeamManager {
-	return &TeamManager{teams: make(map[string]*Team)}
+	return &TeamManager{
+		teams:      make(map[string]*Team),
+		taskStores: make(map[string]*SharedTaskStore),
+	}
+}
+
+func teamDir(name string) string {
+	return filepath.Join(teamsBaseDir(), name)
 }
 
 func (tm *TeamManager) CreateTeam(name string, mode TeamMode) *Team {
@@ -150,7 +158,23 @@ func (tm *TeamManager) CreateTeam(name string, mode TeamMode) *Team {
 	defer tm.mu.Unlock()
 	team := NewTeam(name, mode)
 	tm.teams[name] = team
+	// 新建团队时初始化一份空的共享任务库
+	store := NewSharedTaskStore(filepath.Join(teamDir(name), "tasks.json"))
+	store.InitEmpty()
+	tm.taskStores[name] = store
 	return team
+}
+
+// GetTaskStore 获取团队的共享任务库；内存无缓存时（例如队友进程）从磁盘 tasks.json 加载。
+func (tm *TeamManager) GetTaskStore(teamName string) *SharedTaskStore {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	if store, ok := tm.taskStores[teamName]; ok {
+		return store
+	}
+	store := NewSharedTaskStore(filepath.Join(teamDir(teamName), "tasks.json"))
+	tm.taskStores[teamName] = store
+	return store
 }
 
 // CreateTeamWith registers an externally-constructed Team. Worker
@@ -173,11 +197,15 @@ func (tm *TeamManager) DeleteTeam(name string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if team, ok := tm.teams[name]; ok {
+		registry := GetNameRegistry()
 		for memberName := range team.Members {
 			team.StopMember(memberName)
+			// 解绑该成员在全局名称注册表里的映射
+			registry.Unregister(memberName)
 		}
 		delete(tm.teams, name)
 	}
+	delete(tm.taskStores, name)
 }
 
 func (tm *TeamManager) ListTeams() []string {

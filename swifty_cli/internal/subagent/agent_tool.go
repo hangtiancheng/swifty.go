@@ -635,6 +635,13 @@ func (t *AgentTool) runAsTeammate(
 	}
 
 	subRegistry := FilterToolsForAgent(t.Registry, spec.Tools, spec.DisallowedTools, false)
+	// 队友协作工具：以队友自己的名字发消息，并注入团队共享任务板工具
+	// （覆盖继承来的个人版同名工具，让队友之间共享同一份任务列表）。
+	subRegistry.Register(&teams.SendMessageTool{TeamMgr: t.TeamMgr, SenderName: memberName})
+	subRegistry.Register(&teams.TaskCreateTool{TeamMgr: t.TeamMgr, TeamName: teamName, AgentName: memberName})
+	subRegistry.Register(&teams.TaskGetTool{TeamMgr: t.TeamMgr, TeamName: teamName})
+	subRegistry.Register(&teams.TaskListTool{TeamMgr: t.TeamMgr, TeamName: teamName})
+	subRegistry.Register(&teams.TaskUpdateTool{TeamMgr: t.TeamMgr, TeamName: teamName})
 	client := t.selectClient(spec.Model, modelOverride)
 
 	var otherMembers []string

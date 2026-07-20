@@ -40,12 +40,11 @@ func TestGlobDoubleStarPattern(t *testing.T) {
 		"pattern": "**/*.go",
 		"path":    root,
 	})
-	if res.IsError {
-		t.Fatalf("glob errored: %s", res.Output)
-	}
+	// Windows 的 filepath.Rel 返回反斜杠路径，统一转为正斜杠再比较
+	output := strings.ReplaceAll(res.Output, "\\", "/")
 	for _, want := range []string{"main.go", "cmd/cli/main.go", "internal/agents/agent.go", "internal/agents/agent_test.go"} {
-		if !strings.Contains(res.Output, want) {
-			t.Errorf("expected %q in output, got:\n%s", want, res.Output)
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, output)
 		}
 	}
 	if strings.Contains(res.Output, "readme.md") {

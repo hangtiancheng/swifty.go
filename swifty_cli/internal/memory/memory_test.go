@@ -1,3 +1,8 @@
+// 来源：公众号@小林coding
+// 后端八股网站：xiaolincoding.com
+// Agent网站：xiaolinnote.com
+// 简历模版：jianli.xiaolinnote.com
+
 package memory
 
 import (
@@ -9,21 +14,26 @@ import (
 
 func TestGetAutoMemPath(t *testing.T) {
 	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "")
-	root := "/tmp/foo/project"
-	path := GetAutoMemPath(root)
-	if !strings.HasSuffix(path, "/.swifty/memory/") {
-		t.Errorf("expected suffix /.swifty/memory/, got: %s", path)
+	projectRoot := filepath.Join(t.TempDir(), "project")
+	os.MkdirAll(projectRoot, 0o755)
+	path := GetAutoMemPath(projectRoot)
+	wantSuffix := filepath.Join(".swifty", "memory") + string(filepath.Separator)
+	if !strings.HasSuffix(path, wantSuffix) {
+		t.Errorf("expected suffix %q, got: %s", wantSuffix, path)
 	}
-	if !strings.HasPrefix(path, root) {
-		t.Errorf("expected path under project root %s, got: %s", root, path)
+	absRoot, _ := filepath.Abs(projectRoot)
+	if !strings.HasPrefix(path, absRoot) {
+		t.Errorf("expected path under project root %s, got: %s", absRoot, path)
 	}
 }
 
 func TestGetAutoMemPathRespectsOverride(t *testing.T) {
-	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", "/custom/memdir")
-	path := GetAutoMemPath("/tmp/anything")
-	if path != "/custom/memdir/" {
-		t.Errorf("override not honored: %s", path)
+	overrideDir := filepath.Join(t.TempDir(), "custom", "memdir")
+	t.Setenv("SWIFTY_REMOTE_MEMORY_DIR", overrideDir)
+	path := GetAutoMemPath(filepath.Join(t.TempDir(), "anything"))
+	expected := overrideDir + string(filepath.Separator)
+	if path != expected {
+		t.Errorf("override not honored: got %q, want %q", path, expected)
 	}
 }
 
@@ -32,11 +42,11 @@ func TestIsAutoMemPath(t *testing.T) {
 	root := "/tmp/p"
 	dir := GetAutoMemPath(root)
 	cases := map[string]bool{
-		dir + "MEMORY.md":        true,
-		dir + "foo.md":           true,
-		dir + "sub/foo.md":       true,
-		"/tmp/p/.swifty/memoryx": false,
-		"/other/path/foo.md":     false,
+		dir + "MEMORY.md":         true,
+		dir + "foo.md":            true,
+		dir + "sub/foo.md":        true,
+		"/tmp/p/.swifty/memory-x": false,
+		"/other/path/foo.md":      false,
 	}
 	for path, want := range cases {
 		if got := IsAutoMemPath(path, root); got != want {

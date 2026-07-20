@@ -64,6 +64,12 @@ func TestConfigureHooksPath(t *testing.T) {
 }
 
 func TestSymlinkDirectories(t *testing.T) {
+	// Windows 下创建 symlink 需要管理员权限，先试探
+	probe := t.TempDir()
+	if err := os.Symlink(probe, filepath.Join(probe, "_probe_link")); err != nil {
+		t.Skip("symlinks require elevated privileges on Windows")
+	}
+
 	repo := t.TempDir()
 	wt := t.TempDir()
 

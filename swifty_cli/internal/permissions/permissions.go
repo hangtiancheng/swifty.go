@@ -421,7 +421,16 @@ func (c *Checker) Check(tool tools.Tool, args map[string]any) Decision {
 		return Decision{Effect: Allow, Reason: "Safe read-only command"}
 	}
 
-	// Layer 1b: sandbox auto-allow — commands running inside the OS sandbox
+	// Layer 2: dangerous command (Bash only)
+	// 黑名单是硬防线，无论沙箱是否开启都必须先过一遍
+	if cat == tools.CategoryCommand {
+		hit, reason := DetectDangerous(content)
+		if hit {
+			return Decision{Effect: Deny, Reason: fmt.Sprintf("Dangerous command blocked: %s", reason)}
+		}
+	}
+
+	// Layer 2b: sandbox auto-allow — commands running inside the OS sandbox
 	// need no confirmation, but explicit deny/ask rules still apply.
 	// Compound commands are split and checked individually; any sub-command
 	// triggering deny causes overall deny, any triggering ask causes a prompt.
@@ -441,14 +450,6 @@ func (c *Checker) Check(tool tools.Tool, args map[string]any) Decision {
 			return Decision{Effect: Ask, Reason: "Permission rule: ask (sandbox does not override explicit ask)"}
 		}
 		return Decision{Effect: Allow, Reason: "Sandboxed: auto-allow"}
-	}
-
-	// Layer 2: dangerous command (Bash only)
-	if cat == tools.CategoryCommand {
-		hit, reason := DetectDangerous(content)
-		if hit {
-			return Decision{Effect: Deny, Reason: fmt.Sprintf("Dangerous command blocked: %s", reason)}
-		}
 	}
 
 	// Layer 3: path sandbox (file tools)

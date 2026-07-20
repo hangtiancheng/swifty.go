@@ -56,6 +56,9 @@ func SpawnTeammate(ctx context.Context, cfg TeammateSpawnConfig) (*SpawnResult, 
 		return nil, fmt.Errorf("SpawnTeammate: member name is required")
 	}
 
+	// 把成员名字登记到全局名称注册表，供 SendMessage 按名字解析投递
+	GetNameRegistry().Register(cfg.MemberName, cfg.MemberName)
+
 	switch cfg.Team.Mode {
 	case ModeInProcess:
 		ch := StartInProcessMember(
