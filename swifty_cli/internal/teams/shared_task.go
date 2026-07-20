@@ -8,8 +8,8 @@ import (
 	"sync"
 )
 
-// SharedTask 是团队共享任务板上的一条任务，带依赖关系（Blocks / BlockedBy）
-// 和归属（Assignee）。
+// SharedTask is a single task on the team shared task board, with dependency
+// relations (Blocks / BlockedBy) and ownership (Assignee).
 type SharedTask struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -21,14 +21,16 @@ type SharedTask struct {
 	CreatedBy   string   `json:"created_by"`
 }
 
-// storeData 是 tasks.json 的整体结构：下一个可用 id + 任务列表。
+// storeData is the overall structure of tasks.json: the next available ID plus
+// the task list.
 type storeData struct {
 	NextID int          `json:"next_id"`
 	Tasks  []SharedTask `json:"tasks"`
 }
 
-// SharedTaskStore 以 JSON 文件（tasks.json）落盘，供同一团队的所有成员读写。
-// 每次读操作前先重新加载文件，保证跨进程的队友能拿到最新数据。
+// SharedTaskStore persists to a JSON file (tasks.json) for all members of the
+// same team to read and write. The file is reloaded before every read so that
+// teammates in other processes always see the latest data.
 type SharedTaskStore struct {
 	mu     sync.Mutex
 	path   string
@@ -36,14 +38,16 @@ type SharedTaskStore struct {
 	tasks  []SharedTask
 }
 
-// NewSharedTaskStore 打开（或初始化）指定路径的共享任务库。
+// NewSharedTaskStore opens (or initializes) the shared task store at the given
+// path.
 func NewSharedTaskStore(path string) *SharedTaskStore {
 	s := &SharedTaskStore{path: path, nextID: 1}
 	s.load()
 	return s
 }
 
-// load 从磁盘重新读取任务列表；文件不存在时保持空。调用方需持有锁。
+// load re-reads the task list from disk; it stays empty if the file does not
+// exist. The caller must hold the lock.
 func (s *SharedTaskStore) load() {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -59,7 +63,8 @@ func (s *SharedTaskStore) load() {
 	}
 }
 
-// save 把当前任务列表写回磁盘。调用方需持有锁。
+// save writes the current task list back to disk. The caller must hold the
+// lock.
 func (s *SharedTaskStore) save() {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return
@@ -75,7 +80,7 @@ func (s *SharedTaskStore) save() {
 	_ = os.WriteFile(s.path, out, 0o644)
 }
 
-// Create 创建一条共享任务，返回新任务。
+// Create creates a shared task and returns it.
 func (s *SharedTaskStore) Create(title, description, assignee string, blocks, blockedBy []string, createdBy string) SharedTask {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,7 +106,8 @@ func (s *SharedTaskStore) Create(title, description, assignee string, blocks, bl
 	return task
 }
 
-// Get 按 id 获取任务；读前先 reload 拿最新。找不到返回 nil。
+// Get returns the task with the given ID, reloading first to get the latest
+// data. It returns nil if the task is not found.
 func (s *SharedTaskStore) Get(id string) *SharedTask {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -115,7 +121,7 @@ func (s *SharedTaskStore) Get(id string) *SharedTask {
 	return nil
 }
 
-// ListTasks 列出任务，可选按状态、归属人过滤。
+// ListTasks lists tasks, optionally filtered by status and assignee.
 func (s *SharedTaskStore) ListTasks(status, assignee string) []SharedTask {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -133,7 +139,8 @@ func (s *SharedTaskStore) ListTasks(status, assignee string) []SharedTask {
 	return result
 }
 
-// TaskUpdate 描述一次更新；nil 指针表示对应字段不改。
+// TaskUpdate describes a single update; a nil pointer leaves the corresponding
+// field unchanged.
 type TaskUpdate struct {
 	Status       *string
 	Assignee     *string
@@ -142,8 +149,9 @@ type TaskUpdate struct {
 	AddBlockedBy []string
 }
 
-// Update 按 TaskUpdate 修改任务；AddBlocks / AddBlockedBy 追加依赖（去重）。
-// 任务不存在返回 nil。
+// Update modifies a task according to TaskUpdate; AddBlocks / AddBlockedBy
+// append dependencies (deduplicated). It returns nil if the task does not
+// exist.
 func (s *SharedTaskStore) Update(id string, upd TaskUpdate) *SharedTask {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -171,7 +179,8 @@ func (s *SharedTaskStore) Update(id string, upd TaskUpdate) *SharedTask {
 	return nil
 }
 
-// InitEmpty 清空任务库并落盘，用于新建团队时初始化。
+// InitEmpty clears the task store and persists it, used when initializing a
+// newly created team.
 func (s *SharedTaskStore) InitEmpty() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -180,7 +189,8 @@ func (s *SharedTaskStore) InitEmpty() {
 	s.save()
 }
 
-// appendUnique 把 add 里尚不存在的元素追加到 base，返回新切片。
+// appendUnique appends elements from add that are not yet in base and returns
+// the new slice.
 func appendUnique(base, add []string) []string {
 	for _, v := range add {
 		found := false

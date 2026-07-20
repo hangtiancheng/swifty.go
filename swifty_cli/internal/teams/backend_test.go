@@ -5,7 +5,8 @@ import (
 	"testing"
 )
 
-// detectBackendFromEnv 只看环境变量，与运行平台无关，可在任意系统上验证。
+// detectBackendFromEnv only inspects environment variables and is
+// platform-independent, so it can be verified on any system.
 func TestDetectBackendFromEnv(t *testing.T) {
 	t.Run("inside tmux picks tmux", func(t *testing.T) {
 		t.Setenv("TMUX", "/tmp/sock,1,0")
@@ -37,7 +38,8 @@ func TestDetectBackendFromEnv(t *testing.T) {
 	})
 }
 
-// Windows 上无论是否在 tmux 会话里都必须走进程内（护栏），避免 pwsh spawn 失败。
+// On Windows, detectBackend must stay in-process (guardrail) regardless of
+// whether it is inside a tmux session, to avoid pwsh spawn failures.
 func TestDetectBackendWindowsGuard(t *testing.T) {
 	t.Setenv("TMUX", "/tmp/sock,1,0")
 	got := detectBackend()
@@ -46,7 +48,7 @@ func TestDetectBackendWindowsGuard(t *testing.T) {
 			t.Errorf("windows must stay in-process even inside tmux, got %q", got)
 		}
 	} else {
-		// 非 Windows 平台，身处 tmux 会话应选 tmux
+		// On non-Windows platforms, being inside a tmux session should pick tmux.
 		if got != ModeTmux {
 			t.Errorf("non-windows inside tmux should pick tmux, got %q", got)
 		}

@@ -48,7 +48,7 @@ func (t *SendMessageTool) Execute(ctx context.Context, args map[string]any) tool
 		return tools.ToolResult{Output: "Error: 'to' and 'content' are required", IsError: true}
 	}
 
-	// 广播：把消息发给发送者所在团队的所有其它成员
+	// Broadcast: send the message to all other members of the sender's team.
 	if to == "*" {
 		for _, teamName := range t.TeamMgr.ListTeams() {
 			team := t.TeamMgr.GetTeam(teamName)
@@ -96,7 +96,8 @@ func (t *SendMessageTool) Execute(ctx context.Context, args map[string]any) tool
 		}
 	}
 
-	// 通过全局名称注册表把收件人名字解析成投递用的标识；解析不到就按原名兜底。
+	// Resolve the recipient name into a delivery identifier via the global name
+	// registry; fall back to the original name if it cannot be resolved.
 	recipient := to
 	if resolved := GetNameRegistry().Resolve(to); resolved != "" {
 		recipient = resolved

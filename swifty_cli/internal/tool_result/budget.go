@@ -292,8 +292,9 @@ func writeSpill(dir, toolUseID, content string) (string, error) {
 	return path, nil
 }
 
-// PersistLargeResult 将超大工具输出溢写到磁盘，返回预览文本。
-// agent 在工具结果入对话历史时调用。
+// PersistLargeResult spills oversized tool output to disk and returns a preview
+// of it. The agent calls this when a tool result enters the conversation
+// history.
 func PersistLargeResult(workDir, toolUseID, content string) string {
 	dir := filepath.Join(workDir, SpillSubdir)
 	path, err := writeSpill(dir, toolUseID, content)

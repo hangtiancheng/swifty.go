@@ -635,8 +635,9 @@ func (t *AgentTool) runAsTeammate(
 	}
 
 	subRegistry := FilterToolsForAgent(t.Registry, spec.Tools, spec.DisallowedTools, false)
-	// 队友协作工具：以队友自己的名字发消息，并注入团队共享任务板工具
-	// （覆盖继承来的个人版同名工具，让队友之间共享同一份任务列表）。
+	// Teammate collaboration tools: send messages under the teammate's own name
+	// and inject the team shared task board tools (overriding the inherited
+	// personal same-named tools so teammates share one task list).
 	subRegistry.Register(&teams.SendMessageTool{TeamMgr: t.TeamMgr, SenderName: memberName})
 	subRegistry.Register(&teams.TaskCreateTool{TeamMgr: t.TeamMgr, TeamName: teamName, AgentName: memberName})
 	subRegistry.Register(&teams.TaskGetTool{TeamMgr: t.TeamMgr, TeamName: teamName})

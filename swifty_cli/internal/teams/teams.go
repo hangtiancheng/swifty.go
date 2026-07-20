@@ -139,7 +139,7 @@ func (t *Team) SendMessage(from, to, content string) {
 type TeamManager struct {
 	mu         sync.Mutex
 	teams      map[string]*Team
-	taskStores map[string]*SharedTaskStore // 每团队一份共享任务库
+	taskStores map[string]*SharedTaskStore // one shared task store per team
 }
 
 func NewTeamManager() *TeamManager {
@@ -158,14 +158,15 @@ func (tm *TeamManager) CreateTeam(name string, mode TeamMode) *Team {
 	defer tm.mu.Unlock()
 	team := NewTeam(name, mode)
 	tm.teams[name] = team
-	// 新建团队时初始化一份空的共享任务库
+	// Initialize an empty shared task store for the new team.
 	store := NewSharedTaskStore(filepath.Join(teamDir(name), "tasks.json"))
 	store.InitEmpty()
 	tm.taskStores[name] = store
 	return team
 }
 
-// GetTaskStore 获取团队的共享任务库；内存无缓存时（例如队友进程）从磁盘 tasks.json 加载。
+// GetTaskStore returns the team's shared task store; when there is no
+// in-memory cache (e.g. in a teammate process), it loads tasks.json from disk.
 func (tm *TeamManager) GetTaskStore(teamName string) *SharedTaskStore {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
@@ -200,7 +201,7 @@ func (tm *TeamManager) DeleteTeam(name string) {
 		registry := GetNameRegistry()
 		for memberName := range team.Members {
 			team.StopMember(memberName)
-			// 解绑该成员在全局名称注册表里的映射
+			// Unbind the member's mapping in the global name registry.
 			registry.Unregister(memberName)
 		}
 		delete(tm.teams, name)

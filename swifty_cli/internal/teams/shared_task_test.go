@@ -67,7 +67,7 @@ func TestSharedTaskUpdateAndDeps(t *testing.T) {
 	if len(updated.Blocks) != 1 || updated.Blocks[0] != "2" {
 		t.Fatalf("blocks not appended: %+v", updated.Blocks)
 	}
-	// 重复追加去重
+	// Appending the same dependency again is deduplicated.
 	again := store.Update(task.ID, TaskUpdate{AddBlocks: []string{"2"}})
 	if len(again.Blocks) != 1 {
 		t.Fatalf("dedup failed: %+v", again.Blocks)
@@ -82,12 +82,12 @@ func TestSharedTaskPersistenceAndReload(t *testing.T) {
 	store1 := NewSharedTaskStore(path)
 	store1.Create("persisted", "", "", nil, nil, "lead")
 
-	// 另一个实例（模拟队友进程）读同一份文件
+	// A second instance (simulating a teammate process) reads the same file.
 	store2 := NewSharedTaskStore(path)
 	if len(store2.ListTasks("", "")) != 1 {
 		t.Fatalf("store2 should see 1 task")
 	}
-	// store2 写入后，store1 读前会 reload
+	// After store2 writes, store1 reloads before reading.
 	store2.Create("from-teammate", "", "", nil, nil, "bob")
 	if got := store1.Get("2"); got == nil || got.Title != "from-teammate" {
 		t.Fatalf("store1 did not reload teammate task: %+v", got)

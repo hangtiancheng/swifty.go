@@ -227,9 +227,10 @@ func ComputeUsedTokens(messages []conversation.Message, anchor UsageAnchor) int 
 	return anchor.BaselineTokens + EstimateTokens(messages[anchor.AnchorCount:])
 }
 
-// ComputeUsedTokensFromConv 从 ConversationManager 读取锚点状态来计算
-// 当前 token 用量。这是 ComputeUsedTokens 的便捷封装，避免调用方
-// 手动传递 UsageAnchor 参数。
+// ComputeUsedTokensFromConv computes the current token usage by reading the
+// anchor state from the ConversationManager. It is a convenience wrapper
+// around ComputeUsedTokens that spares callers from passing a UsageAnchor
+// explicitly.
 func ComputeUsedTokensFromConv(conv *conversation.Manager) int {
 	baseline, count, has := conv.UsageAnchorState()
 	return ComputeUsedTokens(conv.GetMessages(), UsageAnchor{

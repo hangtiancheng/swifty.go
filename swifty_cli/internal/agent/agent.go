@@ -270,7 +270,8 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 						Args:     e.Arguments,
 					}
 					// Start executing immediately while LLM continues streaming.
-					// 收集工具调用，等流式结束后按安全性分批执行
+					// Collect tool calls; once streaming ends, execute them in
+					// safety-based batches.
           executor.Submit(toolCallInfo{
 						toolID:    e.ToolID,
 						toolName:  e.ToolName,
@@ -373,7 +374,8 @@ func (a *Agent) Run(ctx context.Context, conv *conversation.Manager) <-chan Agen
 			// estimated incrementally on top of this baseline.
 			anchorAfterAssistant()
 
-			// 按安全性分批执行：只读工具并发，写/命令工具串行
+			// Execute in safety-based batches: read-only tools concurrently,
+			// write/command tools serially.
       results := executor.ExecuteAll(ctx, a)
 
 			var toolResults []conversation.ToolResultBlock

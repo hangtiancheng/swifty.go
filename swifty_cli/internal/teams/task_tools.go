@@ -9,8 +9,9 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 )
 
-// 团队共享任务板工具：TaskCreate / TaskGet / TaskList / TaskUpdate。
-// 这四个工具都挂在同一个团队的 SharedTaskStore 上，队友之间共享同一份任务列表。
+// Team shared task board tools: TaskCreate / TaskGet / TaskList / TaskUpdate.
+// All four tools are backed by the same team's SharedTaskStore, so teammates
+// share a single task list.
 
 var validTaskStatuses = map[string]bool{
 	"pending":     true,
@@ -19,7 +20,7 @@ var validTaskStatuses = map[string]bool{
 	"blocked":     true,
 }
 
-// stringSlice 把工具参数里的字符串数组安全地取出来。
+// stringSlice safely extracts a string slice from a tool argument.
 func stringSlice(raw any) []string {
 	arr, ok := raw.([]any)
 	if !ok {

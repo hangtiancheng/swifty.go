@@ -422,7 +422,8 @@ func (c *Checker) Check(tool tools.Tool, args map[string]any) Decision {
 	}
 
 	// Layer 2: dangerous command (Bash only)
-	// 黑名单是硬防线，无论沙箱是否开启都必须先过一遍
+	// The blacklist is a hard line of defense: it must always be checked,
+	// regardless of whether the sandbox is enabled.
 	if cat == tools.CategoryCommand {
 		hit, reason := DetectDangerous(content)
 		if hit {

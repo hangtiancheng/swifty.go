@@ -164,8 +164,9 @@ func (m *Manager) ReplaceToolResults(msgIndex int, newResults []ToolResultBlock)
 	m.history[msgIndex].ToolResults = newResults
 }
 
-// RecordUsageAnchor 锚定本轮 API 返回的真实 token 用量。
-// 调用时机：assistant 消息已追加到 history 之后。
+// RecordUsageAnchor anchors the real token usage returned by the API for this
+// turn. It must be called after the assistant message has been appended to the
+// history.
 func (m *Manager) RecordUsageAnchor(input, output, cacheRead, cacheCreation int) {
 	baseline := input + cacheRead + cacheCreation + output
 	if baseline <= 0 {
@@ -176,14 +177,15 @@ func (m *Manager) RecordUsageAnchor(input, output, cacheRead, cacheCreation int)
 	m.hasUsage = true
 }
 
-// ClearUsageAnchor 压缩后清零锚点，下次估算回退到全量字符估算。
+// ClearUsageAnchor resets the anchor after compaction; the next estimate falls
+// back to full-length character estimation.
 func (m *Manager) ClearUsageAnchor() {
 	m.baselineTokens = 0
 	m.anchorCount = 0
 	m.hasUsage = false
 }
 
-// UsageAnchorState 返回当前锚点状态，供 compact 层读取。
+// UsageAnchorState returns the current anchor state for the compact layer.
 func (m *Manager) UsageAnchorState() (baselineTokens, anchorCount int, hasUsage bool) {
 	return m.baselineTokens, m.anchorCount, m.hasUsage
 }

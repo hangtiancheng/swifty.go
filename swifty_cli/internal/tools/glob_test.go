@@ -40,7 +40,8 @@ func TestGlobDoubleStarPattern(t *testing.T) {
 		"pattern": "**/*.go",
 		"path":    root,
 	})
-	// Windows 的 filepath.Rel 返回反斜杠路径，统一转为正斜杠再比较
+	// filepath.Rel returns backslash-separated paths on Windows; normalize to
+	// forward slashes before comparing.
 	output := strings.ReplaceAll(res.Output, "\\", "/")
 	for _, want := range []string{"main.go", "cmd/cli/main.go", "internal/agents/agent.go", "internal/agents/agent_test.go"} {
 		if !strings.Contains(output, want) {

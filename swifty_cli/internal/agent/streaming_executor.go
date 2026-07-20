@@ -7,7 +7,8 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_cli/internal/tools"
 )
 
-// toolBatch 是 partitionToolCalls 的输出：一批工具调用和是否可以并发执行的标记。
+// toolBatch is the output of partitionToolCalls: a group of tool calls
+// together with a flag indicating whether they may run concurrently.
 type toolBatch struct {
 	concurrent bool
 	calls      []toolCallEntry
@@ -15,7 +16,7 @@ type toolBatch struct {
 
 type toolCallEntry struct {
 	tc    toolCallInfo
-	index int // 在原始 toolCalls 列表中的位置，保证结果顺序
+	index int // position in the original toolCalls list, preserving result order
 }
 
 type toolCallInfo struct {
@@ -24,9 +25,10 @@ type toolCallInfo struct {
 	arguments map[string]any
 }
 
-// StreamingExecutor 按安全性分批执行工具调用：
-// 连续的只读工具（category == "read"）合并为一批并发执行，
-// 写/命令工具各自独占一批串行执行。
+// StreamingExecutor executes tool calls in batches based on safety:
+// consecutive read-only tools (category == "read") are merged into a single
+// batch that runs concurrently, while write/command tools each occupy their
+// own batch and run serially.
 type StreamingExecutor struct {
 	registry *tools.Registry
 	eventCh  chan AgentEvent
@@ -43,15 +45,16 @@ func NewStreamingExecutor(registry *tools.Registry, eventCh chan AgentEvent) *St
 	}
 }
 
-// Submit 收集一个待执行的工具调用（不立即执行）。
+// Submit collects a tool call for later execution (it does not run immediately).
 func (se *StreamingExecutor) Submit(tc toolCallInfo) {
 	se.mu.Lock()
 	se.calls = append(se.calls, tc)
 	se.mu.Unlock()
 }
 
-// ExecuteAll 对收集到的工具调用做分批，然后按批次顺序执行：
-// 只读批并发，写/命令批串行。结果按原始提交顺序返回。
+// ExecuteAll partitions the collected tool calls into batches and runs them in
+// order: read-only batches run concurrently, write/command batches run serially.
+// Results are returned in the original submission order.
 func (se *StreamingExecutor) ExecuteAll(ctx context.Context, agent *Agent) []toolExecResult {
 	se.mu.Lock()
 	calls := append([]toolCallInfo(nil), se.calls...)
@@ -59,7 +62,8 @@ func (se *StreamingExecutor) ExecuteAll(ctx context.Context, agent *Agent) []too
 
 	results := make([]toolExecResult, len(calls))
 
-	// 为每个 call 记录原始索引，分批后能按原顺序回填
+	// Record the original index of each call so results can be placed back
+	// in order after batching.
 	var entries []toolCallEntry
 	for i, c := range calls {
 		entries = append(entries, toolCallEntry{tc: c, index: i})
@@ -69,7 +73,7 @@ func (se *StreamingExecutor) ExecuteAll(ctx context.Context, agent *Agent) []too
 
 	for _, batch := range batches {
 		if batch.concurrent && len(batch.calls) > 1 {
-			// 只读批：并发执行
+			// Read-only batch: execute concurrently
 			var wg sync.WaitGroup
 			for _, entry := range batch.calls {
 				wg.Add(1)
@@ -83,7 +87,7 @@ func (se *StreamingExecutor) ExecuteAll(ctx context.Context, agent *Agent) []too
 			}
 			wg.Wait()
 		} else {
-			// 写/命令批：串行执行
+			// Write/command batch: execute serially
 			for _, entry := range batch.calls {
 				r := agent.executeSingleTool(ctx, se.eventCh, entry.tc)
 				results[entry.index] = r
@@ -95,9 +99,9 @@ func (se *StreamingExecutor) ExecuteAll(ctx context.Context, agent *Agent) []too
 	return results
 }
 
-// partitionToolCalls 将工具调用按相邻性分批：
-// 连续的只读工具（category == "read"）归为一个并发批次，
-// 写/命令工具各自独占一个串行批次。
+// partitionToolCalls groups tool calls by adjacency:
+// consecutive read-only tools (category == "read") form a single concurrent
+// batch, while write/command tools each occupy their own serial batch.
 func partitionToolCalls(entries []toolCallEntry, registry *tools.Registry) []toolBatch {
 	var batches []toolBatch
 	for _, entry := range entries {
