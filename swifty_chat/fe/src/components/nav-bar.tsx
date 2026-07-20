@@ -70,7 +70,7 @@ function RailButton({
 export function NavBar({ avatar, isAdmin, onNavigate, onLogout }: NavBarProps) {
   return (
     <nav className="border-border bg-muted/50 flex h-full w-16 flex-col items-center border-r py-4">
-      <Avatar className="ring-primary/30 ring-offset-card size-10 rounded-full ring-2 ring-offset-2 transition-transform duration-200 hover:scale-105">
+      <Avatar className="ring-primary/30 ring-offset-card size-10 ring-2 ring-offset-2 transition-transform duration-200 hover:scale-105">
         <AvatarImage src={avatar} alt="Your avatar" />
         <AvatarFallback>U</AvatarFallback>
       </Avatar>

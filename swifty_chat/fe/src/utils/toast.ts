@@ -2,11 +2,7 @@ import { toast } from "sonner";
 
 type ToastType = "info" | "success" | "warning" | "error";
 
-export function showToast(
-  message: string,
-  type: ToastType = "info",
-  _duration = 3000,
-) {
+export function showToast(message: string, type: ToastType = "info") {
   switch (type) {
     case "success":
       toast.success(message);

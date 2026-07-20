@@ -70,14 +70,12 @@ export default function Register() {
         className="bg-primary/[0.07] pointer-events-none absolute bottom-1/4 left-1/3 h-64 w-64 rounded-full blur-3xl"
       />
 
-      <Card className="animate-in fade-in zoom-in-95 border-border shadow-primary/5 w-full max-w-md shadow-xl duration-300">
+      <Card className="animate-in fade-in zoom-in-95 shadow-primary/5 w-full max-w-md shadow-xl duration-300">
         <CardHeader>
           <CardTitle className="text-2xl font-semibold tracking-tight">
             Register
           </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Create your Swifty Chat account
-          </CardDescription>
+          <CardDescription>Create your Swifty Chat account</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">

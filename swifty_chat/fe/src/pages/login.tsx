@@ -68,14 +68,12 @@ export default function Login() {
         className="bg-primary/[0.07] pointer-events-none absolute top-1/4 right-1/3 h-64 w-64 rounded-full blur-3xl"
       />
 
-      <Card className="animate-in fade-in zoom-in-95 border-border shadow-primary/5 w-full max-w-md shadow-xl duration-300">
+      <Card className="animate-in fade-in zoom-in-95 shadow-primary/5 w-full max-w-md shadow-xl duration-300">
         <CardHeader>
           <CardTitle className="text-2xl font-semibold tracking-tight">
             Sign In
           </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Welcome back to Swifty Chat
-          </CardDescription>
+          <CardDescription>Welcome back to Swifty Chat</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">

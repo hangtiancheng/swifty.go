@@ -17,7 +17,7 @@ export default function SessionList() {
 
   return (
     <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      <Card className="shadow-primary/5 flex h-[600px] w-[1000px] flex-row overflow-hidden shadow-xl">
+      <Card className="shadow-primary/5 h-[600px] w-[1000px] flex-row shadow-xl">
         <NavBar
           avatar={userInfo.avatar}
           isAdmin={userInfo.is_admin === 1}

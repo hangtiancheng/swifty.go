@@ -51,7 +51,7 @@ function MenuItem({
     <Button
       variant="ghost"
       aria-current={active ? "page" : undefined}
-      className={`hover:bg-accent w-full justify-start rounded-none px-4 py-2 text-sm font-normal transition-colors ${
+      className={`hover:bg-accent w-full justify-start rounded-none px-4 py-2 font-normal transition-colors ${
         active ? "bg-accent text-foreground" : "text-muted-foreground"
       }`}
       onClick={onSelect}
@@ -197,7 +197,7 @@ export default function Manager() {
 
   return (
     <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      <Card className="shadow-primary/5 flex h-[600px] w-[1000px] flex-col gap-0 overflow-hidden py-0 shadow-xl">
+      <Card className="shadow-primary/5 h-[600px] w-[1000px] gap-0 py-0 shadow-xl">
         <div className="border-border bg-muted/30 flex h-14 shrink-0 items-center justify-between border-b px-6">
           <div className="flex items-center gap-3">
             <Shield size={24} className="text-primary" />
@@ -268,10 +268,7 @@ export default function Manager() {
                   </TableHeader>
                   <TableBody>
                     {userList.map((user) => (
-                      <TableRow
-                        key={user.uuid}
-                        className="hover:bg-accent/50 transition-colors"
-                      >
+                      <TableRow key={user.uuid} className="hover:bg-accent/50">
                         <TableCell>
                           <Checkbox
                             checked={selectedUserIds.includes(user.uuid)}
@@ -374,7 +371,7 @@ export default function Manager() {
                     {groupList.map((group) => (
                       <TableRow
                         key={group.group_id}
-                        className="hover:bg-accent/50 transition-colors"
+                        className="hover:bg-accent/50"
                       >
                         <TableCell>
                           <Checkbox

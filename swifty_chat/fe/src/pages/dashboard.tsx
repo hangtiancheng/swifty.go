@@ -128,7 +128,7 @@ export default function Dashboard() {
 
   return (
     <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      <Card className="shadow-primary/5 flex h-[700px] w-[1000px] flex-col gap-0 overflow-hidden py-0 shadow-xl">
+      <Card className="shadow-primary/5 h-[700px] w-[1000px] gap-0 py-0 shadow-xl">
         <div className="border-border bg-muted/30 flex h-14 shrink-0 items-center justify-between border-b px-6">
           <div className="flex items-center gap-3">
             <ChartBar size={20} className="text-primary" />
@@ -185,7 +185,7 @@ export default function Dashboard() {
                     className="border-border hover:bg-accent/40 flex h-9 items-center gap-2 border-b px-4 text-sm transition-colors"
                   >
                     <div className="w-16 text-center">
-                      <Badge variant="outline" className="text-xs font-normal">
+                      <Badge variant="outline" className="font-normal">
                         {row.group}
                       </Badge>
                     </div>

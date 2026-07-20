@@ -87,7 +87,7 @@ function SessionSection({
                 onClick={() => onChat(id)}
                 className="hover:bg-accent/60 active:bg-accent flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left transition-colors duration-150"
               >
-                <Avatar className="size-8">
+                <Avatar>
                   <AvatarImage src={session.avatar} alt={name} />
                   <AvatarFallback className="text-xs">
                     {(name.trim().charAt(0) || "?").toUpperCase()}

@@ -445,7 +445,7 @@ export default function Chat() {
 
   return (
     <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      <Card className="shadow-primary/5 flex h-[600px] w-[1000px] flex-row gap-0 overflow-hidden p-0 shadow-xl">
+      <Card className="shadow-primary/5 h-[600px] w-[1000px] flex-row gap-0 p-0 shadow-xl">
         <NavBar
           avatar={userInfo.avatar}
           isAdmin={userInfo.is_admin === 1}
@@ -459,7 +459,7 @@ export default function Chat() {
           <div className="border-border bg-muted/30 flex h-14 items-center justify-between border-b px-4">
             <div className="flex items-center gap-3">
               {contactAvatar && (
-                <Avatar className="ring-border ring-offset-card size-10 rounded-full ring-2 ring-offset-2">
+                <Avatar className="ring-border ring-offset-card size-10 ring-2 ring-offset-2">
                   <AvatarImage src={contactAvatar} alt={contactName} />
                   <AvatarFallback>
                     {contactName.charAt(0) || "?"}
@@ -585,7 +585,7 @@ export default function Chat() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="text-muted-foreground hover:bg-accent size-8"
+                    className="text-muted-foreground hover:bg-accent"
                     onClick={openVideoCall}
                     aria-label="Video call"
                   />
@@ -608,7 +608,7 @@ export default function Chat() {
               onChange={(e) => setChatMessage(e.target.value)}
             />
             <div className="flex w-[68px] flex-col-reverse p-2">
-              <Button className="h-10 text-sm" onClick={sendMessage}>
+              <Button className="h-10" onClick={sendMessage}>
                 Send
               </Button>
             </div>
@@ -778,7 +778,7 @@ export default function Chat() {
                   }
                 >
                   <div className="flex items-center gap-2">
-                    <Avatar className="size-8">
+                    <Avatar>
                       <AvatarImage src={m.avatar} alt={m.nickname} />
                       <AvatarFallback>
                         {(m.nickname || "?").charAt(0)}

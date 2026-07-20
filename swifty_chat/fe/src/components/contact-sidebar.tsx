@@ -264,7 +264,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
       <div className="flex items-center gap-1 p-2">
         <Input
           type="text"
-          className="h-8 flex-1 text-sm"
+          className="flex-1 text-sm"
           placeholder="Search contacts"
         />
         <DropdownMenu>
@@ -273,7 +273,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
               <Button
                 variant="outline"
                 size="icon"
-                className="size-8 shrink-0 rounded-md"
+                className="rounded-md"
                 aria-label="Add contact or group"
               />
             }
@@ -477,7 +477,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
                   <div className="flex gap-1">
                     <Button
                       size="sm"
-                      className="h-7 px-2 text-xs"
+                      className="px-2 text-xs"
                       onClick={() => approveRequest(req.apply_id)}
                     >
                       Approve
@@ -485,7 +485,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-muted-foreground h-7 px-2 text-xs"
+                      className="text-muted-foreground px-2 text-xs"
                       onClick={() => refuseRequest(req.apply_id)}
                     >
                       Refuse
@@ -493,7 +493,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-destructive h-7 px-2 text-xs"
+                      className="text-destructive px-2 text-xs"
                       onClick={() => blockRequest(req.apply_id)}
                     >
                       Block
