@@ -1,21 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Paperclip, Video } from "lucide-react";
-import { NavBarComponent } from "../components/nav-bar.react";
-import { SessionSidebarComponent } from "../components/session-sidebar.react";
-import { MessageBubbleComponent } from "../components/message-bubble.react";
-import { VideoCallComponent } from "../components/video-call.react";
-import type { VideoCall } from "../components/video-call";
-import { api } from "../service/api";
-import useAuthStore from "../store/auth";
-import useChatStore from "../store/chat";
-import useWsStore from "../store/ws";
-import { resolveAvatar } from "../utils/avatar";
-import { showToast } from "../utils/toast";
-import { performLogout } from "../utils/logout";
-import { getFileSize } from "../utils/format";
-import { BASE_URL } from "../config";
-import type { ContactInfo, Message } from "../types";
+import { MoreVertical, Paperclip, Video } from "lucide-react";
+import { NavBar } from "@/components/nav-bar";
+import { SessionSidebar } from "@/components/session-sidebar";
+import { MessageBubble } from "@/components/message-bubble";
+import { VideoCall, type VideoCallHandle } from "@/components/video-call";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { api } from "@/service/api";
+import useAuthStore from "@/store/auth";
+import useChatStore from "@/store/chat";
+import useWsStore from "@/store/ws";
+import { resolveAvatar } from "@/utils/avatar";
+import { showToast } from "@/utils/toast";
+import { performLogout } from "@/utils/logout";
+import { getFileSize } from "@/utils/format";
+import { BASE_URL } from "@/config";
+import type { ContactInfo, Message } from "@/types";
 
 type MemberRow = Record<string, string>;
 type JoinRequestRow = Record<string, string>;
@@ -38,7 +63,14 @@ export default function Chat() {
   const [editGroupAddMode, setEditGroupAddMode] = useState(-1);
   const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null);
 
-  const videoCallRef = useRef<VideoCall | null>(null);
+  // Dialog open states
+  const [userInfoOpen, setUserInfoOpen] = useState(false);
+  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
+  const [editGroupOpen, setEditGroupOpen] = useState(false);
+  const [removeMembersOpen, setRemoveMembersOpen] = useState(false);
+  const [joinRequestsOpen, setJoinRequestsOpen] = useState(false);
+
+  const videoCallRef = useRef<VideoCallHandle>(null);
 
   // Derived contact fields
   const contactId = contactInfo?.contact_id ?? "";
@@ -169,9 +201,6 @@ export default function Chat() {
     };
   }, []);
 
-  const handleNavBarNavigate = (e: CustomEvent<string>) => navigate(e.detail);
-  const handleSidebarChat = (e: CustomEvent<string>) =>
-    navigate(`/chat/${e.detail}`);
   const handleLogout = async () => {
     await performLogout();
     navigate("/login");
@@ -290,9 +319,7 @@ export default function Chat() {
     setEditGroupNotice("");
     setEditGroupAddMode(-1);
     setGroupAvatarFile(null);
-    (
-      document.getElementById("edit-group-modal") as HTMLDialogElement
-    )?.showModal();
+    setEditGroupOpen(true);
   };
 
   const saveGroupInfo = async () => {
@@ -327,9 +354,7 @@ export default function Chat() {
     const res = await api.updateGroupInfo(data);
     if (res.code === 200) {
       showToast("Group updated", "success");
-      (
-        document.getElementById("edit-group-modal") as HTMLDialogElement
-      )?.close();
+      setEditGroupOpen(false);
       loadChat(contactInfo.contact_id);
     } else {
       showToast(res.message, "error");
@@ -347,9 +372,7 @@ export default function Chat() {
       avatar: resolveAvatar(m.avatar),
     }));
     setMemberList(list);
-    (
-      document.getElementById("remove-members-modal") as HTMLDialogElement
-    )?.showModal();
+    setRemoveMembersOpen(true);
   };
 
   const toggleMember = (mid: string, checked: boolean) => {
@@ -390,9 +413,7 @@ export default function Chat() {
       return;
     }
     setJoinRequestList(list);
-    (
-      document.getElementById("join-requests-modal") as HTMLDialogElement
-    )?.showModal();
+    setJoinRequestsOpen(true);
   };
 
   const approveJoinRequest = async (applyId: string) => {
@@ -415,161 +436,133 @@ export default function Chat() {
     }
   };
 
+  const infoRow = (label: string, value: string | number) => (
+    <div className="border-border flex justify-between border-b py-1.5">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-foreground">{value}</span>
+    </div>
+  );
+
   return (
-    <div className="bg-base-200 flex min-h-screen items-center justify-center p-4">
-      <div className="card card-border border-base-300 bg-base-100 flex h-150 w-250 flex-row overflow-hidden shadow-xl">
-        <NavBarComponent
+    <div className="bg-background flex min-h-screen items-center justify-center p-4">
+      <Card className="shadow-primary/5 flex h-[600px] w-[1000px] flex-row gap-0 overflow-hidden p-0 shadow-xl">
+        <NavBar
           avatar={userInfo.avatar}
           isAdmin={userInfo.is_admin === 1}
-          onNavigate={handleNavBarNavigate}
+          onNavigate={(path) => navigate(path)}
           onLogout={handleLogout}
         />
-        <div className="border-base-300 w-55 border-r">
-          <SessionSidebarComponent onChat={handleSidebarChat} />
+        <div className="border-border w-55 border-r">
+          <SessionSidebar onChat={(cid) => navigate(`/chat/${cid}`)} />
         </div>
         <div className="flex flex-1 flex-col">
-          <div className="border-base-300 bg-base-200/50 flex h-14 items-center justify-between border-b px-4">
+          <div className="border-border bg-muted/30 flex h-14 items-center justify-between border-b px-4">
             <div className="flex items-center gap-3">
               {contactAvatar && (
-                <div className="avatar">
-                  <div className="ring-base-300 ring-offset-base-100 w-10 rounded-full ring ring-offset-1">
-                    <img src={contactAvatar} />
-                  </div>
-                </div>
+                <Avatar className="ring-border ring-offset-card size-10 rounded-full ring-2 ring-offset-2">
+                  <AvatarImage src={contactAvatar} alt={contactName} />
+                  <AvatarFallback>
+                    {contactName.charAt(0) || "?"}
+                  </AvatarFallback>
+                </Avatar>
               )}
-              <h2 className="text-base-content text-base font-semibold">
+              <h2 className="text-foreground text-base font-semibold">
                 {contactName}
               </h2>
             </div>
-            <div className="dropdown dropdown-end">
-              <div
-                tabIndex={0}
-                role="button"
-                className="btn btn-ghost btn-sm btn-square text-base-content/70 font-normal"
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground"
+                    aria-label="Chat options"
+                  />
+                }
               >
-                <span className="text-lg leading-none">⋮</span>
-              </div>
-              <ul
-                tabIndex={0}
-                className="dropdown-content menu rounded-box border-base-300 bg-base-100 z-10 w-44 border p-2 shadow-lg"
-              >
+                <MoreVertical className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
                 {isUserContact && (
-                  <li>
-                    <a
-                      className="text-base-content hover:bg-base-200 text-sm"
-                      onClick={() =>
-                        (
-                          document.getElementById(
-                            "user-info-modal",
-                          ) as HTMLDialogElement
-                        )?.showModal()
-                      }
-                    >
-                      User Info
-                    </a>
-                  </li>
+                  <DropdownMenuItem
+                    className="text-sm"
+                    onClick={() => setUserInfoOpen(true)}
+                  >
+                    User Info
+                  </DropdownMenuItem>
                 )}
                 {isGroupContact && (
-                  <li>
-                    <a
-                      className="text-base-content hover:bg-base-200 text-sm"
-                      onClick={() =>
-                        (
-                          document.getElementById(
-                            "group-info-modal",
-                          ) as HTMLDialogElement
-                        )?.showModal()
-                      }
-                    >
-                      Group Info
-                    </a>
-                  </li>
+                  <DropdownMenuItem
+                    className="text-sm"
+                    onClick={() => setGroupInfoOpen(true)}
+                  >
+                    Group Info
+                  </DropdownMenuItem>
                 )}
                 {isGroupContact && isGroupOwner && (
                   <>
-                    <li>
-                      <a
-                        className="text-base-content hover:bg-base-200 text-sm"
-                        onClick={showEditGroupModal}
-                      >
-                        Edit Group
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                        className="text-base-content hover:bg-base-200 text-sm"
-                        onClick={showRemoveMembersModal}
-                      >
-                        Remove Members
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                        className="text-base-content hover:bg-base-200 text-sm"
-                        onClick={showJoinRequestsModal}
-                      >
-                        Join Requests
-                      </a>
-                    </li>
+                    <DropdownMenuItem
+                      className="text-sm"
+                      onClick={showEditGroupModal}
+                    >
+                      Edit Group
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-sm"
+                      onClick={showRemoveMembersModal}
+                    >
+                      Remove Members
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-sm"
+                      onClick={showJoinRequestsModal}
+                    >
+                      Join Requests
+                    </DropdownMenuItem>
                   </>
                 )}
-                <li>
-                  <a
-                    className="text-base-content hover:bg-base-200 text-sm"
-                    onClick={deleteSession}
-                  >
-                    Delete Session
-                  </a>
-                </li>
+                <DropdownMenuItem className="text-sm" onClick={deleteSession}>
+                  Delete Session
+                </DropdownMenuItem>
                 {isUserContact && (
                   <>
-                    <li>
-                      <a
-                        className="text-base-content hover:bg-base-200 text-sm"
-                        onClick={deleteContact}
-                      >
-                        Remove Contact
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                        className="text-error hover:bg-error/10 text-sm"
-                        onClick={blackContact}
-                      >
-                        Block Contact
-                      </a>
-                    </li>
+                    <DropdownMenuItem
+                      className="text-sm"
+                      onClick={deleteContact}
+                    >
+                      Remove Contact
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive text-sm"
+                      onClick={blackContact}
+                    >
+                      Block Contact
+                    </DropdownMenuItem>
                   </>
                 )}
                 {isGroupContact && isGroupOwner && (
-                  <li>
-                    <a
-                      className="text-error hover:bg-error/10 text-sm"
-                      onClick={dismissGroup}
-                    >
-                      Disband Group
-                    </a>
-                  </li>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive text-sm"
+                    onClick={dismissGroup}
+                  >
+                    Disband Group
+                  </DropdownMenuItem>
                 )}
                 {isGroupContact && !isGroupOwner && (
-                  <li>
-                    <a
-                      className="text-base-content hover:bg-base-200 text-sm"
-                      onClick={leaveGroup}
-                    >
-                      Leave Group
-                    </a>
-                  </li>
+                  <DropdownMenuItem className="text-sm" onClick={leaveGroup}>
+                    Leave Group
+                  </DropdownMenuItem>
                 )}
-              </ul>
-            </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div
-            className="bg-base-200 flex-1 overflow-y-auto p-4"
+            className="bg-muted/20 flex-1 overflow-y-auto p-4"
             id="chat-messages"
           >
-            <MessageBubbleComponent
+            <MessageBubble
               messageList={messageList}
               currentUserId={userInfo.uuid}
               currentUserAvatar={userInfo.avatar}
@@ -577,371 +570,310 @@ export default function Chat() {
             />
           </div>
 
-          <div className="border-base-300 bg-base-200 flex h-10 items-center justify-between gap-1 border-t px-2">
+          <div className="border-border bg-muted/30 flex h-10 items-center justify-between gap-1 border-t px-2">
             <div className="flex items-center gap-1">
-              <label className="btn btn-ghost btn-sm btn-square text-base-content/70 hover:bg-base-300 cursor-pointer font-normal">
+              <label className="cursor-pointer">
                 <input type="file" className="hidden" onChange={onFileSelect} />
-                <Paperclip size={16} />
+                <span className="text-muted-foreground hover:bg-accent hover:text-accent-foreground flex size-8 items-center justify-center rounded-md transition-all duration-200">
+                  <Paperclip size={16} />
+                </span>
               </label>
             </div>
-            <div className="tooltip tooltip-left" data-tip="Video Call">
-              <button
-                className="btn btn-ghost btn-sm btn-square text-base-content/70 hover:bg-base-300 font-normal"
-                onClick={openVideoCall}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:bg-accent size-8"
+                    onClick={openVideoCall}
+                    aria-label="Video call"
+                  />
+                }
               >
                 <Video size={16} />
-              </button>
-            </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">Video Call</TooltipContent>
+            </Tooltip>
           </div>
 
-          <VideoCallComponent ref={videoCallRef} />
+          <VideoCall ref={videoCallRef} />
 
-          <div className="border-base-300 flex h-45 border-t">
-            <textarea
-              className="textarea textarea-ghost bg-base-100 placeholder-base-content/40 flex-1 resize-none p-3 text-sm"
+          <div className="border-border flex h-[180px] border-t">
+            <Textarea
+              className="bg-card placeholder:text-muted-foreground/50 flex-1 resize-none rounded-none border-0 p-3 text-sm focus-visible:ring-0"
               placeholder="Type a message..."
               maxLength={500}
               value={chatMessage}
               onChange={(e) => setChatMessage(e.target.value)}
             />
-            <div className="flex w-17 flex-col-reverse p-2">
-              <button
-                className="btn btn-accent h-10 text-sm font-normal"
-                onClick={sendMessage}
-              >
+            <div className="flex w-[68px] flex-col-reverse p-2">
+              <Button className="h-10 text-sm" onClick={sendMessage}>
                 Send
-              </button>
+              </Button>
             </div>
           </div>
         </div>
 
-        {/* User Info Modal */}
-        <dialog id="user-info-modal" className="modal">
-          <div className="modal-box border-base-300 rounded-box w-96 border">
-            <h3 className="text-base-content mb-4 text-base font-semibold">
-              User Profile
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">ID</span>
-                <span className="text-base-content">{contactId}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Name</span>
-                <span className="text-base-content">{contactName}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Gender</span>
-                <span className="text-base-content">{contactGenderText}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Phone</span>
-                <span className="text-base-content">{contactPhone}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Email</span>
-                <span className="text-base-content">{contactEmail}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Birthday</span>
-                <span className="text-base-content">{contactBirthday}</span>
-              </div>
-              <div className="py-1">
-                <span className="text-base-content/60">Signature</span>
-                <p className="text-base-content mt-1">{contactSignature}</p>
+        {/* User Info Dialog */}
+        <Dialog open={userInfoOpen} onOpenChange={setUserInfoOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>User Profile</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-0.5 text-sm">
+              {infoRow("ID", contactId)}
+              {infoRow("Name", contactName)}
+              {infoRow("Gender", contactGenderText)}
+              {infoRow("Phone", contactPhone)}
+              {infoRow("Email", contactEmail)}
+              {infoRow("Birthday", contactBirthday)}
+              <div className="py-1.5">
+                <span className="text-muted-foreground">Signature</span>
+                <p className="text-foreground mt-1">{contactSignature}</p>
               </div>
             </div>
-            <div className="modal-action">
-              <button
-                className="btn btn-sm btn-ghost font-normal"
-                onClick={() =>
-                  (
-                    document.getElementById(
-                      "user-info-modal",
-                    ) as HTMLDialogElement
-                  )?.close()
-                }
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setUserInfoOpen(false)}
               >
                 Close
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button>close</button>
-          </form>
-        </dialog>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Group Info Modal */}
-        <dialog id="group-info-modal" className="modal">
-          <div className="modal-box border-base-300 rounded-box w-96 border">
-            <h3 className="text-base-content mb-4 text-base font-semibold">
-              Group Info
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">ID</span>
-                <span className="text-base-content">{contactId}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Name</span>
-                <span className="text-base-content">{contactName}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Members</span>
-                <span className="text-base-content">{groupMemberCnt}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Owner</span>
-                <span className="text-base-content">{groupOwnerId}</span>
-              </div>
-              <div className="border-base-200 flex justify-between border-b py-1">
-                <span className="text-base-content/60">Join Mode</span>
-                <span className="text-base-content">{groupAddModeText}</span>
-              </div>
-              <div className="py-1">
-                <span className="text-base-content/60">Notice</span>
-                <p className="text-base-content mt-1">{groupNotice}</p>
+        {/* Group Info Dialog */}
+        <Dialog open={groupInfoOpen} onOpenChange={setGroupInfoOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Group Info</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-0.5 text-sm">
+              {infoRow("ID", contactId)}
+              {infoRow("Name", contactName)}
+              {infoRow("Members", groupMemberCnt)}
+              {infoRow("Owner", groupOwnerId)}
+              {infoRow("Join Mode", groupAddModeText)}
+              <div className="py-1.5">
+                <span className="text-muted-foreground">Notice</span>
+                <p className="text-foreground mt-1">{groupNotice}</p>
               </div>
             </div>
-            <div className="modal-action">
-              <button
-                className="btn btn-sm btn-ghost font-normal"
-                onClick={() =>
-                  (
-                    document.getElementById(
-                      "group-info-modal",
-                    ) as HTMLDialogElement
-                  )?.close()
-                }
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setGroupInfoOpen(false)}
               >
                 Close
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button>close</button>
-          </form>
-        </dialog>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Edit Group Modal */}
-        <dialog id="edit-group-modal" className="modal">
-          <div className="modal-box border-base-300 rounded-box w-96 border">
-            <h3 className="text-base-content mb-4 text-base font-semibold">
-              Edit Group
-            </h3>
-            <fieldset className="fieldset space-y-3">
-              <label className="label text-base-content/70 text-sm">
-                Group Name
-              </label>
-              <input
-                type="text"
-                className="input input-bordered input-sm w-full"
-                placeholder="3-10 characters"
-                value={editGroupName}
-                onChange={(e) => setEditGroupName(e.target.value)}
-              />
-              <label className="label text-base-content/70 text-sm">
-                Notice
-              </label>
-              <textarea
-                className="textarea textarea-bordered textarea-sm w-full"
-                rows={3}
-                placeholder="Optional"
-                maxLength={500}
-                value={editGroupNotice}
-                onChange={(e) => setEditGroupNotice(e.target.value)}
-              />
-              <label className="label text-base-content/70 text-sm">
-                Join Mode
-              </label>
-              <div className="flex gap-4">
-                <label className="label cursor-pointer gap-2">
-                  <input
-                    type="radio"
-                    name="addMode"
-                    className="radio radio-sm radio-primary"
-                    value={0}
-                    checked={editGroupAddMode === 0}
-                    onChange={() => setEditGroupAddMode(0)}
-                  />
-                  <span className="text-sm">Direct Join</span>
-                </label>
-                <label className="label cursor-pointer gap-2">
-                  <input
-                    type="radio"
-                    name="addMode"
-                    className="radio radio-sm radio-primary"
-                    value={1}
-                    checked={editGroupAddMode === 1}
-                    onChange={() => setEditGroupAddMode(1)}
-                  />
-                  <span className="text-sm">Owner Approval</span>
-                </label>
+        {/* Edit Group Dialog */}
+        <Dialog open={editGroupOpen} onOpenChange={setEditGroupOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Group</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-group-name">Group Name</Label>
+                <Input
+                  id="edit-group-name"
+                  type="text"
+                  placeholder="3-10 characters"
+                  value={editGroupName}
+                  onChange={(e) => setEditGroupName(e.target.value)}
+                />
               </div>
-              <label className="label text-base-content/70 text-sm">
-                Avatar
-              </label>
-              <input
-                type="file"
-                className="file-input file-input-bordered file-input-sm w-full"
-                accept="image/*"
-                onChange={(e) =>
-                  setGroupAvatarFile(e.target.files?.[0] ?? null)
-                }
-              />
-            </fieldset>
-            <div className="modal-action">
-              <button
-                className="btn btn-sm btn-accent font-normal"
-                onClick={saveGroupInfo}
-              >
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-group-notice">Notice</Label>
+                <Textarea
+                  id="edit-group-notice"
+                  rows={3}
+                  placeholder="Optional"
+                  maxLength={500}
+                  value={editGroupNotice}
+                  onChange={(e) => setEditGroupNotice(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Join Mode</Label>
+                <RadioGroup
+                  value={
+                    editGroupAddMode === -1
+                      ? undefined
+                      : String(editGroupAddMode)
+                  }
+                  onValueChange={(v) => setEditGroupAddMode(Number(v))}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="0" id="addmode-0" />
+                    <Label htmlFor="addmode-0" className="font-normal">
+                      Direct Join
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="1" id="addmode-1" />
+                    <Label htmlFor="addmode-1" className="font-normal">
+                      Owner Approval
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-group-avatar">Avatar</Label>
+                <Input
+                  id="edit-group-avatar"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    setGroupAvatarFile(e.target.files?.[0] ?? null)
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button size="sm" onClick={saveGroupInfo}>
                 Save
-              </button>
-              <button
-                className="btn btn-sm btn-ghost font-normal"
-                onClick={() =>
-                  (
-                    document.getElementById(
-                      "edit-group-modal",
-                    ) as HTMLDialogElement
-                  )?.close()
-                }
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditGroupOpen(false)}
               >
                 Cancel
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button>close</button>
-          </form>
-        </dialog>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Remove Members Modal */}
-        <dialog id="remove-members-modal" className="modal">
-          <div className="modal-box border-base-300 rounded-box w-96 border">
-            <h3 className="text-base-content mb-4 text-base font-semibold">
-              Remove Group Members
-            </h3>
+        {/* Remove Members Dialog */}
+        <Dialog open={removeMembersOpen} onOpenChange={setRemoveMembersOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Remove Group Members</DialogTitle>
+            </DialogHeader>
             {memberList.length === 0 && (
-              <p className="text-base-content/40 py-4 text-center text-sm">
+              <p className="text-muted-foreground py-4 text-center text-sm">
                 No members found
               </p>
             )}
-            <div className="max-h-60 space-y-1 overflow-y-auto">
+            <div className="flex max-h-60 flex-col overflow-y-auto">
               {memberList.map((m) => (
-                <label
+                <div
                   key={m.user_id}
-                  className="border-base-200 hover:bg-base-200/50 flex cursor-pointer items-center justify-between border-b px-2 py-2"
+                  className="border-border hover:bg-accent/50 flex cursor-pointer items-center justify-between rounded-md border-b px-2 py-2 transition-colors"
+                  onClick={() =>
+                    toggleMember(
+                      m.user_id,
+                      !selectedMembers.includes(m.user_id),
+                    )
+                  }
                 >
                   <div className="flex items-center gap-2">
-                    <div className="avatar">
-                      <div className="w-8 rounded-full">
-                        <img src={m.avatar} />
-                      </div>
-                    </div>
-                    <span className="text-base-content text-sm">
+                    <Avatar className="size-8">
+                      <AvatarImage src={m.avatar} alt={m.nickname} />
+                      <AvatarFallback>
+                        {(m.nickname || "?").charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-foreground text-sm">
                       {m.nickname}
                     </span>
                   </div>
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-sm checkbox-primary"
+                  <Checkbox
                     checked={selectedMembers.includes(m.user_id)}
-                    onChange={(e) => toggleMember(m.user_id, e.target.checked)}
+                    onCheckedChange={(checked) =>
+                      toggleMember(m.user_id, checked === true)
+                    }
                   />
-                </label>
+                </div>
               ))}
             </div>
-            <div className="modal-action">
-              <button
-                className="btn btn-sm btn-error font-normal"
+            <DialogFooter>
+              <Button
+                variant="destructive"
+                size="sm"
                 onClick={removeSelectedMembers}
               >
                 Remove Selected
-              </button>
-              <button
-                className="btn btn-sm btn-ghost font-normal"
-                onClick={() =>
-                  (
-                    document.getElementById(
-                      "remove-members-modal",
-                    ) as HTMLDialogElement
-                  )?.close()
-                }
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setRemoveMembersOpen(false)}
               >
                 Cancel
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button>close</button>
-          </form>
-        </dialog>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Join Requests Modal */}
-        <dialog id="join-requests-modal" className="modal">
-          <div className="modal-box border-base-300 rounded-box w-96 border">
-            <h3 className="text-base-content mb-4 text-base font-semibold">
-              Group Join Requests
-            </h3>
+        {/* Join Requests Dialog */}
+        <Dialog open={joinRequestsOpen} onOpenChange={setJoinRequestsOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Group Join Requests</DialogTitle>
+            </DialogHeader>
             {joinRequestList.length === 0 && (
-              <p className="text-base-content/40 py-4 text-center text-sm">
+              <p className="text-muted-foreground py-4 text-center text-sm">
                 No pending requests
               </p>
             )}
-            <div className="max-h-60 space-y-2 overflow-y-auto">
+            <div className="flex max-h-60 flex-col gap-2 overflow-y-auto">
               {joinRequestList.map((req) => (
                 <div
                   key={req.apply_id}
-                  className="border-base-200 flex items-center justify-between border-b py-2"
+                  className="border-border flex items-center justify-between border-b py-2"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-base-content text-sm">
+                    <span className="text-foreground text-sm">
                       {req.contact_name}
                     </span>
                     {req.message && (
-                      <span className="text-base-content/40 text-xs">
+                      <span className="text-muted-foreground text-xs">
                         ({req.message})
                       </span>
                     )}
                   </div>
                   <div className="flex gap-1">
-                    <button
-                      className="btn btn-xs btn-accent font-normal"
+                    <Button
+                      size="sm"
                       onClick={() => approveJoinRequest(req.apply_id)}
                     >
                       Approve
-                    </button>
-                    <button
-                      className="btn btn-xs btn-ghost text-base-content/60 font-normal"
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground"
                       onClick={() => rejectJoinRequest(req.apply_id)}
                     >
                       Reject
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="modal-action">
-              <button
-                className="btn btn-sm btn-ghost font-normal"
-                onClick={() =>
-                  (
-                    document.getElementById(
-                      "join-requests-modal",
-                    ) as HTMLDialogElement
-                  )?.close()
-                }
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setJoinRequestsOpen(false)}
               >
                 Close
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button>close</button>
-          </form>
-        </dialog>
-      </div>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </Card>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import {
   redirect,
   RouterProvider,
 } from "react-router-dom";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import useAuthStore from "./store/auth";
 import useWsStore from "./store/ws";
 import Login from "./pages/login";
@@ -28,12 +30,12 @@ async function rootLoader() {
 
 function RootErrorBoundary() {
   return (
-    <div className="bg-base-200 flex min-h-screen items-center justify-center">
+    <div className="bg-background flex min-h-screen items-center justify-center">
       <div className="text-center">
-        <h1 className="text-error text-2xl font-semibold">
+        <h1 className="text-destructive text-2xl font-semibold">
           Something went wrong
         </h1>
-        <p className="text-base-content/60 mt-2">Please refresh the page</p>
+        <p className="text-muted-foreground mt-2">Please refresh the page</p>
       </div>
     </div>
   );
@@ -68,5 +70,10 @@ export default function App() {
     }
   }, []);
 
-  return <RouterProvider router={router} />;
+  return (
+    <TooltipProvider delay={300}>
+      <RouterProvider router={router} />
+      <Toaster position="top-right" richColors closeButton />
+    </TooltipProvider>
+  );
 }

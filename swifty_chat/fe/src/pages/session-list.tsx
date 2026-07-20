@@ -1,17 +1,14 @@
 import { useNavigate } from "react-router-dom";
 import { MessageSquare } from "lucide-react";
-import { NavBarComponent } from "../components/nav-bar.react";
-import { SessionSidebarComponent } from "../components/session-sidebar.react";
-import useAuthStore from "../store/auth";
-import { performLogout } from "../utils/logout";
+import { Card } from "@/components/ui/card";
+import { NavBar } from "@/components/nav-bar";
+import { SessionSidebar } from "@/components/session-sidebar";
+import useAuthStore from "@/store/auth";
+import { performLogout } from "@/utils/logout";
 
 export default function SessionList() {
   const navigate = useNavigate();
   const userInfo = useAuthStore((s) => s.userInfo);
-
-  const handleNavigate = (e: CustomEvent<string>) => {
-    navigate(e.detail);
-  };
 
   const handleLogout = async () => {
     await performLogout();
@@ -19,28 +16,24 @@ export default function SessionList() {
   };
 
   return (
-    <div className="bg-base-200 flex min-h-screen items-center justify-center p-4">
-      <div className="card card-border border-base-300 bg-base-100 flex h-150 w-250 flex-row overflow-hidden shadow-xl">
-        <NavBarComponent
+    <div className="bg-background flex min-h-screen items-center justify-center p-4">
+      <Card className="shadow-primary/5 flex h-[600px] w-[1000px] flex-row overflow-hidden shadow-xl">
+        <NavBar
           avatar={userInfo.avatar}
           isAdmin={userInfo.is_admin === 1}
-          onNavigate={handleNavigate}
+          onNavigate={(path) => navigate(path)}
           onLogout={handleLogout}
         />
-        <div className="border-base-300 w-55 border-r">
-          <SessionSidebarComponent
-            onChat={(e: CustomEvent<string>) => navigate(`/chat/${e.detail}`)}
-          />
+        <div className="border-border w-55 border-r">
+          <SessionSidebar onChat={(id) => navigate(`/chat/${id}`)} />
         </div>
-        <div className="text-base-content/30 flex flex-1 flex-col items-center justify-center">
-          <span className="text-base-content/30 mb-4 h-16 w-16">
-            <MessageSquare size={64} strokeWidth={1.5} />
-          </span>
-          <p className="text-base-content/40">
+        <div className="text-muted-foreground/50 flex flex-1 flex-col items-center justify-center">
+          <MessageSquare size={64} strokeWidth={1.5} className="mb-4" />
+          <p className="text-muted-foreground/70">
             Select a conversation to start chatting
           </p>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

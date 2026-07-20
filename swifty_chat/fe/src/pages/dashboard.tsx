@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChartBar } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import useDashboardStore, { type GroupSnapshot } from "../store/dashboard";
 import { WS_URL } from "../config";
 import { formatSize, formatExpire } from "../utils/format";
@@ -35,6 +38,27 @@ function flatten(groups: GroupSnapshot[]): FlatRow[] {
     }
   }
   return rows;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === "connected") {
+    return (
+      <Badge className="bg-success/15 text-success border-0">Connected</Badge>
+    );
+  }
+  if (status === "connecting") {
+    return (
+      <Badge className="bg-warning/15 text-warning border-0">Connecting</Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="destructive"
+      className="bg-destructive/15 text-destructive border-0"
+    >
+      Disconnected
+    </Badge>
+  );
 }
 
 export default function Dashboard() {
@@ -103,28 +127,18 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="bg-base-200 flex min-h-screen items-center justify-center p-4">
-      <div className="card card-border border-base-300 bg-base-100 flex h-175 w-250 flex-col overflow-hidden shadow-xl">
-        <div className="border-base-300 bg-base-200 flex h-14 items-center justify-between border-b px-6">
+    <div className="bg-background flex min-h-screen items-center justify-center p-4">
+      <Card className="shadow-primary/5 flex h-[700px] w-[1000px] flex-col gap-0 overflow-hidden py-0 shadow-xl">
+        <div className="border-border bg-muted/30 flex h-14 shrink-0 items-center justify-between border-b px-6">
           <div className="flex items-center gap-3">
-            <span className="text-primary h-5 w-5">
-              <ChartBar size={20} />
-            </span>
-            <span className="text-base-content text-lg font-semibold">
+            <ChartBar size={20} className="text-primary" />
+            <span className="text-foreground text-lg font-semibold">
               Cache Dashboard
             </span>
           </div>
           <div className="flex items-center gap-3">
-            {status === "connected" && (
-              <span className="badge badge-sm badge-success">Connected</span>
-            )}
-            {status === "connecting" && (
-              <span className="badge badge-sm badge-warning">Connecting</span>
-            )}
-            {status !== "connected" && status !== "connecting" && (
-              <span className="badge badge-sm badge-error">Disconnected</span>
-            )}
-            <span className="text-base-content/60 text-xs">
+            <StatusBadge status={status} />
+            <span className="text-muted-foreground text-xs">
               {totalEntries} entries
             </span>
           </div>
@@ -133,22 +147,19 @@ export default function Dashboard() {
         {status !== "connected" && (
           <div className="flex flex-1 items-center justify-center">
             <div className="text-center">
-              <p className="text-base-content/40 mb-4">
+              <p className="text-muted-foreground mb-4 text-sm">
                 WebSocket not connected
               </p>
-              <button
-                className="btn btn-sm btn-accent font-normal"
-                onClick={reconnect}
-              >
+              <Button size="sm" onClick={reconnect}>
                 Connect
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {status === "connected" && (
           <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="border-base-300 bg-base-200/50 text-base-content flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs font-medium">
+            <div className="border-border bg-muted/30 text-foreground flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs font-medium">
               <div className="w-16 text-center">Group</div>
               <div className="flex-1">Key</div>
               <div className="w-16 text-right">Size</div>
@@ -171,12 +182,12 @@ export default function Dashboard() {
                 {visibleRows.map((row) => (
                   <div
                     key={row.group + row.key}
-                    className="border-base-200 hover:bg-base-200/50 flex h-9 items-center gap-2 border-b px-4 text-sm"
+                    className="border-border hover:bg-accent/40 flex h-9 items-center gap-2 border-b px-4 text-sm transition-colors"
                   >
                     <div className="w-16 text-center">
-                      <span className="badge badge-xs badge-outline text-xs">
+                      <Badge variant="outline" className="text-xs font-normal">
                         {row.group}
-                      </span>
+                      </Badge>
                     </div>
                     <div
                       className="flex-1 truncate font-mono text-xs"
@@ -184,28 +195,30 @@ export default function Dashboard() {
                     >
                       {row.key}
                     </div>
-                    <div className="text-base-content/60 w-16 text-right text-xs">
+                    <div className="text-muted-foreground w-16 text-right text-xs">
                       {row.sizeStr}
                     </div>
                     <div className="w-14 text-center">
                       {row.level === 1 ? (
-                        <span className="badge badge-xs badge-success">
+                        <Badge className="bg-success/15 text-success border-0">
                           hot
-                        </span>
+                        </Badge>
                       ) : (
-                        <span className="badge badge-xs badge-ghost">cold</span>
+                        <Badge variant="secondary">cold</Badge>
                       )}
                     </div>
-                    <div className="text-base-content/60 w-40 text-center text-xs">
+                    <div className="text-muted-foreground w-40 text-center text-xs">
                       {row.expireStr}
                     </div>
                     <div className="w-16 text-center">
-                      <button
-                        className="btn btn-xs btn-error btn-outline font-normal"
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive h-6 px-2 text-xs"
                         onClick={() => deleteEntry(row.group, row.key)}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -213,7 +226,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

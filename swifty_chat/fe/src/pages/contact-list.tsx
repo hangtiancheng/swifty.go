@@ -1,21 +1,14 @@
 import { useNavigate } from "react-router-dom";
 import { User } from "lucide-react";
-import { NavBarComponent } from "../components/nav-bar.react";
-import { ContactSidebarComponent } from "../components/contact-sidebar.react";
-import useAuthStore from "../store/auth";
-import { performLogout } from "../utils/logout";
+import { Card } from "@/components/ui/card";
+import { NavBar } from "@/components/nav-bar";
+import { ContactSidebar } from "@/components/contact-sidebar";
+import useAuthStore from "@/store/auth";
+import { performLogout } from "@/utils/logout";
 
 export default function ContactList() {
   const navigate = useNavigate();
   const userInfo = useAuthStore((s) => s.userInfo);
-
-  const handleNavBarNavigate = (e: CustomEvent<string>) => {
-    navigate(e.detail);
-  };
-
-  const handleSidebarNavigate = (e: CustomEvent<string>) => {
-    navigate(`/chat/${e.detail}`);
-  };
 
   const handleLogout = async () => {
     await performLogout();
@@ -23,26 +16,24 @@ export default function ContactList() {
   };
 
   return (
-    <div className="bg-base-200 flex min-h-screen items-center justify-center p-4">
-      <div className="card card-border border-base-300 bg-base-100 flex h-150 w-250 flex-row overflow-hidden shadow-xl">
-        <NavBarComponent
+    <div className="bg-background flex min-h-screen items-center justify-center p-4">
+      <Card className="shadow-primary/5 flex h-[600px] w-[1000px] flex-row overflow-hidden shadow-xl">
+        <NavBar
           avatar={userInfo.avatar}
           isAdmin={userInfo.is_admin === 1}
-          onNavigate={handleNavBarNavigate}
+          onNavigate={(path) => navigate(path)}
           onLogout={handleLogout}
         />
-        <div className="border-base-300 w-55 border-r">
-          <ContactSidebarComponent onNavigate={handleSidebarNavigate} />
+        <div className="border-border w-55 border-r">
+          <ContactSidebar onNavigate={(id) => navigate(`/chat/${id}`)} />
         </div>
-        <div className="text-base-content/30 flex flex-1 flex-col items-center justify-center">
-          <span className="mb-4 h-16 w-16">
-            <User size={64} strokeWidth={1.5} />
-          </span>
-          <p className="text-base-content/40">
+        <div className="text-muted-foreground/50 flex flex-1 flex-col items-center justify-center">
+          <User size={64} strokeWidth={1.5} className="mb-4" />
+          <p className="text-muted-foreground/70">
             Select a contact to start chatting
           </p>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

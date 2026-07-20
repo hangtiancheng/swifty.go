@@ -1,6 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { api } from "../service/api";
 import useAuthStore from "../store/auth";
 import { showToast } from "../utils/toast";
@@ -14,6 +26,48 @@ type Panel =
   | "delete-group";
 type UserRow = Record<string, string>;
 type GroupRow = Record<string, string>;
+
+const USER_PANELS: { panel: Panel; label: string }[] = [
+  { panel: "disable-user", label: "Enable / Disable" },
+  { panel: "delete-user", label: "Delete" },
+  { panel: "set-admin", label: "Set as Admin" },
+];
+
+const GROUP_PANELS: { panel: Panel; label: string }[] = [
+  { panel: "disable-group", label: "Enable / Disable" },
+  { panel: "delete-group", label: "Delete / Disband" },
+];
+
+function MenuItem({
+  active,
+  label,
+  onSelect,
+}: {
+  active: boolean;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      aria-current={active ? "page" : undefined}
+      className={`hover:bg-accent w-full justify-start rounded-none px-4 py-2 text-sm font-normal transition-colors ${
+        active ? "bg-accent text-foreground" : "text-muted-foreground"
+      }`}
+      onClick={onSelect}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function MenuSection({ title }: { title: string }) {
+  return (
+    <div className="text-primary px-4 pt-4 pb-1.5 text-xs font-semibold tracking-wider uppercase">
+      {title}
+    </div>
+  );
+}
 
 export default function Manager() {
   const navigate = useNavigate();
@@ -142,75 +196,50 @@ export default function Manager() {
     groupList.length > 0 && selectedGroupIds.length === groupList.length;
 
   return (
-    <div className="bg-base-200 flex min-h-screen items-center justify-center p-4">
-      <div className="card card-border border-base-300 bg-base-100 flex h-150 w-250 flex-col overflow-hidden shadow-xl">
-        <div className="border-base-300 bg-base-200 flex h-14 items-center justify-between border-b px-6">
+    <div className="bg-background flex min-h-screen items-center justify-center p-4">
+      <Card className="shadow-primary/5 flex h-[600px] w-[1000px] flex-col gap-0 overflow-hidden py-0 shadow-xl">
+        <div className="border-border bg-muted/30 flex h-14 shrink-0 items-center justify-between border-b px-6">
           <div className="flex items-center gap-3">
-            <span className="text-primary h-6 w-6">
-              <Shield size={24} />
-            </span>
-            <span className="text-base-content text-lg font-semibold">
+            <Shield size={24} className="text-primary" />
+            <span className="text-foreground text-lg font-semibold">
               Admin Panel
             </span>
           </div>
-          <button
-            className="btn btn-sm btn-ghost text-base-content/70 hover:bg-base-300 font-normal"
-            onClick={backToChat}
-          >
+          <Button variant="ghost" size="sm" onClick={backToChat}>
             Back
-          </button>
+          </Button>
         </div>
+
         <div className="flex flex-1 overflow-hidden">
-          <div className="border-base-300 bg-base-200/50 w-48 border-r">
-            <ul className="menu text-sm">
-              <li className="menu-title text-primary">Users</li>
-              <li>
-                <a
-                  className="text-base-content hover:bg-base-200"
-                  onClick={() => showPanel("disable-user")}
-                >
-                  Enable / Disable
-                </a>
-              </li>
-              <li>
-                <a
-                  className="text-base-content hover:bg-base-200"
-                  onClick={() => showPanel("delete-user")}
-                >
-                  Delete
-                </a>
-              </li>
-              <li>
-                <a
-                  className="text-base-content hover:bg-base-200"
-                  onClick={() => showPanel("set-admin")}
-                >
-                  Set as Admin
-                </a>
-              </li>
-              <li className="menu-title text-primary">Groups</li>
-              <li>
-                <a
-                  className="text-base-content hover:bg-base-200"
-                  onClick={() => showPanel("disable-group")}
-                >
-                  Enable / Disable
-                </a>
-              </li>
-              <li>
-                <a
-                  className="text-base-content hover:bg-base-200"
-                  onClick={() => showPanel("delete-group")}
-                >
-                  Delete / Disband
-                </a>
-              </li>
-            </ul>
+          <div className="border-border bg-muted/30 w-48 shrink-0 overflow-y-auto border-r">
+            <MenuSection title="Users" />
+            <div className="flex flex-col gap-0.5 px-2">
+              {USER_PANELS.map(({ panel, label }) => (
+                <MenuItem
+                  key={panel}
+                  active={currentPanel === panel}
+                  label={label}
+                  onSelect={() => showPanel(panel)}
+                />
+              ))}
+            </div>
+            <MenuSection title="Groups" />
+            <div className="flex flex-col gap-0.5 px-2">
+              {GROUP_PANELS.map(({ panel, label }) => (
+                <MenuItem
+                  key={panel}
+                  active={currentPanel === panel}
+                  label={label}
+                  onSelect={() => showPanel(panel)}
+                />
+              ))}
+            </div>
           </div>
+
           <div className="flex-1 overflow-y-auto">
             {currentPanel === "none" && (
               <div className="flex h-full items-center justify-center">
-                <p className="text-base-content/40">
+                <p className="text-muted-foreground text-sm">
                   Select an option from the left menu
                 </p>
               </div>
@@ -218,105 +247,103 @@ export default function Manager() {
 
             {isUserPanel && (
               <div className="p-4">
-                <div className="overflow-x-auto">
-                  <table className="table-sm table">
-                    <thead>
-                      <tr className="text-base-content">
-                        <th>
-                          <input
-                            type="checkbox"
-                            className="checkbox checkbox-xs"
-                            checked={allUsersChecked}
-                            onChange={(e) => toggleAllUsers(e.target.checked)}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={allUsersChecked}
+                          onCheckedChange={(checked) =>
+                            toggleAllUsers(checked === true)
+                          }
+                          aria-label="Select all users"
+                        />
+                      </TableHead>
+                      <TableHead>UUID</TableHead>
+                      <TableHead>Nickname</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Admin</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {userList.map((user) => (
+                      <TableRow
+                        key={user.uuid}
+                        className="hover:bg-accent/50 transition-colors"
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedUserIds.includes(user.uuid)}
+                            onCheckedChange={(checked) =>
+                              toggleUser(user.uuid, checked === true)
+                            }
+                            aria-label={`Select user ${user.nickname}`}
                           />
-                        </th>
-                        <th>UUID</th>
-                        <th>Nickname</th>
-                        <th>Phone</th>
-                        <th>Admin</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {userList.map((user) => (
-                        <tr key={user.uuid} className="hover:bg-base-200">
-                          <td>
-                            <input
-                              type="checkbox"
-                              className="checkbox checkbox-xs"
-                              checked={selectedUserIds.includes(user.uuid)}
-                              onChange={(e) =>
-                                toggleUser(user.uuid, e.target.checked)
-                              }
-                            />
-                          </td>
-                          <td className="text-xs">{user.uuid}</td>
-                          <td>{user.nickname}</td>
-                          <td>{user.telephone}</td>
-                          <td>
-                            {user.is_admin === "1" ? (
-                              <span className="badge badge-sm badge-success">
-                                Yes
-                              </span>
-                            ) : (
-                              <span className="badge badge-sm">No</span>
-                            )}
-                          </td>
-                          <td>
-                            {user.status === "1" ? (
-                              <span className="badge badge-sm badge-error">
-                                Disabled
-                              </span>
-                            ) : (
-                              <span className="badge badge-sm badge-success">
-                                Active
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-xs">
+                          {user.uuid}
+                        </TableCell>
+                        <TableCell>{user.nickname}</TableCell>
+                        <TableCell>{user.telephone}</TableCell>
+                        <TableCell>
+                          {user.is_admin === "1" ? (
+                            <Badge
+                              variant="secondary"
+                              className="bg-success/15 text-success"
+                            >
+                              Yes
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">No</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.status === "1" ? (
+                            <Badge
+                              variant="destructive"
+                              className="bg-destructive/15 text-destructive border-0"
+                            >
+                              Disabled
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-success/15 text-success border-0">
+                              Active
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
                 <div className="mt-4 flex justify-end gap-2">
                   {currentPanel === "disable-user" && (
                     <>
-                      <button
-                        className="btn btn-sm btn-accent font-normal"
-                        onClick={enableSelectedUsers}
-                      >
-                        Enable
-                      </button>
-                      <button
-                        className="btn btn-sm btn-error font-normal"
+                      <Button onClick={enableSelectedUsers}>Enable</Button>
+                      <Button
+                        variant="destructive"
                         onClick={disableSelectedUsers}
                       >
                         Disable
-                      </button>
+                      </Button>
                     </>
                   )}
                   {currentPanel === "delete-user" && (
-                    <button
-                      className="btn btn-sm btn-error font-normal"
-                      onClick={deleteSelectedUsers}
-                    >
+                    <Button variant="destructive" onClick={deleteSelectedUsers}>
                       Delete
-                    </button>
+                    </Button>
                   )}
                   {currentPanel === "set-admin" && (
                     <>
-                      <button
-                        className="btn btn-sm btn-accent font-normal"
-                        onClick={() => setAdminSelected(1)}
-                      >
+                      <Button onClick={() => setAdminSelected(1)}>
                         Grant Admin
-                      </button>
-                      <button
-                        className="btn btn-sm btn-ghost text-base-content/60 font-normal"
+                      </Button>
+                      <Button
+                        variant="ghost"
                         onClick={() => setAdminSelected(0)}
                       >
                         Revoke Admin
-                      </button>
+                      </Button>
                     </>
                   )}
                 </div>
@@ -325,89 +352,90 @@ export default function Manager() {
 
             {isGroupPanel && (
               <div className="p-4">
-                <div className="overflow-x-auto">
-                  <table className="table-sm table">
-                    <thead>
-                      <tr className="text-base-content">
-                        <th>
-                          <input
-                            type="checkbox"
-                            className="checkbox checkbox-xs"
-                            checked={allGroupsChecked}
-                            onChange={(e) => toggleAllGroups(e.target.checked)}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={allGroupsChecked}
+                          onCheckedChange={(checked) =>
+                            toggleAllGroups(checked === true)
+                          }
+                          aria-label="Select all groups"
+                        />
+                      </TableHead>
+                      <TableHead>Group ID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Owner</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {groupList.map((group) => (
+                      <TableRow
+                        key={group.group_id}
+                        className="hover:bg-accent/50 transition-colors"
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedGroupIds.includes(group.group_id)}
+                            onCheckedChange={(checked) =>
+                              toggleGroup(group.group_id, checked === true)
+                            }
+                            aria-label={`Select group ${group.name}`}
                           />
-                        </th>
-                        <th>Group ID</th>
-                        <th>Name</th>
-                        <th>Owner</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {groupList.map((group) => (
-                        <tr key={group.group_id} className="hover:bg-base-200">
-                          <td>
-                            <input
-                              type="checkbox"
-                              className="checkbox checkbox-xs"
-                              checked={selectedGroupIds.includes(
-                                group.group_id,
-                              )}
-                              onChange={(e) =>
-                                toggleGroup(group.group_id, e.target.checked)
-                              }
-                            />
-                          </td>
-                          <td className="text-xs">{group.group_id}</td>
-                          <td>{group.name}</td>
-                          <td className="text-xs">{group.owner_id}</td>
-                          <td>
-                            {group.status === "1" ? (
-                              <span className="badge badge-sm badge-error">
-                                Disabled
-                              </span>
-                            ) : (
-                              <span className="badge badge-sm badge-success">
-                                Active
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-xs">
+                          {group.group_id}
+                        </TableCell>
+                        <TableCell>{group.name}</TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-xs">
+                          {group.owner_id}
+                        </TableCell>
+                        <TableCell>
+                          {group.status === "1" ? (
+                            <Badge
+                              variant="destructive"
+                              className="bg-destructive/15 text-destructive border-0"
+                            >
+                              Disabled
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-success/15 text-success border-0">
+                              Active
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
                 <div className="mt-4 flex justify-end gap-2">
                   {currentPanel === "disable-group" && (
                     <>
-                      <button
-                        className="btn btn-sm btn-accent font-normal"
-                        onClick={enableSelectedGroups}
-                      >
-                        Enable
-                      </button>
-                      <button
-                        className="btn btn-sm btn-error font-normal"
+                      <Button onClick={enableSelectedGroups}>Enable</Button>
+                      <Button
+                        variant="destructive"
                         onClick={disableSelectedGroups}
                       >
                         Disable
-                      </button>
+                      </Button>
                     </>
                   )}
                   {currentPanel === "delete-group" && (
-                    <button
-                      className="btn btn-sm btn-error font-normal"
+                    <Button
+                      variant="destructive"
                       onClick={deleteSelectedGroups}
                     >
                       Delete
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
             )}
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

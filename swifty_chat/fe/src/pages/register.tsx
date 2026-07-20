@@ -1,11 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../service/api";
-import useAuthStore from "../store/auth";
-import useWsStore from "../store/ws";
-import { isValidPhone } from "../utils/validate";
-import { showToast } from "../utils/toast";
-import type { UserInfo } from "../types";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { api } from "@/service/api";
+import useAuthStore from "@/store/auth";
+import useWsStore from "@/store/ws";
+import { isValidPhone } from "@/utils/validate";
+import { showToast } from "@/utils/toast";
+import type { UserInfo } from "@/types";
 
 export default function Register() {
   const [nickname, setNickname] = useState("");
@@ -44,67 +55,86 @@ export default function Register() {
   };
 
   return (
-    <div className="bg-base-200 flex min-h-screen items-center justify-center p-4">
-      <div className="card card-border border-base-300 bg-base-100 w-full max-w-md p-8 shadow-xl">
-        <h2 className="text-base-content mb-8 text-center text-2xl font-semibold">
-          Register
-        </h2>
-        <fieldset className="fieldset space-y-4">
-          <label className="label text-base-content/70 text-sm">Nickname</label>
-          <input
-            type="text"
-            className="input input-bordered w-full"
-            placeholder="3-10 characters"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-          />
+    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+      {/* Ambient soft-pink layers */}
+      <div
+        aria-hidden
+        className="bg-primary/10 pointer-events-none absolute -top-24 -right-32 h-96 w-96 animate-pulse rounded-full blur-3xl [animation-duration:8s] motion-reduce:animate-none"
+      />
+      <div
+        aria-hidden
+        className="bg-primary/5 pointer-events-none absolute -bottom-40 -left-24 h-[28rem] w-[28rem] animate-pulse rounded-full blur-3xl [animation-delay:2s] [animation-duration:10s] motion-reduce:animate-none"
+      />
+      <div
+        aria-hidden
+        className="bg-primary/[0.07] pointer-events-none absolute bottom-1/4 left-1/3 h-64 w-64 rounded-full blur-3xl"
+      />
 
-          <label className="label text-base-content/70 text-sm">Phone</label>
-          <input
-            type="text"
-            className="input input-bordered w-full"
-            placeholder="Enter your phone number"
-            value={telephone}
-            onChange={(e) => setTelephone(e.target.value)}
-          />
-
-          <label className="label text-base-content/70 text-sm">Password</label>
-          <input
-            type="password"
-            className="input input-bordered w-full"
-            placeholder="Enter your password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          <label className="label text-base-content/70 text-sm">
-            Confirm Password
-          </label>
-          <input
-            type="password"
-            className="input input-bordered w-full"
-            placeholder="Re-enter your password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
-        </fieldset>
-
-        <button
-          className="btn btn-accent mt-8 w-full font-normal"
-          onClick={handleRegister}
-        >
-          Register
-        </button>
-
-        <div className="mt-5 flex justify-end">
-          <a
-            className="link link-primary cursor-pointer text-sm"
-            onClick={() => navigate("/login")}
-          >
-            Sign In
-          </a>
-        </div>
-      </div>
+      <Card className="animate-in fade-in zoom-in-95 border-border shadow-primary/5 w-full max-w-md shadow-xl duration-300">
+        <CardHeader>
+          <CardTitle className="text-2xl font-semibold tracking-tight">
+            Register
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Create your Swifty Chat account
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="register-nickname">Nickname</Label>
+            <Input
+              id="register-nickname"
+              type="text"
+              placeholder="3-10 characters"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="register-phone">Phone</Label>
+            <Input
+              id="register-phone"
+              type="text"
+              placeholder="Enter your phone number"
+              value={telephone}
+              onChange={(e) => setTelephone(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="register-password">Password</Label>
+            <Input
+              id="register-password"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="register-confirm-password">Confirm Password</Label>
+            <Input
+              id="register-confirm-password"
+              type="password"
+              placeholder="Re-enter your password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </div>
+        </CardContent>
+        <CardFooter className="flex-col gap-3">
+          <Button className="w-full" onClick={handleRegister}>
+            Register
+          </Button>
+          <div className="flex w-full justify-end">
+            <a
+              className="text-primary cursor-pointer text-sm hover:underline"
+              onClick={() => navigate("/login")}
+            >
+              Sign In
+            </a>
+          </div>
+        </CardFooter>
+      </Card>
     </div>
   );
 }
