@@ -1,14 +1,9 @@
 ---
-name: update-skill
+name: update-go-skills
 description: >
-  Regenerate the swifty-go framework skill documentation by reading the latest source
-  code and rewriting SKILL.md files for swifty_cache, swifty_http, swifty_orm, and swifty_rpc.
-  Use this skill when the user asks to update, refresh, regenerate, or sync the skill
-  docs with the current source, or when source code has changed and the skills need to
-  reflect the new API surface. Also trigger when the user mentions "update skills",
-  "refresh skill docs", "sync skills with source", or says the skill documentation is
-  outdated. Do NOT use for creating entirely new skills unrelated to these four
-  packages, or for editing the skill description/triggering metadata only.
+  Regenerate the swifty.go framework skill documentation by reading the latest package source code and rewriting SKILL.md files for swifty_cache (swifty_cache → .github/skills/swifty-cache), swifty_http (swifty_http → .github/skills/swifty-http), swifty_orm (swifty_orm → .github/skills/swifty-orm), and swifty_rpc (swifty_rpc → .github/skills/swifty-rpc).
+  Use this skill when the user asks to update, refresh, regenerate, or sync the skill docs with the current source, or when source code under swifty_cache or swifty_http or swifty_orm or swifty_rpc has changed and the skills need to reflect the new API surface. Also trigger when the user mentions "update skills", "refresh skill docs", "sync skills with source", or says the skill documentation is outdated.
+  Do NOT use for creating entirely new skills unrelated to these four packages, or for editing the skill description/triggering metadata only.
 ---
 
 # Update Swifty-Go Framework Skills
