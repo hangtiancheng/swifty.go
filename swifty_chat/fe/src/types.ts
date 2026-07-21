@@ -51,6 +51,7 @@ export interface ContactInfo {
 }
 
 export interface Message {
+  uuid?: string;
   session_id: string;
   type: number;
   content: string;

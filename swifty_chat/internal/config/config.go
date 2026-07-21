@@ -37,9 +37,8 @@ type MongoConfig struct {
 }
 
 type CacheConfig struct {
-	MaxBytes      int64  `json:"maxBytes"`
-	Expiration    int    `json:"expiration"`
-	DashboardAddr string `json:"dashboardAddr"`
+	MaxBytes   int64 `json:"maxBytes"`
+	Expiration int   `json:"expiration"`
 }
 
 type StaticConfig struct {

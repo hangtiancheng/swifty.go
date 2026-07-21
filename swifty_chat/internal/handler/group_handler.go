@@ -33,12 +33,14 @@ func CreateGroup(ctx *swifty_http.Context, next func()) {
 		Name    string `json:"name"`
 		OwnerId string `json:"owner_id"`
 		Avatar  string `json:"avatar"`
+		Notice  string `json:"notice"`
+		AddMode int8   `json:"add_mode"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
 		JsonBack(ctx, "invalid request body", -1, nil)
 		return
 	}
-	msg, data, ret := service.CreateGroup(ctx.Request.Context(), req.Name, req.OwnerId, req.Avatar)
+	msg, data, ret := service.CreateGroup(ctx.Request.Context(), req.Name, req.OwnerId, req.Avatar, req.Notice, req.AddMode)
 	JsonBack(ctx, msg, ret, data)
 }
 
@@ -118,10 +120,11 @@ func DismissGroup(ctx *swifty_http.Context, next func()) {
 
 func UpdateGroupInfo(ctx *swifty_http.Context, next func()) {
 	var req struct {
-		Uuid   string `json:"uuid"`
-		Name   string `json:"name"`
-		Notice string `json:"notice"`
-		Avatar string `json:"avatar"`
+		Uuid    string `json:"uuid"`
+		Name    string `json:"name"`
+		Notice  string `json:"notice"`
+		Avatar  string `json:"avatar"`
+		AddMode *int8  `json:"add_mode"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
 		JsonBack(ctx, "invalid request body", -1, nil)
@@ -136,6 +139,13 @@ func UpdateGroupInfo(ctx *swifty_http.Context, next func()) {
 	}
 	if req.Avatar != "" {
 		fields["avatar"] = req.Avatar
+	}
+	if req.AddMode != nil {
+		if *req.AddMode != 0 && *req.AddMode != 1 {
+			JsonBack(ctx, "invalid add_mode", -2, nil)
+			return
+		}
+		fields["add_mode"] = *req.AddMode
 	}
 	msg, ret := service.UpdateGroupInfo(ctx.Request.Context(), req.Uuid, fields)
 	JsonBack(ctx, msg, ret, nil)

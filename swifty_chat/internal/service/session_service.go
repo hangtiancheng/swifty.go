@@ -22,6 +22,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -47,7 +48,25 @@ type GroupSessionItem struct {
 	GroupName string `json:"group_name"`
 }
 
+// invalidateSessionCacheByReceiver drops the cached session list of every
+// user that has a session pointing at the given receiver.
+func invalidateSessionCacheByReceiver(ctx context.Context, receiveId string) {
+	var owners []string
+	if err := dao.ActiveQuery(&model.Session{}).
+		Where("receive_id", receiveId).
+		Pluck(ctx, "send_id", &owners); err != nil {
+		log.Printf("invalidateSessionCacheByReceiver %s failed: %v", receiveId, err)
+		return
+	}
+	for _, owner := range owners {
+		_ = dao.SessionListCache.Delete(ctx, owner)
+	}
+}
+
 func OpenSession(ctx context.Context, sendId, receiveId string) (string, string, int) {
+	if sendId == "" || receiveId == "" {
+		return "send_id and receive_id are required", "", -2
+	}
 	var session model.Session
 	err := dao.ActiveQuery(&session).
 		Where("send_id", sendId).
@@ -90,16 +109,28 @@ func createSession(ctx context.Context, sendId, receiveId string) (string, strin
 		return constant.SystemError, "", -1
 	}
 	_ = dao.SessionListCache.Delete(ctx, sendId)
-	_ = dao.GrpSessionListCache.Delete(ctx, sendId)
 	return "session created", session.Uuid, 0
 }
 
-func GetUserSessionList(ctx context.Context, ownerId string) (string, []UserSessionItem, int) {
+// loadSessions returns the caller's active sessions, served through the
+// read-through session cache.
+func loadSessions(ctx context.Context, ownerId string) ([]model.Session, error) {
+	if view, err := dao.SessionListCache.Get(ctx, ownerId); err == nil {
+		var sessions []model.Session
+		if err := json.Unmarshal(view.ByteSlice(), &sessions); err == nil {
+			return sessions, nil
+		}
+	}
 	var sessions []model.Session
 	err := dao.ActiveQuery(&sessions).
 		Where("send_id", ownerId).
 		OrderBy("created_at", "desc").
 		Find(ctx, &sessions)
+	return sessions, err
+}
+
+func GetUserSessionList(ctx context.Context, ownerId string) (string, []UserSessionItem, int) {
+	sessions, err := loadSessions(ctx, ownerId)
 	if err != nil {
 		log.Println(err)
 		return constant.SystemError, nil, -1
@@ -116,11 +147,7 @@ func GetUserSessionList(ctx context.Context, ownerId string) (string, []UserSess
 }
 
 func GetGroupSessionList(ctx context.Context, ownerId string) (string, []GroupSessionItem, int) {
-	var sessions []model.Session
-	err := dao.ActiveQuery(&sessions).
-		Where("send_id", ownerId).
-		OrderBy("created_at", "desc").
-		Find(ctx, &sessions)
+	sessions, err := loadSessions(ctx, ownerId)
 	if err != nil {
 		log.Println(err)
 		return constant.SystemError, nil, -1
@@ -144,11 +171,13 @@ func DeleteSession(ctx context.Context, ownerId, sessionId string) (string, int)
 		return constant.SystemError, -1
 	}
 	_ = dao.SessionListCache.Delete(ctx, ownerId)
-	_ = dao.GrpSessionListCache.Delete(ctx, ownerId)
 	return "deleted", 0
 }
 
 func CheckOpenSessionAllowed(ctx context.Context, sendId, receiveId string) (string, bool, int) {
+	if sendId == "" || receiveId == "" {
+		return "send_id and receive_id are required", false, -2
+	}
 	var contact model.UserContact
 	err := dao.ActiveQuery(&contact).Where("user_id", sendId).Where("contact_id", receiveId).First(ctx, &contact)
 	if err != nil {

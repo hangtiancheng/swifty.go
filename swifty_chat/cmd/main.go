@@ -38,6 +38,7 @@ import (
 func main() {
 	conf := config.Load("config.json")
 	dao.InitMongo()
+	dao.InitIndexes()
 	dao.InitCache()
 
 	go service.ChatServer.Start()
@@ -60,6 +61,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = app.Shutdown(ctx)
+	service.ChatServer.Stop()
 	dao.CloseCache()
 	dao.CloseMongo()
 	log.Println("server stopped")

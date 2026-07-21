@@ -44,6 +44,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { api } from "@/service/api";
 import useAuthStore from "@/store/auth";
 import { showToast } from "@/utils/toast";
@@ -52,6 +53,7 @@ interface ContactEntry {
   user_id: string;
   nickname: string;
   avatar: string;
+  status: number; // 0 normal, 1 blocked by me, 2 blocked me
 }
 
 interface GroupEntry {
@@ -93,6 +95,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
   const [applyId, setApplyId] = useState("");
   const [applyMsg, setApplyMsg] = useState("");
   const [groupName, setGroupName] = useState("");
+  const [groupAddMode, setGroupAddMode] = useState(0);
 
   const friendsLoaded = useRef(false);
   const myGroupsLoaded = useRef(false);
@@ -154,6 +157,9 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
     });
     if (res.code === 200) {
       showToast("Contact unblocked", "success");
+      setFriendList((prev) =>
+        prev.map((u) => (u.user_id === contactId ? { ...u, status: 0 } : u)),
+      );
     } else {
       showToast((res.message as string) || "Failed to unblock", "error");
     }
@@ -218,6 +224,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
 
   const showCreateGroupModal = () => {
     setGroupName("");
+    setGroupAddMode(0);
     setCreateGroupOpen(true);
   };
 
@@ -231,6 +238,7 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
       name: groupName,
       owner_id: uid,
       avatar: "",
+      add_mode: groupAddMode,
     });
     if (res.code === 200) {
       showToast("Group created", "success");
@@ -354,15 +362,22 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
                   onClick={() => tryOpenChat(user.user_id)}
                 >
                   {user.nickname}
+                  {user.status === 1 && (
+                    <span className="text-destructive ml-1 text-xs">
+                      (blocked)
+                    </span>
+                  )}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground h-6 px-2 text-xs opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={() => unblockUser(user.user_id)}
-                >
-                  Unblock
-                </Button>
+                {user.status === 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-6 px-2 text-xs"
+                    onClick={() => unblockUser(user.user_id)}
+                  >
+                    Unblock
+                  </Button>
+                )}
               </div>
             ))}
           </CollapsibleContent>
@@ -475,6 +490,27 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Join Mode</Label>
+              <RadioGroup
+                value={String(groupAddMode)}
+                onValueChange={(v) => setGroupAddMode(Number(v))}
+                className="flex gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="0" id="create-addmode-0" />
+                  <Label htmlFor="create-addmode-0" className="font-normal">
+                    Direct Join
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="1" id="create-addmode-1" />
+                  <Label htmlFor="create-addmode-1" className="font-normal">
+                    Owner Approval
+                  </Label>
+                </div>
+              </RadioGroup>
             </div>
           </div>
           <DialogFooter>

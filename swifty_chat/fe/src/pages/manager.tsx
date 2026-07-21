@@ -63,6 +63,7 @@ interface GroupRow {
   member_cnt: number;
   avatar: string;
   status: number;
+  is_deleted?: boolean;
 }
 
 const USER_PANELS: { panel: Panel; label: string }[] = [
@@ -118,12 +119,20 @@ export default function Manager() {
   const loadUserList = async () => {
     const uid = useAuthStore.getState().userInfo.uuid;
     const res = await api.getUserInfoList({ owner_id: uid });
+    if (res.code !== 200) {
+      showToast(res.message || "Failed to load users", "error");
+      return;
+    }
     setUserList((res.data as UserRow[]) || []);
     setSelectedUserIds([]);
   };
 
   const loadGroupList = async () => {
     const res = await api.getGroupInfoList({});
+    if (res.code !== 200) {
+      showToast(res.message || "Failed to load groups", "error");
+      return;
+    }
     setGroupList((res.data as GroupRow[]) || []);
     setSelectedGroupIds([]);
   };
@@ -171,53 +180,86 @@ export default function Manager() {
     return true;
   };
 
+  const runUserAction = async (
+    action: () => Promise<{ code: number; message: string }>,
+    successMsg: string,
+  ) => {
+    const res = await action();
+    if (res.code === 200) {
+      showToast(successMsg, "success");
+      loadUserList();
+    } else {
+      showToast(res.message || "Operation failed", "error");
+    }
+  };
+
+  const runGroupAction = async (
+    action: () => Promise<{ code: number; message: string }>,
+    successMsg: string,
+  ) => {
+    const res = await action();
+    if (res.code === 200) {
+      showToast(successMsg, "success");
+      loadGroupList();
+    } else {
+      showToast(res.message || "Operation failed", "error");
+    }
+  };
+
   const enableSelectedUsers = async () => {
     if (!requireSelection(selectedUserIds, "No users selected")) return;
-    await api.ableUsers({ uuid_list: selectedUserIds });
-    showToast("Users enabled", "success");
-    loadUserList();
+    await runUserAction(
+      () => api.ableUsers({ uuid_list: selectedUserIds }),
+      "Users enabled",
+    );
   };
 
   const disableSelectedUsers = async () => {
     if (!requireSelection(selectedUserIds, "No users selected")) return;
-    await api.disableUsers({ uuid_list: selectedUserIds });
-    showToast("Users disabled", "success");
-    loadUserList();
+    await runUserAction(
+      () => api.disableUsers({ uuid_list: selectedUserIds }),
+      "Users disabled",
+    );
   };
 
   const deleteSelectedUsers = async () => {
     if (!requireSelection(selectedUserIds, "No users selected")) return;
-    await api.deleteUsers({ uuid_list: selectedUserIds });
-    showToast("Users deleted", "success");
-    loadUserList();
+    await runUserAction(
+      () => api.deleteUsers({ uuid_list: selectedUserIds }),
+      "Users deleted",
+    );
   };
 
   const setAdminSelected = async (isAdmin: number) => {
     if (!requireSelection(selectedUserIds, "No users selected")) return;
-    await api.setAdmin({ uuid_list: selectedUserIds, is_admin: isAdmin });
-    showToast(isAdmin ? "Admin granted" : "Admin revoked", "success");
-    loadUserList();
+    await runUserAction(
+      () => api.setAdmin({ uuid_list: selectedUserIds, is_admin: isAdmin }),
+      isAdmin ? "Admin granted" : "Admin revoked",
+    );
   };
 
   const enableSelectedGroups = async () => {
     if (!requireSelection(selectedGroupIds, "No groups selected")) return;
-    await api.setGroupsStatus({ uuid_list: selectedGroupIds, status: 0 });
-    showToast("Groups enabled", "success");
-    loadGroupList();
+    await runGroupAction(
+      () => api.setGroupsStatus({ uuid_list: selectedGroupIds, status: 0 }),
+      "Groups enabled",
+    );
   };
 
   const disableSelectedGroups = async () => {
     if (!requireSelection(selectedGroupIds, "No groups selected")) return;
-    await api.setGroupsStatus({ uuid_list: selectedGroupIds, status: 1 });
-    showToast("Groups disabled", "success");
-    loadGroupList();
+    await runGroupAction(
+      () => api.setGroupsStatus({ uuid_list: selectedGroupIds, status: 1 }),
+      "Groups disabled",
+    );
   };
 
   const deleteSelectedGroups = async () => {
     if (!requireSelection(selectedGroupIds, "No groups selected")) return;
-    await api.deleteGroups({ uuid_list: selectedGroupIds });
-    showToast("Groups deleted", "success");
-    loadGroupList();
+    await runGroupAction(
+      () => api.deleteGroups({ uuid_list: selectedGroupIds }),
+      "Groups deleted",
+    );
   };
 
   const backToChat = () => navigate("/chat/sessions");
@@ -428,7 +470,9 @@ export default function Manager() {
                           {group.owner_id}
                         </TableCell>
                         <TableCell>
-                          {group.status === 1 ? (
+                          {group.is_deleted ? (
+                            <Badge variant="outline">Deleted</Badge>
+                          ) : group.status === 1 ? (
                             <Badge
                               variant="destructive"
                               className="bg-destructive/15 text-destructive border-0"

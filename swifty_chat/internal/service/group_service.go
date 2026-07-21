@@ -32,6 +32,8 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/model"
 
 	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/util"
+
+	"github.com/hangtiancheng/swifty.go/swifty_orm"
 )
 
 type GroupInfoResponse struct {
@@ -54,13 +56,28 @@ type GroupListItem struct {
 	Avatar    string `json:"avatar"`
 }
 
-func CreateGroup(ctx context.Context, name, ownerId, avatar string) (string, *GroupInfoResponse, int) {
+type AdminGroupItem struct {
+	GroupId   string `json:"group_id"`
+	Name      string `json:"name"`
+	MemberCnt int    `json:"member_cnt"`
+	OwnerId   string `json:"owner_id"`
+	Avatar    string `json:"avatar"`
+	Status    int8   `json:"status"`
+	IsDeleted bool   `json:"is_deleted"`
+}
+
+func CreateGroup(ctx context.Context, name, ownerId, avatar, notice string, addMode int8) (string, *GroupInfoResponse, int) {
+	if addMode != constant.GroupAddModeDirect && addMode != constant.GroupAddModeReview {
+		return "invalid add_mode", nil, -2
+	}
 	group := model.GroupInfo{
 		Uuid:      "G" + util.GetNowAndLenRandomString(11),
 		Name:      name,
+		Notice:    notice,
 		Members:   []string{ownerId},
 		MemberCnt: 1,
 		OwnerId:   ownerId,
+		AddMode:   addMode,
 		Avatar:    avatar,
 		Status:    constant.GroupStatusNormal,
 		CreatedAt: time.Now(),
@@ -69,20 +86,26 @@ func CreateGroup(ctx context.Context, name, ownerId, avatar string) (string, *Gr
 	if group.Avatar == "" {
 		group.Avatar = "https://vitejs.dev/logo.svg"
 	}
-	if _, err := dao.Engine.Model(&group).Insert(ctx, &group); err != nil {
-		log.Println(err)
+
+	err := dao.WithTransaction(ctx, func(sc context.Context, e *swifty_orm.Engine) error {
+		if _, err := e.Model(&group).Insert(sc, &group); err != nil {
+			return err
+		}
+		contact := model.UserContact{
+			UserId:      ownerId,
+			ContactId:   group.Uuid,
+			ContactType: constant.ContactTypeGroup,
+			Status:      constant.ContactNormal,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+		_, err := e.Model(&contact).Insert(sc, &contact)
+		return err
+	})
+	if err != nil {
+		log.Printf("CreateGroup failed: %v", err)
 		return constant.SystemError, nil, -1
 	}
-
-	contact := model.UserContact{
-		UserId:      ownerId,
-		ContactId:   group.Uuid,
-		ContactType: 1,
-		Status:      0,
-		CreatedAt:   time.Now(),
-		UpdateAt:    time.Now(),
-	}
-	_, _ = dao.Engine.Model(&contact).Insert(ctx, &contact)
 
 	return "group created", toGroupInfoResponse(&group), 0
 }
@@ -123,6 +146,73 @@ func CheckGroupAddMode(ctx context.Context, groupId string) (string, int8, int) 
 	return "success", group.AddMode, 0
 }
 
+// addGroupMember atomically appends the user to the members array via
+// $addToSet; member_cnt is only incremented when the set actually grew.
+func addGroupMember(ctx context.Context, e *swifty_orm.Engine, groupId, userId string) error {
+	res, err := e.Model(&model.GroupInfo{}).Where("uuid", groupId).
+		Upsert(ctx, bson.M{"$addToSet": bson.M{"members": userId}})
+	if err != nil {
+		return err
+	}
+	if res.ModifiedCount > 0 {
+		if _, err := e.Model(&model.GroupInfo{}).Where("uuid", groupId).Update(ctx, bson.M{
+			"$inc": bson.M{"member_cnt": 1},
+			"$set": bson.M{"updated_at": time.Now()},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// removeGroupMember atomically pulls the user from the members array;
+// member_cnt is only decremented when the member was actually present.
+func removeGroupMember(ctx context.Context, e *swifty_orm.Engine, groupId, userId string) error {
+	res, err := e.Model(&model.GroupInfo{}).Where("uuid", groupId).
+		Upsert(ctx, bson.M{"$pull": bson.M{"members": userId}})
+	if err != nil {
+		return err
+	}
+	if res.ModifiedCount > 0 {
+		if _, err := e.Model(&model.GroupInfo{}).Where("uuid", groupId).Update(ctx, bson.M{
+			"$inc": bson.M{"member_cnt": -1},
+			"$set": bson.M{"updated_at": time.Now()},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureGroupContact inserts the user→group contact, restoring a previously
+// soft-deleted record instead of inserting a duplicate.
+func ensureGroupContact(ctx context.Context, e *swifty_orm.Engine, userId, groupId string) error {
+	now := time.Now()
+	var existing model.UserContact
+	err := e.Model(&existing).
+		Where("user_id", userId).Where("contact_id", groupId).
+		First(ctx, &existing)
+	if err == nil {
+		_, err = e.Model(&model.UserContact{}).
+			Where("user_id", userId).Where("contact_id", groupId).
+			Update(ctx, bson.M{
+				"$set":   bson.M{"status": constant.ContactNormal, "updated_at": now},
+				"$unset": bson.M{"deleted_at": ""},
+			})
+		return err
+	}
+	if err != swifty_orm.ErrNotFound {
+		return err
+	}
+	contact := model.UserContact{
+		UserId: userId, ContactId: groupId,
+		ContactType: constant.ContactTypeGroup, Status: constant.ContactNormal,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	_, err = e.Model(&contact).Insert(ctx, &contact)
+	return err
+}
+
 func EnterGroupDirectly(ctx context.Context, userId, groupId string) (string, int) {
 	var group model.GroupInfo
 	err := dao.ActiveQuery(&group).Where("uuid", groupId).First(ctx, &group)
@@ -130,22 +220,49 @@ func EnterGroupDirectly(ctx context.Context, userId, groupId string) (string, in
 		log.Println(err)
 		return constant.SystemError, -1
 	}
-	group.Members = append(group.Members, userId)
-	group.MemberCnt++
-	_, err = dao.Engine.Model(&group).Where("uuid", groupId).Update(ctx, bson.M{
-		"members": group.Members, "member_cnt": group.MemberCnt, "updated_at": time.Now(),
-	})
-	if err != nil {
-		log.Println(err)
-		return constant.SystemError, -1
+	if group.Status == constant.GroupStatusDisable {
+		return "group is disabled", -2
+	}
+	if group.AddMode != constant.GroupAddModeDirect {
+		return "group requires owner approval", -2
+	}
+	for _, m := range group.Members {
+		if m == userId {
+			return "already a group member", -2
+		}
 	}
 
-	contact := model.UserContact{
-		UserId: userId, ContactId: groupId, ContactType: 1, Status: 0,
-		CreatedAt: time.Now(), UpdateAt: time.Now(),
+	if err := addGroupMember(ctx, dao.Engine, groupId, userId); err != nil {
+		log.Printf("EnterGroupDirectly: add member failed: %v", err)
+		return constant.SystemError, -1
 	}
-	_, _ = dao.Engine.Model(&contact).Insert(ctx, &contact)
+	if err := ensureGroupContact(ctx, dao.Engine, userId, groupId); err != nil {
+		log.Printf("EnterGroupDirectly: insert contact failed: %v", err)
+		return constant.SystemError, -1
+	}
 	return "joined group", 0
+}
+
+// cleanupGroupMembership soft-deletes the member's session, contact record
+// (stamped with the given status) and pending applies for the group.
+func cleanupGroupMembership(ctx context.Context, e *swifty_orm.Engine, userId, groupId string, contactStatus int8) {
+	now := time.Now()
+	if _, err := e.Model(&model.UserContact{}).
+		Where("user_id", userId).Where("contact_id", groupId).WhereNull("deleted_at").
+		Update(ctx, bson.M{"status": contactStatus, "deleted_at": now}); err != nil {
+		log.Printf("cleanupGroupMembership: contact update failed: %v", err)
+	}
+	if _, err := e.Model(&model.Session{}).
+		Where("send_id", userId).Where("receive_id", groupId).WhereNull("deleted_at").
+		Update(ctx, bson.M{"deleted_at": now}); err != nil {
+		log.Printf("cleanupGroupMembership: session update failed: %v", err)
+	}
+	if _, err := e.Model(&model.ContactApply{}).
+		Where("user_id", userId).Where("contact_id", groupId).WhereNull("deleted_at").
+		Update(ctx, bson.M{"deleted_at": now}); err != nil {
+		log.Printf("cleanupGroupMembership: apply update failed: %v", err)
+	}
+	_ = dao.SessionListCache.Delete(ctx, userId)
 }
 
 func LeaveGroup(ctx context.Context, userId, groupId string) (string, int) {
@@ -155,43 +272,82 @@ func LeaveGroup(ctx context.Context, userId, groupId string) (string, int) {
 		log.Println(err)
 		return constant.SystemError, -1
 	}
-	newMembers := make([]string, 0, len(group.Members))
-	for _, m := range group.Members {
-		if m != userId {
-			newMembers = append(newMembers, m)
-		}
+	if group.OwnerId == userId {
+		return "owner cannot leave the group, dismiss it instead", -2
 	}
-	group.Members = newMembers
-	group.MemberCnt = len(newMembers)
-	_, _ = dao.Engine.Model(&group).Where("uuid", groupId).Update(ctx, bson.M{
-		"members": group.Members, "member_cnt": group.MemberCnt, "updated_at": time.Now(),
-	})
-
-	now := time.Now()
-	_, _ = dao.Engine.Model(&model.UserContact{}).
-		Where("user_id", userId).Where("contact_id", groupId).
-		Update(ctx, bson.M{"deleted_at": now})
-
+	if err := removeGroupMember(ctx, dao.Engine, groupId, userId); err != nil {
+		log.Printf("LeaveGroup: remove member failed: %v", err)
+		return constant.SystemError, -1
+	}
+	cleanupGroupMembership(ctx, dao.Engine, userId, groupId, constant.ContactQuit)
 	return "left group", 0
 }
 
+// cascadeGroupRemoval soft-deletes every session, contact and apply that
+// references the group.
+func cascadeGroupRemoval(ctx context.Context, e *swifty_orm.Engine, groupId string) error {
+	now := time.Now()
+	invalidateSessionCacheByReceiver(ctx, groupId)
+	if _, err := e.Model(&model.Session{}).
+		Where("receive_id", groupId).WhereNull("deleted_at").
+		Update(ctx, bson.M{"deleted_at": now}); err != nil {
+		return err
+	}
+	if _, err := e.Model(&model.UserContact{}).
+		Where("contact_id", groupId).WhereNull("deleted_at").
+		Update(ctx, bson.M{"deleted_at": now}); err != nil {
+		return err
+	}
+	if _, err := e.Model(&model.ContactApply{}).
+		Where("contact_id", groupId).WhereNull("deleted_at").
+		Update(ctx, bson.M{"deleted_at": now}); err != nil {
+		return err
+	}
+	return nil
+}
+
 func DismissGroup(ctx context.Context, groupId string) (string, int) {
-	_, err := dao.Engine.Model(&model.GroupInfo{}).Where("uuid", groupId).Update(ctx, bson.M{
-		"status": constant.GroupStatusDismiss, "deleted_at": time.Now(),
+	err := dao.WithTransaction(ctx, func(sc context.Context, e *swifty_orm.Engine) error {
+		if _, err := e.Model(&model.GroupInfo{}).Where("uuid", groupId).Update(sc, bson.M{
+			"status": constant.GroupStatusDismiss, "deleted_at": time.Now(),
+		}); err != nil {
+			return err
+		}
+		return cascadeGroupRemoval(sc, e, groupId)
 	})
 	if err != nil {
-		log.Println(err)
+		log.Printf("DismissGroup %s failed: %v", groupId, err)
 		return constant.SystemError, -1
 	}
 	return "group dismissed", 0
 }
 
 func UpdateGroupInfo(ctx context.Context, uuid string, fields bson.M) (string, int) {
+	if len(fields) == 0 {
+		return "group info updated", 0
+	}
 	fields["updated_at"] = time.Now()
 	_, err := dao.Engine.Model(&model.GroupInfo{}).Where("uuid", uuid).Update(ctx, fields)
 	if err != nil {
 		log.Println(err)
 		return constant.SystemError, -1
+	}
+
+	// Keep the denormalized session fields in sync with the group profile.
+	sessionFields := bson.M{}
+	if name, ok := fields["name"]; ok {
+		sessionFields["receive_name"] = name
+	}
+	if avatar, ok := fields["avatar"]; ok {
+		sessionFields["avatar"] = avatar
+	}
+	if len(sessionFields) > 0 {
+		if _, err := dao.Engine.Model(&model.Session{}).
+			Where("receive_id", uuid).WhereNull("deleted_at").
+			Update(ctx, sessionFields); err != nil {
+			log.Printf("UpdateGroupInfo: session sync failed: %v", err)
+		}
+		invalidateSessionCacheByReceiver(ctx, uuid)
 	}
 	return "group info updated", 0
 }
@@ -223,40 +379,46 @@ func RemoveGroupMembers(ctx context.Context, groupId string, memberIds []string)
 		log.Println(err)
 		return constant.SystemError, -1
 	}
-	removeSet := make(map[string]bool)
 	for _, id := range memberIds {
-		removeSet[id] = true
-	}
-	newMembers := make([]string, 0)
-	for _, m := range group.Members {
-		if !removeSet[m] {
-			newMembers = append(newMembers, m)
+		if id == group.OwnerId {
+			return "cannot remove the group owner", -2
 		}
 	}
-	_, _ = dao.Engine.Model(&group).Where("uuid", groupId).Update(ctx, bson.M{
-		"members": newMembers, "member_cnt": len(newMembers), "updated_at": time.Now(),
-	})
 
-	now := time.Now()
+	if _, err := dao.Engine.Model(&model.GroupInfo{}).Where("uuid", groupId).Update(ctx, bson.M{
+		"$pull": bson.M{"members": bson.M{"$in": memberIds}},
+		"$set":  bson.M{"updated_at": time.Now()},
+	}); err != nil {
+		log.Printf("RemoveGroupMembers: pull failed: %v", err)
+		return constant.SystemError, -1
+	}
+	// Recompute member_cnt from the authoritative members array.
+	var updated model.GroupInfo
+	if err := dao.ActiveQuery(&updated).Where("uuid", groupId).First(ctx, &updated); err == nil {
+		if _, err := dao.Engine.Model(&model.GroupInfo{}).Where("uuid", groupId).
+			Update(ctx, bson.M{"member_cnt": len(updated.Members)}); err != nil {
+			log.Printf("RemoveGroupMembers: member_cnt update failed: %v", err)
+		}
+	}
+
 	for _, id := range memberIds {
-		_, _ = dao.Engine.Model(&model.UserContact{}).
-			Where("user_id", id).Where("contact_id", groupId).
-			Update(ctx, bson.M{"deleted_at": now})
+		cleanupGroupMembership(ctx, dao.Engine, id, groupId, constant.ContactKicked)
 	}
 	return "members removed", 0
 }
 
-func GetGroupInfoList(ctx context.Context) (string, []GroupListItem, int) {
+func GetGroupInfoList(ctx context.Context) (string, []AdminGroupItem, int) {
 	var groups []model.GroupInfo
 	err := dao.Engine.Model(&groups).Find(ctx, &groups)
 	if err != nil {
 		log.Println(err)
 		return constant.SystemError, nil, -1
 	}
-	var list []GroupListItem
+	var list []AdminGroupItem
 	for _, g := range groups {
-		list = append(list, GroupListItem{
-			GroupId: g.Uuid, Name: g.Name, MemberCnt: g.MemberCnt, OwnerId: g.OwnerId, Avatar: g.Avatar,
+		list = append(list, AdminGroupItem{
+			GroupId: g.Uuid, Name: g.Name, MemberCnt: g.MemberCnt, OwnerId: g.OwnerId,
+			Avatar: g.Avatar, Status: g.Status, IsDeleted: g.DeletedAt != nil,
 		})
 	}
 	return "success", list, 0
@@ -269,6 +431,11 @@ func DeleteGroups(ctx context.Context, uuidList []string) (string, int) {
 		log.Println(err)
 		return constant.SystemError, -1
 	}
+	for _, uuid := range uuidList {
+		if err := cascadeGroupRemoval(ctx, dao.Engine, uuid); err != nil {
+			log.Printf("DeleteGroups: cascade for %s failed: %v", uuid, err)
+		}
+	}
 	return "groups deleted", 0
 }
 
@@ -277,6 +444,17 @@ func SetGroupsStatus(ctx context.Context, uuidList []string, status int8) (strin
 	if err != nil {
 		log.Println(err)
 		return constant.SystemError, -1
+	}
+	if status == constant.GroupStatusDisable {
+		now := time.Now()
+		for _, uuid := range uuidList {
+			invalidateSessionCacheByReceiver(ctx, uuid)
+			if _, err := dao.Engine.Model(&model.Session{}).
+				Where("receive_id", uuid).WhereNull("deleted_at").
+				Update(ctx, bson.M{"deleted_at": now}); err != nil {
+				log.Printf("SetGroupsStatus: session cleanup for %s failed: %v", uuid, err)
+			}
+		}
 	}
 	return "group status updated", 0
 }

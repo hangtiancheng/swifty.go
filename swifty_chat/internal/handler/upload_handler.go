@@ -25,73 +25,106 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
+	"strings"
 
 	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/config"
+	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/util"
 
 	"github.com/hangtiancheng/swifty.go/swifty_http"
 )
 
-func UploadAvatar(ctx *swifty_http.Context, next func()) {
+const (
+	maxAvatarSize = 5 << 20  // 5 MiB
+	maxFileSize   = 50 << 20 // 50 MiB
+)
+
+var avatarExtWhitelist = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
+}
+
+// sanitizeFilename strips any path components and keeps only a safe
+// character set, preventing path traversal via the uploaded filename.
+func sanitizeFilename(name string) string {
+	name = filepath.Base(name)
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	s := strings.Trim(b.String(), ".")
+	if s == "" {
+		s = "file"
+	}
+	return s
+}
+
+func saveUpload(ctx *swifty_http.Context, dir string, maxSize int64, extWhitelist map[string]bool) (url string, origName string, size int64, ok bool) {
 	file, header, err := ctx.FormFile("file")
 	if err != nil {
 		JsonBack(ctx, "file is required", -2, nil)
-		return
+		return "", "", 0, false
 	}
 	defer file.Close()
 
-	conf := config.Get()
-	_ = os.MkdirAll(conf.Static.AvatarPath, 0755)
+	if header.Size > maxSize {
+		JsonBack(ctx, fmt.Sprintf("file too large (max %d MB)", maxSize>>20), -2, nil)
+		return "", "", 0, false
+	}
 
-	filename := fmt.Sprintf("%d_%s", time.Now().UnixMilli(), header.Filename)
-	dst := filepath.Join(conf.Static.AvatarPath, filename)
+	safeName := sanitizeFilename(header.Filename)
+	if extWhitelist != nil {
+		ext := strings.ToLower(filepath.Ext(safeName))
+		if !extWhitelist[ext] {
+			JsonBack(ctx, "unsupported file type", -2, nil)
+			return "", "", 0, false
+		}
+	}
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		JsonBack(ctx, "failed to save file", -1, nil)
+		return "", "", 0, false
+	}
+
+	filename := fmt.Sprintf("%s_%s", util.GetNowAndLenRandomString(8), safeName)
+	dst := filepath.Join(dir, filename)
 
 	out, err := os.Create(dst)
 	if err != nil {
 		JsonBack(ctx, "failed to save file", -1, nil)
-		return
+		return "", "", 0, false
 	}
 	defer out.Close()
 
-	if _, err := io.Copy(out, file); err != nil {
+	if _, err := io.Copy(out, io.LimitReader(file, maxSize)); err != nil {
 		JsonBack(ctx, "failed to save file", -1, nil)
+		return "", "", 0, false
+	}
+	return filename, header.Filename, header.Size, true
+}
+
+func UploadAvatar(ctx *swifty_http.Context, next func()) {
+	conf := config.Get()
+	filename, _, _, ok := saveUpload(ctx, conf.Static.AvatarPath, maxAvatarSize, avatarExtWhitelist)
+	if !ok {
 		return
 	}
-
-	url := "/static/avatars/" + filename
-	JsonBack(ctx, "upload successful", 0, swifty_http.H{"url": url})
+	JsonBack(ctx, "upload successful", 0, swifty_http.H{"url": "/static/avatars/" + filename})
 }
 
 func UploadFile(ctx *swifty_http.Context, next func()) {
-	file, header, err := ctx.FormFile("file")
-	if err != nil {
-		JsonBack(ctx, "file is required", -2, nil)
-		return
-	}
-	defer file.Close()
-
 	conf := config.Get()
-	_ = os.MkdirAll(conf.Static.FilePath, 0755)
-
-	filename := fmt.Sprintf("%d_%s", time.Now().UnixMilli(), header.Filename)
-	dst := filepath.Join(conf.Static.FilePath, filename)
-
-	out, err := os.Create(dst)
-	if err != nil {
-		JsonBack(ctx, "failed to save file", -1, nil)
+	filename, origName, size, ok := saveUpload(ctx, conf.Static.FilePath, maxFileSize, nil)
+	if !ok {
 		return
 	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, file); err != nil {
-		JsonBack(ctx, "failed to save file", -1, nil)
-		return
-	}
-
-	url := "/static/files/" + filename
 	JsonBack(ctx, "upload successful", 0, swifty_http.H{
-		"url":       url,
-		"file_name": header.Filename,
-		"file_size": fmt.Sprintf("%d", header.Size),
+		"url":       "/static/files/" + filename,
+		"file_name": origName,
+		"file_size": fmt.Sprintf("%d", size),
 	})
 }

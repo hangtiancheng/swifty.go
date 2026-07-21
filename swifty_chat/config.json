@@ -9,8 +9,7 @@
   },
   "cache": {
     "maxBytes": 67108864,
-    "expiration": 300,
-    "dashboardAddr": ":9090"
+    "expiration": 300
   },
   "static": {
     "avatarPath": "./static/avatars",

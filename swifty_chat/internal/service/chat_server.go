@@ -38,6 +38,12 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+const (
+	heartbeatInterval = 30 * time.Second
+	// Three missed heartbeats mark the connection dead.
+	readIdleTimeout = 90 * time.Second
+)
+
 type ChatMessageRequest struct {
 	SessionId  string `json:"session_id"`
 	Type       int8   `json:"type"`
@@ -54,18 +60,28 @@ type ChatMessageRequest struct {
 }
 
 type Client struct {
-	Conn     *swifty_http.WSConn
-	Uuid     string
-	SendTo   chan []byte
-	SendBack chan []byte
+	Conn      *swifty_http.WSConn
+	Uuid      string
+	SendBack  chan []byte
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+// shutdown closes the connection and signals the write goroutine to exit.
+// Channels are never closed, so concurrent senders cannot panic.
+func (c *Client) shutdown() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+		_ = c.Conn.Close()
+	})
 }
 
 type Server struct {
 	Clients  map[string]*Client
 	mutex    sync.Mutex
 	Transmit chan []byte
-	Login    chan *Client
-	Logout   chan *Client
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 var ChatServer *Server
@@ -74,37 +90,62 @@ func init() {
 	ChatServer = &Server{
 		Clients:  make(map[string]*Client),
 		Transmit: make(chan []byte, constant.ChannelSize),
-		Login:    make(chan *Client, constant.ChannelSize),
-		Logout:   make(chan *Client, constant.ChannelSize),
+		done:     make(chan struct{}),
 	}
 }
 
 func (s *Server) Start() {
 	for {
 		select {
-		case client := <-s.Login:
+		case <-s.done:
 			s.mutex.Lock()
-			s.Clients[client.Uuid] = client
+			clients := make([]*Client, 0, len(s.Clients))
+			for _, c := range s.Clients {
+				clients = append(clients, c)
+			}
+			s.Clients = make(map[string]*Client)
 			s.mutex.Unlock()
-			log.Printf("user %s connected", client.Uuid)
-			_ = client.Conn.WriteText("welcome to swifty chat")
-
-		case client := <-s.Logout:
-			s.mutex.Lock()
-			delete(s.Clients, client.Uuid)
-			s.mutex.Unlock()
-			log.Printf("user %s disconnected", client.Uuid)
-
+			for _, c := range clients {
+				c.shutdown()
+			}
+			return
 		case data := <-s.Transmit:
 			s.handleMessage(data)
 		}
 	}
 }
 
+// Stop terminates the event loop and closes every client connection.
+func (s *Server) Stop() {
+	s.stopOnce.Do(func() { close(s.done) })
+}
+
+func (s *Server) register(client *Client) {
+	s.mutex.Lock()
+	old := s.Clients[client.Uuid]
+	s.Clients[client.Uuid] = client
+	s.mutex.Unlock()
+	if old != nil {
+		old.shutdown()
+	}
+	log.Printf("user %s connected", client.Uuid)
+	_ = client.Conn.WriteText("welcome to swifty chat")
+}
+
+func (s *Server) unregister(client *Client) {
+	s.mutex.Lock()
+	if cur, ok := s.Clients[client.Uuid]; ok && cur == client {
+		delete(s.Clients, client.Uuid)
+		log.Printf("user %s disconnected", client.Uuid)
+	}
+	s.mutex.Unlock()
+	client.shutdown()
+}
+
 func (s *Server) handleMessage(data []byte) {
 	var req ChatMessageRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Println(err)
+		log.Printf("handleMessage: unmarshal failed: %v", err)
 		return
 	}
 
@@ -134,77 +175,116 @@ func (s *Server) handleMessage(data []byte) {
 		}
 		var av avData
 		_ = json.Unmarshal([]byte(req.AVdata), &av)
-		if av.MessageId != "PROXY" || (av.Type != "start_call" && av.Type != "receive_call" && av.Type != "reject_call") {
-			s.broadcastToReceiver(req, msg)
-			return
+		if av.MessageId == "PROXY" && (av.Type == "start_call" || av.Type == "receive_call" || av.Type == "reject_call") {
+			bgCtx := bgCtx()
+			if _, err := dao.Engine.Model(&msg).Insert(bgCtx, &msg); err != nil {
+				log.Printf("handleMessage: insert AV message failed: %v", err)
+			}
 		}
+		// AV signaling must never echo back to the sender: the caller would
+		// see its own start_call as an incoming call.
+		s.broadcast(req, msg, false)
+		return
 	}
 
 	bgCtx := bgCtx()
 	if _, err := dao.Engine.Model(&msg).Insert(bgCtx, &msg); err != nil {
-		log.Println(err)
+		log.Printf("handleMessage: insert message failed: %v", err)
 		return
 	}
 
-	s.broadcastToReceiver(req, msg)
+	s.broadcast(req, msg, true)
 }
 
-func (s *Server) broadcastToReceiver(req ChatMessageRequest, msg model.Message) {
+// broadcast delivers the message to its receiver(s). Sends are non-blocking:
+// a slow client's full buffer drops the payload instead of stalling the
+// event loop while holding the server mutex.
+func (s *Server) broadcast(req ChatMessageRequest, msg model.Message, echoToSender bool) {
 	if msg.ReceiveId == "" {
-		log.Println("broadcastToReceiver: empty receive_id, skip")
+		log.Println("broadcast: empty receive_id, skip")
 		return
 	}
 	rsp := MessageListItem{
+		Uuid:   msg.Uuid,
 		SendId: msg.SendId, SendName: msg.SendName, SendAvatar: req.SendAvatar,
 		ReceiveId: msg.ReceiveId, Type: msg.Type, Content: msg.Content,
 		Url: msg.Url, FileSize: msg.FileSize, FileName: msg.FileName,
 		FileType: msg.FileType, CreatedAt: msg.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
-	jsonMsg, _ := json.Marshal(rsp)
+	if msg.Type == constant.MessageAudioOrVideo {
+		rsp.AVdata = msg.AVdata
+	}
+	jsonMsg, err := json.Marshal(rsp)
+	if err != nil {
+		log.Printf("broadcast: marshal failed: %v", err)
+		return
+	}
 
+	var targets []string
 	if msg.ReceiveId[0] == 'U' {
-		s.mutex.Lock()
-		if c, ok := s.Clients[msg.ReceiveId]; ok {
-			c.SendBack <- jsonMsg
+		targets = append(targets, msg.ReceiveId)
+		if echoToSender && msg.SendId != msg.ReceiveId {
+			targets = append(targets, msg.SendId)
 		}
-		if c, ok := s.Clients[msg.SendId]; ok {
-			c.SendBack <- jsonMsg
-		}
-		s.mutex.Unlock()
-		s.markSent(msg.Uuid)
 	} else if msg.ReceiveId[0] == 'G' {
 		var group model.GroupInfo
-		bgCtx := bgCtx()
-		if err := dao.ActiveQuery(&group).Where("uuid", msg.ReceiveId).First(bgCtx, &group); err != nil {
-			log.Println(err)
+		if err := dao.ActiveQuery(&group).Where("uuid", msg.ReceiveId).First(bgCtx(), &group); err != nil {
+			log.Printf("broadcast: load group %s failed: %v", msg.ReceiveId, err)
 			return
 		}
-		s.mutex.Lock()
 		for _, member := range group.Members {
-			if c, ok := s.Clients[member]; ok {
-				c.SendBack <- jsonMsg
+			if !echoToSender && member == msg.SendId {
+				continue
 			}
+			targets = append(targets, member)
 		}
-		s.mutex.Unlock()
+	} else {
+		return
+	}
+
+	s.mutex.Lock()
+	clients := make([]*Client, 0, len(targets))
+	for _, id := range targets {
+		if c, ok := s.Clients[id]; ok {
+			clients = append(clients, c)
+		}
+	}
+	s.mutex.Unlock()
+
+	delivered := 0
+	for _, c := range clients {
+		select {
+		case c.SendBack <- jsonMsg:
+			delivered++
+		default:
+			log.Printf("broadcast: client %s buffer full, message %s dropped", c.Uuid, msg.Uuid)
+		}
+	}
+	if delivered > 0 && msg.Type != constant.MessageAudioOrVideo {
 		s.markSent(msg.Uuid)
 	}
 }
 
 func (s *Server) markSent(uuid string) {
 	bgCtx := bgCtx()
-	_, _ = dao.Engine.Model(&model.Message{}).Where("uuid", uuid).Update(bgCtx, bson.M{"status": constant.MessageSent})
+	if _, err := dao.Engine.Model(&model.Message{}).Where("uuid", uuid).Update(bgCtx, bson.M{
+		"status":  constant.MessageSent,
+		"send_at": time.Now(),
+	}); err != nil {
+		log.Printf("markSent %s failed: %v", uuid, err)
+	}
 }
 
 func NewClientInit(ws *swifty_http.WSConn, clientId string) {
 	client := &Client{
 		Conn:     ws,
 		Uuid:     clientId,
-		SendTo:   make(chan []byte, constant.ChannelSize),
 		SendBack: make(chan []byte, constant.ChannelSize),
+		done:     make(chan struct{}),
 	}
-	ChatServer.Login <- client
-	go clientRead(client)
+	ChatServer.register(client)
 	go clientWrite(client)
+	go clientRead(client)
 }
 
 func ClientLogout(clientId string) (string, int) {
@@ -212,39 +292,53 @@ func ClientLogout(clientId string) (string, int) {
 	client, ok := ChatServer.Clients[clientId]
 	ChatServer.mutex.Unlock()
 	if ok {
-		ChatServer.Logout <- client
-		_ = client.Conn.Close()
-		close(client.SendTo)
-		close(client.SendBack)
+		ChatServer.unregister(client)
 	}
 	return "logout successful", 0
 }
 
+// clientRead runs the event-driven read loop with heartbeat-based dead
+// connection detection: the server pings every heartbeatInterval and the
+// read deadline is refreshed on every pong or message.
 func clientRead(c *Client) {
-	for {
-		_, data, err := c.Conn.ReadMessage()
-		if err != nil {
-			log.Printf("ws read error for %s: %v", c.Uuid, err)
-			ChatServer.mutex.Lock()
-			delete(ChatServer.Clients, c.Uuid)
-			ChatServer.mutex.Unlock()
+	defer ChatServer.unregister(c)
+
+	stopHeartbeat := c.Conn.Heartbeat(heartbeatInterval)
+	defer stopHeartbeat()
+
+	refresh := func() { _ = c.Conn.SetReadDeadline(time.Now().Add(readIdleTimeout)) }
+	refresh()
+	c.Conn.OnPong(func([]byte) { refresh() })
+	c.Conn.OnError(func(err error) {
+		log.Printf("ws read error for %s: %v", c.Uuid, err)
+	})
+	c.Conn.OnMessage(func(messageType int, data []byte) {
+		refresh()
+		if messageType != swifty_http.TextMessage {
 			return
 		}
-		for len(ChatServer.Transmit) < constant.ChannelSize && len(c.SendTo) > 0 {
-			ChatServer.Transmit <- <-c.SendTo
+		payload := make([]byte, len(data))
+		copy(payload, data)
+		select {
+		case ChatServer.Transmit <- payload:
+		default:
+			log.Printf("transmit channel full, message from %s rejected", c.Uuid)
+			_ = c.Conn.WriteText(`{"type":-1,"send_id":"","receive_id":"","content":"message send failed, please retry"}`)
 		}
-		if len(ChatServer.Transmit) < constant.ChannelSize {
-			ChatServer.Transmit <- data
-		} else if len(c.SendTo) < constant.ChannelSize {
-			c.SendTo <- data
-		}
-	}
+	})
+	c.Conn.Listen()
 }
 
 func clientWrite(c *Client) {
-	for msg := range c.SendBack {
-		if err := c.Conn.WriteMessage(swifty_http.TextMessage, msg); err != nil {
-			log.Printf("ws write error for %s: %v", c.Uuid, err)
+	for {
+		select {
+		case msg := <-c.SendBack:
+			if err := c.Conn.WriteMessage(swifty_http.TextMessage, msg); err != nil {
+				log.Printf("ws write error for %s: %v", c.Uuid, err)
+				ChatServer.unregister(c)
+				return
+			}
+		case <-c.done:
 			return
 		}
 	}

@@ -149,8 +149,13 @@ export const api = {
     upload("/message/upload-avatar", formData),
 
   // Group
-  createGroup: (data: { name: string; owner_id: string; avatar: string }) =>
-    request("/group/create-group", data),
+  createGroup: (data: {
+    name: string;
+    owner_id: string;
+    avatar: string;
+    notice?: string;
+    add_mode?: number;
+  }) => request("/group/create-group", data),
   loadMyGroup: (data: { owner_id: string }) =>
     request("/group/load-my-group", data),
   getGroupInfo: (data: { group_id: string }) =>

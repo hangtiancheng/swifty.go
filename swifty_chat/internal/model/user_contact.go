@@ -33,6 +33,6 @@ type UserContact struct {
 	ContactType int8               `bson:"contact_type" json:"contact_type"`
 	Status      int8               `bson:"status" json:"status"`
 	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
-	UpdateAt    time.Time          `bson:"update_at" json:"update_at"`
+	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
 	DeletedAt   *time.Time         `bson:"deleted_at,omitempty" json:"-"`
 }

@@ -115,7 +115,6 @@ func GetUserInfoList(ctx *swifty_http.Context, next func()) {
 func AbleUsers(ctx *swifty_http.Context, next func()) {
 	var req struct {
 		UuidList []string `json:"uuid_list"`
-		IsAdmin  int8     `json:"is_admin"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
 		JsonBack(ctx, "invalid request body", -1, nil)

@@ -22,6 +22,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -68,6 +69,9 @@ func Login(ctx context.Context, telephone string, password string) (string, *Use
 	if user.Password != password {
 		return "incorrect password", nil, -2
 	}
+	if user.Status == constant.UserStatusDisable {
+		return "account is disabled", nil, -2
+	}
 	return "login successful", toUserInfoResponse(&user), 0
 }
 
@@ -106,10 +110,33 @@ func UpdateUserInfo(ctx context.Context, uuid string, fields bson.M) (string, in
 		return constant.SystemError, -1
 	}
 	_ = dao.UserInfoCache.Delete(ctx, uuid)
+
+	// Keep the denormalized session fields in sync with the user profile.
+	sessionFields := bson.M{}
+	if nickname, ok := fields["nickname"]; ok {
+		sessionFields["receive_name"] = nickname
+	}
+	if avatar, ok := fields["avatar"]; ok {
+		sessionFields["avatar"] = avatar
+	}
+	if len(sessionFields) > 0 {
+		if _, err := dao.Engine.Model(&model.Session{}).
+			Where("receive_id", uuid).WhereNull("deleted_at").
+			Update(ctx, sessionFields); err != nil {
+			log.Printf("UpdateUserInfo: session sync failed: %v", err)
+		}
+		invalidateSessionCacheByReceiver(ctx, uuid)
+	}
 	return "user info updated", 0
 }
 
 func GetUserInfo(ctx context.Context, uuid string) (string, *UserInfoResponse, int) {
+	if view, err := dao.UserInfoCache.Get(ctx, uuid); err == nil {
+		var user model.UserInfo
+		if err := json.Unmarshal(view.ByteSlice(), &user); err == nil {
+			return "user info retrieved", toUserInfoResponse(&user), 0
+		}
+	}
 	var user model.UserInfo
 	err := dao.ActiveQuery(&user).Where("uuid", uuid).First(ctx, &user)
 	if err != nil {
@@ -146,6 +173,7 @@ func AbleUsers(ctx context.Context, uuidList []string) (string, int) {
 		log.Println(err)
 		return constant.SystemError, -1
 	}
+	invalidateUserCaches(ctx, uuidList)
 	return "users enabled", 0
 }
 
@@ -155,16 +183,22 @@ func DisableUsers(ctx context.Context, uuidList []string) (string, int) {
 		log.Println(err)
 		return constant.SystemError, -1
 	}
+	invalidateUserCaches(ctx, uuidList)
 	now := time.Now()
 	for _, uuid := range uuidList {
-		_, _ = dao.Engine.Model(&model.Session{}).
+		invalidateSessionCacheByReceiver(ctx, uuid)
+		if _, err := dao.Engine.Model(&model.Session{}).
 			Where("send_id", uuid).
 			WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
-		_, _ = dao.Engine.Model(&model.Session{}).
+			Update(ctx, bson.M{"deleted_at": now}); err != nil {
+			log.Printf("DisableUsers: session cleanup (send) for %s failed: %v", uuid, err)
+		}
+		if _, err := dao.Engine.Model(&model.Session{}).
 			Where("receive_id", uuid).
 			WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
+			Update(ctx, bson.M{"deleted_at": now}); err != nil {
+			log.Printf("DisableUsers: session cleanup (receive) for %s failed: %v", uuid, err)
+		}
 	}
 	return "users disabled", 0
 }
@@ -176,25 +210,27 @@ func DeleteUsers(ctx context.Context, uuidList []string) (string, int) {
 		log.Println(err)
 		return constant.SystemError, -1
 	}
+	invalidateUserCaches(ctx, uuidList)
 	for _, uuid := range uuidList {
-		_, _ = dao.Engine.Model(&model.Session{}).
-			Where("send_id", uuid).WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
-		_, _ = dao.Engine.Model(&model.Session{}).
-			Where("receive_id", uuid).WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
-		_, _ = dao.Engine.Model(&model.UserContact{}).
-			Where("user_id", uuid).WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
-		_, _ = dao.Engine.Model(&model.UserContact{}).
-			Where("contact_id", uuid).WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
-		_, _ = dao.Engine.Model(&model.ContactApply{}).
-			Where("user_id", uuid).WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
-		_, _ = dao.Engine.Model(&model.ContactApply{}).
-			Where("contact_id", uuid).WhereNull("deleted_at").
-			Update(ctx, bson.M{"deleted_at": now})
+		invalidateSessionCacheByReceiver(ctx, uuid)
+		cleanups := []struct {
+			m     interface{}
+			field string
+		}{
+			{&model.Session{}, "send_id"},
+			{&model.Session{}, "receive_id"},
+			{&model.UserContact{}, "user_id"},
+			{&model.UserContact{}, "contact_id"},
+			{&model.ContactApply{}, "user_id"},
+			{&model.ContactApply{}, "contact_id"},
+		}
+		for _, c := range cleanups {
+			if _, err := dao.Engine.Model(c.m).
+				Where(c.field, uuid).WhereNull("deleted_at").
+				Update(ctx, bson.M{"deleted_at": now}); err != nil {
+				log.Printf("DeleteUsers: cleanup %T.%s for %s failed: %v", c.m, c.field, uuid, err)
+			}
+		}
 	}
 	return "users deleted", 0
 }
@@ -205,7 +241,15 @@ func SetAdmin(ctx context.Context, uuidList []string, isAdmin int8) (string, int
 		log.Println(err)
 		return constant.SystemError, -1
 	}
+	invalidateUserCaches(ctx, uuidList)
 	return "admin status updated", 0
+}
+
+func invalidateUserCaches(ctx context.Context, uuidList []string) {
+	for _, uuid := range uuidList {
+		_ = dao.UserInfoCache.Delete(ctx, uuid)
+		_ = dao.SessionListCache.Delete(ctx, uuid)
+	}
 }
 
 func toUserInfoResponse(user *model.UserInfo) *UserInfoResponse {

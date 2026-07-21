@@ -64,8 +64,21 @@ import { getFileSize } from "@/utils/format";
 import { BASE_URL } from "@/config";
 import type { ContactInfo, Message } from "@/types";
 
-type MemberRow = Record<string, string>;
-type JoinRequestRow = Record<string, string>;
+interface MemberRow {
+  user_id: string;
+  nickname: string;
+  avatar: string;
+}
+
+interface JoinRequestRow {
+  apply_id: string;
+  user_id: string;
+  contact_id: string;
+  contact_name: string;
+  contact_type: number;
+  status: number;
+  message: string;
+}
 
 export default function Chat() {
   const { id } = useParams<{ id: string }>();
@@ -365,17 +378,22 @@ export default function Chat() {
       return;
     }
     if (!contactInfo) return;
+    let avatarUrl = "";
     if (groupAvatarFile) {
       const formData = new FormData();
       formData.append("file", groupAvatarFile);
-      await api.uploadAvatar(formData);
+      const uploadRes = await api.uploadAvatar(formData);
+      avatarUrl = (uploadRes.data as { url?: string } | null)?.url ?? "";
+      if (uploadRes.code !== 200 || !avatarUrl) {
+        showToast(uploadRes.message || "Avatar upload failed", "error");
+        return;
+      }
     }
     const data: Record<string, unknown> = { uuid: contactInfo.contact_id };
     if (editGroupName) data.name = editGroupName;
     if (editGroupNotice) data.notice = editGroupNotice;
     if (editGroupAddMode !== -1) data.add_mode = editGroupAddMode;
-    if (groupAvatarFile)
-      data.avatar = "/static/avatars/" + groupAvatarFile.name;
+    if (avatarUrl) data.avatar = avatarUrl;
     const res = await api.updateGroupInfo(data);
     if (res.code === 200) {
       showToast("Group updated", "success");
@@ -431,7 +449,7 @@ export default function Chat() {
   const showJoinRequestsModal = async () => {
     const res = await api.getAddGroupList({ user_id: userInfo.uuid });
     const list = ((res.data as JoinRequestRow[]) || []).filter(
-      (r) => r.contact_type === "1",
+      (r) => r.contact_type === 1 && r.status === 0,
     );
     if (list.length === 0) {
       showToast("No pending join requests", "info");

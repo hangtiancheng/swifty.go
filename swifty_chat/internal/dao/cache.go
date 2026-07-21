@@ -22,72 +22,58 @@ package dao
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/config"
+	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/model"
 
 	"github.com/hangtiancheng/swifty.go/swifty_cache"
 )
 
 var (
-	UserInfoCache       *swifty_cache.Group
-	SessionListCache    *swifty_cache.Group
-	GrpSessionListCache *swifty_cache.Group
-	MessageListCache    *swifty_cache.Group
-	GrpMessageListCache *swifty_cache.Group
-	AuthCodeCache       *swifty_cache.Group
+	// UserInfoCache caches user documents by uuid (read-through).
+	UserInfoCache *swifty_cache.Group
+	// SessionListCache caches each user's active session list by owner id
+	// (read-through). Both the user and group session endpoints share it.
+	SessionListCache *swifty_cache.Group
 )
 
 func InitCache() {
 	conf := config.Get()
 	maxBytes := conf.Cache.MaxBytes
 	expiration := time.Duration(conf.Cache.Expiration) * time.Second
-
-	var dashboardOpts []swifty_cache.GroupOption
-	dashboardOpts = append(dashboardOpts, swifty_cache.WithExpiration(expiration))
-	if conf.Cache.DashboardAddr != "" {
-		cacheOpts := swifty_cache.DefaultCacheOptions()
-		cacheOpts.MaxBytes = maxBytes
-		cacheOpts.DashboardAddr = conf.Cache.DashboardAddr
-		dashboardOpts = append(dashboardOpts, swifty_cache.WithCacheOptions(cacheOpts))
-	}
+	opts := []swifty_cache.GroupOption{swifty_cache.WithExpiration(expiration)}
 
 	UserInfoCache = swifty_cache.NewGroup("user_info", maxBytes, swifty_cache.GetterFunc(
 		func(ctx context.Context, key string) ([]byte, error) {
-			return nil, swifty_cache.ErrKeyRequired
+			if key == "" {
+				return nil, swifty_cache.ErrKeyRequired
+			}
+			var user model.UserInfo
+			if err := ActiveQuery(&user).Where("uuid", key).First(ctx, &user); err != nil {
+				return nil, err
+			}
+			return json.Marshal(&user)
 		},
-	), dashboardOpts...)
+	), opts...)
 
 	SessionListCache = swifty_cache.NewGroup("session_list", maxBytes, swifty_cache.GetterFunc(
 		func(ctx context.Context, key string) ([]byte, error) {
-			return nil, swifty_cache.ErrKeyRequired
+			if key == "" {
+				return nil, swifty_cache.ErrKeyRequired
+			}
+			var sessions []model.Session
+			if err := ActiveQuery(&sessions).
+				Where("send_id", key).
+				OrderBy("created_at", "desc").
+				Find(ctx, &sessions); err != nil {
+				return nil, err
+			}
+			return json.Marshal(sessions)
 		},
-	), dashboardOpts...)
-
-	GrpSessionListCache = swifty_cache.NewGroup("group_session_list", maxBytes, swifty_cache.GetterFunc(
-		func(ctx context.Context, key string) ([]byte, error) {
-			return nil, swifty_cache.ErrKeyRequired
-		},
-	), dashboardOpts...)
-
-	MessageListCache = swifty_cache.NewGroup("message_list", maxBytes, swifty_cache.GetterFunc(
-		func(ctx context.Context, key string) ([]byte, error) {
-			return nil, swifty_cache.ErrKeyRequired
-		},
-	), dashboardOpts...)
-
-	GrpMessageListCache = swifty_cache.NewGroup("group_message_list", maxBytes, swifty_cache.GetterFunc(
-		func(ctx context.Context, key string) ([]byte, error) {
-			return nil, swifty_cache.ErrKeyRequired
-		},
-	), dashboardOpts...)
-
-	AuthCodeCache = swifty_cache.NewGroup("auth_code", maxBytes/4, swifty_cache.GetterFunc(
-		func(ctx context.Context, key string) ([]byte, error) {
-			return nil, swifty_cache.ErrKeyRequired
-		},
-	), dashboardOpts...)
+	), opts...)
 
 	log.Printf("cache initialized: maxBytes=%d, expiration=%v", maxBytes, expiration)
 }

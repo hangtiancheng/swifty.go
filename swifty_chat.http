@@ -96,13 +96,16 @@ Content-Type: application/json
 ### ===== Group =====
 
 ### Create group
+# add_mode: 0 = direct join, 1 = owner approval
 POST {{host}}/group/create-group
 Content-Type: application/json
 
 {
   "name": "test group",
   "owner_id": "U12345678901",
-  "avatar": ""
+  "avatar": "",
+  "notice": "group announcement",
+  "add_mode": 0
 }
 
 ### Load my groups
@@ -156,6 +159,7 @@ Content-Type: application/json
 }
 
 ### Update group info
+# add_mode is optional; omit it to keep the current mode
 POST {{host}}/group/update-group-info
 Content-Type: application/json
 
@@ -163,7 +167,8 @@ Content-Type: application/json
   "uuid": "G12345678901",
   "name": "new name",
   "notice": "group announcement",
-  "avatar": ""
+  "avatar": "",
+  "add_mode": 1
 }
 
 ### Get group member list
@@ -322,6 +327,7 @@ Content-Type: application/json
 }
 
 ### Get add group list
+# Returns pending join applications for every group the caller owns
 POST {{host}}/contact/get-add-group-list
 Content-Type: application/json
 
@@ -409,5 +415,10 @@ Content-Type: application/json
 
 ### WebSocket connection (use a ws client)
 # GET {{host}}/wss?client_id=U12345678901
+# Upgrade: websocket
+# Connection: Upgrade
+
+### Cache dashboard WebSocket (internal, swifty_cache monitoring)
+# GET {{host}}/dashboard/ws
 # Upgrade: websocket
 # Connection: Upgrade
