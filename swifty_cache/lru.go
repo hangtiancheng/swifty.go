@@ -37,13 +37,14 @@ type Entry struct {
 }
 
 type lruStore struct {
-	locks       []sync.Mutex
-	caches      [][2]*cache
-	onEvicted   func(key string, value Value)
-	cleanupTick *time.Ticker
-	closeCh     chan struct{}
-	closeOnce   sync.Once
-	mask        int32
+	locks          []sync.Mutex
+	caches         [][2]*cache
+	onEvicted      func(key string, value Value)
+	cleanupTick    *time.Ticker
+	closeCh        chan struct{}
+	closeOnce      sync.Once
+	maxBucketBytes int64
+	mask           int32
 }
 
 // NewStore creates a cache store implementation.
@@ -52,23 +53,33 @@ func NewStore(opts StoreOptions) *lruStore {
 		opts.BucketCount = 16
 	}
 	if opts.CapPerBucket == 0 {
-		opts.CapPerBucket = 1024
+		opts.CapPerBucket = 512
 	}
 	if opts.Level2Cap == 0 {
-		opts.Level2Cap = 1024
+		opts.Level2Cap = 256
 	}
 	if opts.CleanupInterval <= 0 {
 		opts.CleanupInterval = time.Minute
 	}
 
 	mask := MaskOfNextPowOf2(opts.BucketCount)
+
+	var maxBucketBytes int64
+	if opts.MaxBytes > 0 {
+		maxBucketBytes = opts.MaxBytes / int64(mask+1)
+		if maxBucketBytes <= 0 {
+			maxBucketBytes = 1
+		}
+	}
+
 	s := &lruStore{
-		locks:       make([]sync.Mutex, mask+1),
-		caches:      make([][2]*cache, mask+1),
-		onEvicted:   opts.OnEvicted,
-		cleanupTick: time.NewTicker(opts.CleanupInterval),
-		closeCh:     make(chan struct{}),
-		mask:        int32(mask),
+		locks:          make([]sync.Mutex, mask+1),
+		caches:         make([][2]*cache, mask+1),
+		onEvicted:      opts.OnEvicted,
+		cleanupTick:    time.NewTicker(opts.CleanupInterval),
+		closeCh:        make(chan struct{}),
+		maxBucketBytes: maxBucketBytes,
+		mask:           int32(mask),
 	}
 
 	for i := range s.caches {
@@ -76,9 +87,7 @@ func NewStore(opts StoreOptions) *lruStore {
 		s.caches[i][1] = Create(opts.Level2Cap)
 	}
 
-	if opts.CleanupInterval > 0 {
-		go s.cleanupLoop()
-	}
+	go s.cleanupLoop()
 
 	return s
 }
@@ -92,22 +101,31 @@ func (s *lruStore) Get(key string) (Value, bool) {
 
 	n1, status1, expireAt := s.caches[idx][0].del(key)
 	if status1 > 0 {
-		if expireAt > 0 && currentTime >= expireAt {
-			s.delete(key, idx)
+		v := n1.v
+		n1.v = nil
+		if currentTime >= expireAt {
+			s.caches[idx][1].drop(key)
+			if s.onEvicted != nil {
+				s.onEvicted(key, v)
+			}
 			return nil, false
 		}
 
-		s.caches[idx][1].put(key, n1.v, expireAt, s.onEvicted)
-		return n1.v, true
+		s.caches[idx][1].put(key, v, expireAt, s.onEvicted)
+		return v, true
 	}
 
-	n2, status2 := s._get(key, idx, 1)
-	if status2 > 0 && n2 != nil {
-		if n2.expireAt > 0 && currentTime >= n2.expireAt {
-			s.delete(key, idx)
+	if n2, idx2 := s.caches[idx][1].peek(key); n2 != nil && n2.expireAt > 0 {
+		if currentTime >= n2.expireAt {
+			v := n2.v
+			s.caches[idx][1].drop(key)
+			if s.onEvicted != nil {
+				s.onEvicted(key, v)
+			}
 			return nil, false
 		}
 
+		s.caches[idx][1].adjust(idx2, p, n)
 		return n2.v, true
 	}
 
@@ -121,7 +139,7 @@ func (s *lruStore) Set(key string, value Value) error {
 func (s *lruStore) SetWithExpiration(key string, value Value, expiration time.Duration) error {
 	var expireAt int64
 	if expiration > 0 {
-		expireAt = Now() + int64(expiration.Nanoseconds())
+		expireAt = Now() + expiration.Nanoseconds()
 	} else {
 		expireAt = maxExpireAt
 	}
@@ -131,8 +149,26 @@ func (s *lruStore) SetWithExpiration(key string, value Value, expiration time.Du
 	defer s.locks[idx].Unlock()
 
 	s.caches[idx][0].put(key, value, expireAt, s.onEvicted)
+	// L1 is the single write authority: drop any stale copy promoted to L2
+	// earlier, otherwise it can resurface after the L1 slot is recycled.
+	s.caches[idx][1].drop(key)
+
+	if s.maxBucketBytes > 0 {
+		for s.caches[idx][0].bytes+s.caches[idx][1].bytes > s.maxBucketBytes {
+			if !s.evictFromBucket(idx) {
+				break
+			}
+		}
+	}
 
 	return nil
+}
+
+func (s *lruStore) evictFromBucket(idx int32) bool {
+	if s.caches[idx][0].evictOldest(s.onEvicted) {
+		return true
+	}
+	return s.caches[idx][1].evictOldest(s.onEvicted)
 }
 
 func (s *lruStore) Delete(key string) bool {
@@ -144,33 +180,24 @@ func (s *lruStore) Delete(key string) bool {
 }
 
 func (s *lruStore) Clear() {
-	var keys []string
-
 	for i := range s.caches {
 		s.locks[i].Lock()
 
+		keys := make(map[string]struct{})
 		s.caches[i][0].walk(func(key string, value Value, expireAt int64) bool {
-			keys = append(keys, key)
+			keys[key] = struct{}{}
 			return true
 		})
 		s.caches[i][1].walk(func(key string, value Value, expireAt int64) bool {
-			for _, k := range keys {
-				if key == k {
-					return true
-				}
-			}
-			keys = append(keys, key)
+			keys[key] = struct{}{}
 			return true
 		})
+		for key := range keys {
+			s.delete(key, int32(i))
+		}
 
 		s.locks[i].Unlock()
 	}
-
-	for _, key := range keys {
-		s.Delete(key)
-	}
-
-	//s.expirations = sync.Map{}
 }
 
 func (s *lruStore) Len() int {
@@ -179,14 +206,16 @@ func (s *lruStore) Len() int {
 	for i := range s.caches {
 		s.locks[i].Lock()
 
+		seen := make(map[string]struct{})
 		s.caches[i][0].walk(func(key string, value Value, expireAt int64) bool {
-			count++
+			seen[key] = struct{}{}
 			return true
 		})
 		s.caches[i][1].walk(func(key string, value Value, expireAt int64) bool {
-			count++
+			seen[key] = struct{}{}
 			return true
 		})
+		count += len(seen)
 
 		s.locks[i].Unlock()
 	}
@@ -214,6 +243,28 @@ func (s *lruStore) Walk(fn func(Entry) bool) {
 
 		s.locks[i].Unlock()
 	}
+}
+
+// Bytes returns the total live bytes (keys + values) across all buckets.
+func (s *lruStore) Bytes() int64 {
+	var total int64
+	for i := range s.caches {
+		s.locks[i].Lock()
+		total += s.caches[i][0].bytes + s.caches[i][1].bytes
+		s.locks[i].Unlock()
+	}
+	return total
+}
+
+// Evictions returns the cumulative number of capacity/byte-budget evictions.
+func (s *lruStore) Evictions() int64 {
+	var total int64
+	for i := range s.caches {
+		s.locks[i].Lock()
+		total += s.caches[i][0].nevict + s.caches[i][1].nevict
+		s.locks[i].Unlock()
+	}
+	return total
 }
 
 func (s *lruStore) Close() {
@@ -272,6 +323,8 @@ type cache struct {
 	doubleLink [][2]uint16
 	m          []node
 	hashMap    map[string]uint16
+	bytes      int64
+	nevict     int64
 	last       uint16
 }
 
@@ -284,20 +337,38 @@ func Create(cap uint16) *cache {
 	}
 }
 
+func entryBytes(key string, val Value) int64 {
+	if val == nil {
+		return int64(len(key))
+	}
+	return int64(len(key)) + int64(val.Len())
+}
+
 func (c *cache) put(key string, val Value, expireAt int64, onEvicted func(string, Value)) int {
 	if idx, ok := c.hashMap[key]; ok {
-		c.m[idx-1].v, c.m[idx-1].expireAt = val, expireAt
+		nd := &c.m[idx-1]
+		if nd.expireAt > 0 {
+			c.bytes += entryBytes(key, val) - entryBytes(nd.k, nd.v)
+		} else {
+			c.bytes += entryBytes(key, val)
+		}
+		nd.v, nd.expireAt = val, expireAt
 		c.adjust(idx, p, n)
 		return 0
 	}
 
 	if c.last == uint16(cap(c.m)) {
 		tail := &c.m[c.doubleLink[0][p]-1]
-		if onEvicted != nil && (*tail).expireAt > 0 {
-			onEvicted((*tail).k, (*tail).v)
+		if (*tail).expireAt > 0 {
+			c.bytes -= entryBytes((*tail).k, (*tail).v)
+			c.nevict++
+			if onEvicted != nil {
+				onEvicted((*tail).k, (*tail).v)
+			}
 		}
 
 		delete(c.hashMap, (*tail).k)
+		c.bytes += entryBytes(key, val)
 		c.hashMap[key], (*tail).k, (*tail).v, (*tail).expireAt = c.doubleLink[0][p], key, val, expireAt
 		c.adjust(c.doubleLink[0][p], p, n)
 
@@ -317,14 +388,14 @@ func (c *cache) put(key string, val Value, expireAt int64, onEvicted func(string
 	c.doubleLink[c.last] = [2]uint16{0, c.doubleLink[0][n]}
 	c.hashMap[key] = c.last
 	c.doubleLink[0][n] = c.last
+	c.bytes += entryBytes(key, val)
 
 	return 1
 }
 
-func (c *cache) get(key string) (*node, int) {
+func (c *cache) peek(key string) (*node, uint16) {
 	if idx, ok := c.hashMap[key]; ok {
-		c.adjust(idx, p, n)
-		return &c.m[idx-1], 1
+		return &c.m[idx-1], idx
 	}
 	return nil, 0
 }
@@ -332,12 +403,41 @@ func (c *cache) get(key string) (*node, int) {
 func (c *cache) del(key string) (*node, int, int64) {
 	if idx, ok := c.hashMap[key]; ok && c.m[idx-1].expireAt > 0 {
 		e := c.m[idx-1].expireAt
+		c.bytes -= entryBytes(c.m[idx-1].k, c.m[idx-1].v)
 		c.m[idx-1].expireAt = 0
 		c.adjust(idx, n, p)
 		return &c.m[idx-1], 1, e
 	}
 
 	return nil, 0, 0
+}
+
+// drop logically deletes key and releases the slot's value reference.
+func (c *cache) drop(key string) {
+	if nd, st, _ := c.del(key); st > 0 {
+		nd.v = nil
+	}
+}
+
+// evictOldest logically removes the least recently used live entry.
+func (c *cache) evictOldest(onEvicted func(string, Value)) bool {
+	for idx := c.doubleLink[0][p]; idx != 0; idx = c.doubleLink[idx][p] {
+		nd := &c.m[idx-1]
+		if nd.expireAt <= 0 {
+			continue
+		}
+		c.bytes -= entryBytes(nd.k, nd.v)
+		c.nevict++
+		v := nd.v
+		nd.expireAt = 0
+		nd.v = nil
+		c.adjust(idx, n, p)
+		if onEvicted != nil {
+			onEvicted(nd.k, v)
+		}
+		return true
+	}
+	return false
 }
 
 func (c *cache) walk(walker func(key string, value Value, expireAt int64) bool) {
@@ -359,18 +459,6 @@ func (c *cache) adjust(idx, f, t uint16) {
 	}
 }
 
-func (s *lruStore) _get(key string, idx, level int32) (*node, int) {
-	if n, st := s.caches[idx][level].get(key); st > 0 && n != nil {
-		currentTime := Now()
-		if n.expireAt <= 0 || currentTime >= n.expireAt {
-			return nil, 0
-		}
-		return n, st
-	}
-
-	return nil, 0
-}
-
 func (s *lruStore) delete(key string, idx int32) bool {
 	n1, s1, _ := s.caches[idx][0].del(key)
 	n2, s2, _ := s.caches[idx][1].del(key)
@@ -384,8 +472,11 @@ func (s *lruStore) delete(key string, idx int32) bool {
 		}
 	}
 
-	if deleted {
-		//s.expirations.Delete(key)
+	if n1 != nil {
+		n1.v = nil
+	}
+	if n2 != nil {
+		n2.v = nil
 	}
 
 	return deleted
@@ -400,28 +491,23 @@ func (s *lruStore) cleanupLoop() {
 			for i := range s.caches {
 				s.locks[i].Lock()
 
-				var expiredKeys []string
+				expiredKeys := make(map[string]struct{})
 
 				s.caches[i][0].walk(func(key string, value Value, expireAt int64) bool {
-					if expireAt > 0 && currentTime >= expireAt {
-						expiredKeys = append(expiredKeys, key)
+					if currentTime >= expireAt {
+						expiredKeys[key] = struct{}{}
 					}
 					return true
 				})
 
 				s.caches[i][1].walk(func(key string, value Value, expireAt int64) bool {
-					if expireAt > 0 && currentTime >= expireAt {
-						for _, k := range expiredKeys {
-							if key == k {
-								return true
-							}
-						}
-						expiredKeys = append(expiredKeys, key)
+					if currentTime >= expireAt {
+						expiredKeys[key] = struct{}{}
 					}
 					return true
 				})
 
-				for _, key := range expiredKeys {
+				for key := range expiredKeys {
 					s.delete(key, int32(i))
 				}
 

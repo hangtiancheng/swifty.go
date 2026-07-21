@@ -38,6 +38,8 @@ type SSEWriter struct {
 func (ctx *Context) SSE() *SSEWriter {
 	flusher, _ := ctx.Writer.(http.Flusher)
 	ctx.flushed = true
+	ctx.Status = http.StatusOK
+	ctx.statusSet = true
 	ctx.Writer.Header().Set("Content-Type", "text/event-stream")
 	ctx.Writer.Header().Set("Cache-Control", "no-cache")
 	ctx.Writer.Header().Set("Connection", "keep-alive")
@@ -122,8 +124,9 @@ func (w *SSEWriter) Heartbeat(interval time.Duration) func() {
 			}
 		}
 	}()
+	var stopOnce sync.Once
 	return func() {
-		close(stop)
+		stopOnce.Do(func() { close(stop) })
 		<-done
 	}
 }

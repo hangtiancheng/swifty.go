@@ -394,5 +394,146 @@ func readServerFrame(br *bufio.Reader) (int, []byte, error) {
 	return opcode, payload, nil
 }
 
+// writeClientFrameRaw writes a single frame with explicit FIN and mask control.
+func writeClientFrameRaw(conn net.Conn, opcode int, fin bool, mask bool, payload []byte) error {
+	b0 := byte(opcode)
+	if fin {
+		b0 |= 0x80
+	}
+	b1 := byte(len(payload))
+	if mask {
+		b1 |= 0x80
+	}
+	frame := []byte{b0, b1}
+	if mask {
+		maskKey := [4]byte{0x12, 0x34, 0x56, 0x78}
+		frame = append(frame, maskKey[:]...)
+		for i, p := range payload {
+			frame = append(frame, p^maskKey[i%4])
+		}
+	} else {
+		frame = append(frame, payload...)
+	}
+	_, err := conn.Write(frame)
+	return err
+}
+
+func TestWebSocketFragmentedMessage(t *testing.T) {
+	app := New()
+	app.Get("/ws", func(ctx *Context, next func()) {
+		ws, err := ctx.Upgrade(nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		msgType, data, err := ws.ReadMessage()
+		if err != nil {
+			return
+		}
+		_ = ws.WriteMessage(msgType, data)
+	})
+
+	server := httptest.NewServer(app)
+	defer server.Close()
+
+	ws := dialWS(t, server.URL, "/ws")
+	defer ws.Close()
+
+	// text frame without FIN, continuation without FIN, final continuation
+	if err := writeClientFrameRaw(ws.conn, TextMessage, false, true, []byte("hello ")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClientFrameRaw(ws.conn, 0, false, true, []byte("fragmented ")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClientFrameRaw(ws.conn, 0, true, true, []byte("world")); err != nil {
+		t.Fatal(err)
+	}
+
+	opcode, payload, err := readServerFrame(ws.br)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opcode != TextMessage {
+		t.Fatalf("opcode = %d, want text", opcode)
+	}
+	if string(payload) != "hello fragmented world" {
+		t.Fatalf("reassembled message = %q", string(payload))
+	}
+}
+
+func TestWebSocketRejectsUnmaskedClientFrame(t *testing.T) {
+	app := New()
+	app.Get("/ws", func(ctx *Context, next func()) {
+		ws, err := ctx.Upgrade(nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		msgType, data, err := ws.ReadMessage()
+		if err != nil {
+			return // expected: unmasked frame must be rejected
+		}
+		_ = ws.WriteMessage(msgType, data)
+	})
+
+	server := httptest.NewServer(app)
+	defer server.Close()
+
+	ws := dialWS(t, server.URL, "/ws")
+	defer ws.conn.Close()
+
+	if err := writeClientFrameRaw(ws.conn, TextMessage, true, false, []byte("naked")); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = ws.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	opcode, payload, err := readServerFrame(ws.br)
+	if err == nil && opcode == TextMessage && string(payload) == "naked" {
+		t.Fatal("server echoed an unmasked frame; RFC 6455 requires rejecting it")
+	}
+}
+
+func TestWebSocketUpgradeRequiresVersion13(t *testing.T) {
+	app := New()
+	app.Get("/ws", func(ctx *Context, next func()) {
+		if _, err := ctx.Upgrade(nil); err != nil {
+			return
+		}
+	})
+
+	server := httptest.NewServer(app)
+	defer server.Close()
+
+	addr := strings.TrimPrefix(server.URL, "http://")
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	key := base64.StdEncoding.EncodeToString([]byte("test-key-12345678"))
+	req := "GET /ws HTTP/1.1\r\n" +
+		"Host: " + addr + "\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Sec-WebSocket-Key: " + key + "\r\n" +
+		"\r\n"
+	if _, err := conn.Write([]byte(req)); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for missing Sec-WebSocket-Version", resp.StatusCode)
+	}
+	if resp.Header.Get("Sec-Websocket-Version") != "13" {
+		t.Fatalf("missing Sec-WebSocket-Version: 13 advisory header")
+	}
+}
+
 // ensure sha1 import is used
 var _ = sha1.New

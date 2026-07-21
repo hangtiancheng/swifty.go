@@ -36,12 +36,31 @@ type Router struct {
 
 func (r *Router) Router(prefix string) *Router {
 	newRouter := &Router{
-		prefix: r.prefix + prefix,
+		prefix: r.prefix + normalizePrefix(prefix),
 		parent: r,
 		app:    r.app,
 	}
 	r.app.routers = append(r.app.routers, newRouter)
 	return newRouter
+}
+
+// normalizePrefix keeps trie registration and matchRouterPath consistent:
+// without it, Router("v1") registers routes reachable at /v1/... (parsePattern
+// collapses slashes) while its middleware silently never matches.
+func normalizePrefix(prefix string) string {
+	if prefix == "" {
+		return ""
+	}
+	if !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	for len(prefix) > 1 && strings.HasSuffix(prefix, "/") {
+		prefix = prefix[:len(prefix)-1]
+	}
+	if prefix == "/" {
+		return ""
+	}
+	return prefix
 }
 
 func (r *Router) Use(middlewares ...Middleware) {
@@ -100,8 +119,9 @@ func (r *Router) createStaticHandler(relativePath string, fs http.FileSystem) Mi
 	fileServer := http.StripPrefix(absolutePath, http.FileServer(fs))
 	return func(ctx *Context, next func()) {
 		file := ctx.Param("filepath")
-		if _, err := fs.Open(file); err != nil {
+		if !staticFileExists(fs, file) {
 			ctx.Status = http.StatusNotFound
+			ctx.statusSet = true
 			return
 		}
 		// flush deferred headers (e.g. CORS) before handing off to FileServer,
@@ -111,8 +131,56 @@ func (r *Router) createStaticHandler(relativePath string, fs http.FileSystem) Mi
 			header.Set(k, v)
 		}
 		ctx.flushed = true
-		fileServer.ServeHTTP(ctx.Writer, ctx.Request)
+		fileServer.ServeHTTP(&statusRecorder{ResponseWriter: ctx.Writer, status: &ctx.Status}, ctx.Request)
 	}
+}
+
+// staticFileExists probes the target and closes the handle immediately.
+// Directories are only served when they contain an index.html, matching
+// koa-static; bare directory listings are never exposed.
+func staticFileExists(fs http.FileSystem, name string) bool {
+	f, err := fs.Open(name)
+	if err != nil {
+		return false
+	}
+	stat, err := f.Stat()
+	_ = f.Close()
+	if err != nil {
+		return false
+	}
+	if !stat.IsDir() {
+		return true
+	}
+	index, err := fs.Open(path.Join(name, "index.html"))
+	if err != nil {
+		return false
+	}
+	_ = index.Close()
+	return true
+}
+
+// statusRecorder mirrors the status FileServer writes into ctx.Status so
+// observers like Logger see the real code instead of the pre-flush default.
+type statusRecorder struct {
+	http.ResponseWriter
+	status *int
+	wrote  bool
+}
+
+func (w *statusRecorder) WriteHeader(code int) {
+	if !w.wrote {
+		*w.status = code
+		w.wrote = true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusRecorder) Write(b []byte) (int, error) {
+	if !w.wrote {
+		*w.status = http.StatusOK
+		w.wrote = true
+	}
+	return w.ResponseWriter.Write(b)
 }
 
 func matchRouterPath(requestPath, routerPrefix string) bool {

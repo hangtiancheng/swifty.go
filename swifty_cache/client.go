@@ -25,8 +25,6 @@ import (
 	"fmt"
 	"time"
 
-	"log"
-
 	pb "github.com/hangtiancheng/swifty.go/swifty_cache/pb"
 	client_v3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
@@ -44,17 +42,6 @@ type Client struct {
 var _ Peer = (*Client)(nil)
 
 func NewClient(addr string, svcName string, etcdCli *client_v3.Client) (*Client, error) {
-	var err error
-	if etcdCli == nil {
-		etcdCli, err = client_v3.New(client_v3.Config{
-			Endpoints:   []string{"localhost:2379"},
-			DialTimeout: 5 * time.Second,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create etcd client: %v", err)
-		}
-	}
-
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
@@ -103,7 +90,7 @@ func (c *Client) Delete(group, key string) (bool, error) {
 }
 
 func (c *Client) Set(ctx context.Context, group, key string, value []byte) error {
-	resp, err := c.grpcCli.Set(ctx, &pb.Request{
+	_, err := c.grpcCli.Set(ctx, &pb.Request{
 		Group: group,
 		Key:   key,
 		Value: value,
@@ -111,7 +98,6 @@ func (c *Client) Set(ctx context.Context, group, key string, value []byte) error
 	if err != nil {
 		return fmt.Errorf("failed to set value to swifty_cache: %v", err)
 	}
-	log.Printf("grpc set request resp: %+v", resp)
 
 	return nil
 }

@@ -52,7 +52,7 @@ type StoreOptions struct {
 // NewStoreOptions returns default store options.
 func NewStoreOptions() StoreOptions {
 	return StoreOptions{
-		MaxBytes:        8192,
+		MaxBytes:        8 * 1024 * 1024,
 		BucketCount:     16,
 		CapPerBucket:    512,
 		Level2Cap:       256,

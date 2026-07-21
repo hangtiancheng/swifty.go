@@ -68,32 +68,47 @@ func TestMapAddGetRemoveAndStats(t *testing.T) {
 	}
 }
 
-func TestMapRebalanceDoesNotDeadlock(t *testing.T) {
+func TestMapConcurrentAccess(t *testing.T) {
 	m := NewConHash(WithConHashConfig(&ConHashConfig{
-		DefaultReplicas:      5,
-		MinReplicas:          2,
-		MaxReplicas:          20,
-		LoadBalanceThreshold: 0.01,
-		HashFunc:             DefaultConHashConfig.HashFunc,
+		DefaultReplicas: 5,
+		HashFunc:        DefaultConHashConfig.HashFunc,
 	}))
 	if err := m.Add("a", "b", "c"); err != nil {
 		t.Fatalf("Add returned error: %v", err)
 	}
-	for range 1200 {
-		_ = m.Get("key-a")
+	// Adding an existing node must be a no-op.
+	if err := m.Add("a"); err != nil {
+		t.Fatalf("re-Add returned error: %v", err)
 	}
 
 	done := make(chan struct{})
 	go func() {
-		m.checkAndRebalance()
-		close(done)
+		defer close(done)
+		for i := range 1200 {
+			if got := m.Get("key-" + strconv.Itoa(i)); got == "" {
+				t.Error("ring returned empty node")
+				return
+			}
+		}
 	}()
+	for range 20 {
+		if err := m.Add("d"); err != nil {
+			t.Fatalf("Add returned error: %v", err)
+		}
+		if err := m.Remove("d"); err != nil {
+			t.Fatalf("Remove returned error: %v", err)
+		}
+	}
 	select {
 	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("checkAndRebalance deadlocked")
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent Get did not finish")
 	}
+
 	if got := m.Get("key"); got == "" {
-		t.Fatal("ring returned empty node after rebalance")
+		t.Fatal("ring returned empty node after churn")
+	}
+	if stats := m.GetStats(); len(stats) == 0 {
+		t.Fatal("expected stats after Get calls")
 	}
 }

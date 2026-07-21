@@ -158,3 +158,97 @@ func TestDeferredResponseCanBeModifiedByMiddleware(t *testing.T) {
 		t.Fatalf("middleware could not modify response after handler")
 	}
 }
+
+func TestPromotedStatusVisibleToMiddlewareAfterNext(t *testing.T) {
+	app := New()
+	var observed int
+	app.Use(func(ctx *Context, next func()) {
+		next()
+		observed = ctx.Status
+	})
+	app.Get("/auto", func(ctx *Context, next func()) {
+		ctx.JSON(H{"ok": true}) // no explicit status
+	})
+
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/auto", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if observed != http.StatusOK {
+		t.Fatalf("middleware observed status %d after next(), want 200", observed)
+	}
+}
+
+func TestSetStatusPreservesExplicitNotFoundWithBody(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx := newContext(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	ctx.SetStatus(http.StatusNotFound)
+	ctx.JSON(H{"message": "no such user"})
+	ctx.respond()
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want explicit 404", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "no such user") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+}
+
+func TestEmptyStatusStripsBody(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx := newContext(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	ctx.SetStatus(http.StatusNoContent)
+	ctx.JSON(H{"ignored": true})
+	ctx.respond()
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("204 must not carry a body, got %q", rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "" {
+		t.Fatalf("204 must not carry Content-Type, got %q", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestRedirectDefaultsAndKeepsRedirectStatus(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx := newContext(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	ctx.Redirect("/login")
+	ctx.respond()
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if rec.Header().Get("Location") != "/login" {
+		t.Fatalf("location = %q", rec.Header().Get("Location"))
+	}
+	if !strings.Contains(rec.Body.String(), "Redirecting to /login") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	ctx = newContext(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	ctx.SetStatus(http.StatusMovedPermanently)
+	ctx.Redirect("/new-home")
+	ctx.respond()
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want explicit 301", rec.Code)
+	}
+}
+
+func TestUserContentTypeHeaderWins(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx := newContext(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	ctx.Set("content-type", "application/xml")
+	ctx.String("<ok/>")
+	ctx.respond()
+
+	if got := rec.Header().Get("Content-Type"); got != "application/xml" {
+		t.Fatalf("content-type = %q, want application/xml", got)
+	}
+}

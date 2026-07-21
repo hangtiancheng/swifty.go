@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +75,16 @@ func (p *ClientPicker) PrintPeers() {
 }
 
 func NewClientPicker(addr string, opts ...PickerOption) (*ClientPicker, error) {
+	// Normalize ":port" the same way Register does before writing to etcd,
+	// otherwise the local node would treat its own registration as a remote peer.
+	if strings.HasPrefix(addr, ":") {
+		localIP, err := getLocalIP()
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve self address: %v", err)
+		}
+		addr = localIP + addr
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	picker := &ClientPicker{
 		selfAddr: addr,
@@ -98,6 +109,10 @@ func NewClientPicker(addr string, opts ...PickerOption) (*ClientPicker, error) {
 	}
 	picker.etcdCli = cli
 
+	// The local node always owns part of the ring so that keys hashing to
+	// this node are loaded locally instead of round-tripping through gRPC.
+	picker.consHash.Add(addr)
+
 	if err := picker.startServiceDiscovery(); err != nil {
 		cancel()
 		cli.Close()
@@ -107,8 +122,18 @@ func NewClientPicker(addr string, opts ...PickerOption) (*ClientPicker, error) {
 	return picker, nil
 }
 
+func (p *ClientPicker) servicePrefix() string {
+	return "/services/" + p.svcName + "/"
+}
+
+// addrFromEventKey extracts the peer address from an etcd key. DELETE events
+// carry an empty value, so the key is the only reliable source.
+func (p *ClientPicker) addrFromEventKey(key []byte) string {
+	return strings.TrimPrefix(string(key), p.servicePrefix())
+}
+
 func (p *ClientPicker) startServiceDiscovery() error {
-	if err := p.fetchAllServices(); err != nil {
+	if _, err := p.fetchAllServices(); err != nil {
 		return err
 	}
 
@@ -117,15 +142,48 @@ func (p *ClientPicker) startServiceDiscovery() error {
 }
 
 func (p *ClientPicker) watchServiceChanges() {
+	for {
+		rev, err := p.fetchAllServices()
+		if err != nil {
+			log.Printf("[SwiftyCache] failed to resync services: %v", err)
+		}
+
+		if p.watchOnce(rev) {
+			return
+		}
+
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// watchOnce watches the service prefix until the channel breaks.
+// It returns true when the picker is closing.
+func (p *ClientPicker) watchOnce(fromRev int64) bool {
 	watcher := client_v3.NewWatcher(p.etcdCli)
-	watchChan := watcher.Watch(p.ctx, "/services/"+p.svcName, client_v3.WithPrefix())
+	defer watcher.Close()
+
+	watchOpts := []client_v3.OpOption{client_v3.WithPrefix()}
+	if fromRev > 0 {
+		watchOpts = append(watchOpts, client_v3.WithRev(fromRev+1))
+	}
+	watchChan := watcher.Watch(p.ctx, p.servicePrefix(), watchOpts...)
 
 	for {
 		select {
 		case <-p.ctx.Done():
-			watcher.Close()
-			return
-		case resp := <-watchChan:
+			return true
+		case resp, ok := <-watchChan:
+			if !ok || resp.Canceled {
+				return false
+			}
+			if err := resp.Err(); err != nil {
+				log.Printf("[SwiftyCache] watch error: %v", err)
+				return false
+			}
 			p.handleWatchEvents(resp.Events)
 		}
 	}
@@ -136,8 +194,8 @@ func (p *ClientPicker) handleWatchEvents(events []*client_v3.Event) {
 	defer p.mu.Unlock()
 
 	for _, event := range events {
-		addr := string(event.Kv.Value)
-		if addr == p.selfAddr {
+		addr := p.addrFromEventKey(event.Kv.Key)
+		if addr == "" || addr == p.selfAddr {
 			continue
 		}
 
@@ -157,26 +215,42 @@ func (p *ClientPicker) handleWatchEvents(events []*client_v3.Event) {
 	}
 }
 
-func (p *ClientPicker) fetchAllServices() error {
+// fetchAllServices reconciles the peer set with etcd and returns the
+// revision the snapshot was taken at, so the watch can resume from it.
+func (p *ClientPicker) fetchAllServices() (int64, error) {
 	ctx, cancel := context.WithTimeout(p.ctx, 3*time.Second)
 	defer cancel()
 
-	resp, err := p.etcdCli.Get(ctx, "/services/"+p.svcName, client_v3.WithPrefix())
+	resp, err := p.etcdCli.Get(ctx, p.servicePrefix(), client_v3.WithPrefix())
 	if err != nil {
-		return fmt.Errorf("failed to get all services: %v", err)
+		return 0, fmt.Errorf("failed to get all services: %v", err)
 	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	current := make(map[string]struct{}, len(resp.Kvs))
 	for _, kv := range resp.Kvs {
-		addr := string(kv.Value)
-		if addr != "" && addr != p.selfAddr {
+		addr := p.addrFromEventKey(kv.Key)
+		if addr == "" || addr == p.selfAddr {
+			continue
+		}
+		current[addr] = struct{}{}
+		if _, exists := p.clients[addr]; !exists {
 			p.set(addr)
 			log.Printf("Discovered service at %s", addr)
 		}
 	}
-	return nil
+
+	for addr, client := range p.clients {
+		if _, ok := current[addr]; !ok {
+			client.Close()
+			p.remove(addr)
+			log.Printf("Service removed at %s (resync)", addr)
+		}
+	}
+
+	return resp.Header.Revision, nil
 }
 
 func (p *ClientPicker) set(addr string) {
@@ -194,14 +268,21 @@ func (p *ClientPicker) remove(addr string) {
 	delete(p.clients, addr)
 }
 
+// PickPeer returns the peer owning key. When the local node owns the key it
+// returns (nil, true, true) so callers load locally without a network hop.
 func (p *ClientPicker) PickPeer(key string) (Peer, bool, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if addr := p.consHash.Get(key); addr != "" {
-		if client, ok := p.clients[addr]; ok {
-			return client, true, addr == p.selfAddr
-		}
+	addr := p.consHash.Get(key)
+	if addr == "" {
+		return nil, false, false
+	}
+	if addr == p.selfAddr {
+		return nil, true, true
+	}
+	if client, ok := p.clients[addr]; ok {
+		return client, true, false
 	}
 	return nil, false, false
 }

@@ -69,14 +69,17 @@ type Group struct {
 }
 
 type groupStats struct {
-	loads        int64
-	localHits    int64
-	localMisses  int64
-	peerHits     int64
-	peerMisses   int64
-	loaderHits   int64
-	loaderErrors int64
-	loadDuration int64
+	gets           int64
+	loads          int64
+	loadsDeduped   int64
+	localHits      int64
+	localMisses    int64
+	peerHits       int64
+	peerMisses     int64
+	loaderHits     int64
+	loaderErrors   int64
+	serverRequests int64
+	loadDuration   int64
 }
 
 // GroupOption configures a Group.
@@ -127,7 +130,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter, opts ...GroupOption)
 	defer groupsMu.Unlock()
 
 	if _, exists := groups[name]; exists {
-		log.Printf("Group with name %s already exists; replacing it", name)
+		panic("duplicate registration of group " + name)
 	}
 
 	groups[name] = g
@@ -155,6 +158,8 @@ func (g *Group) Get(ctx context.Context, key string) (ByteView, error) {
 	if key == "" {
 		return ByteView{}, ErrKeyRequired
 	}
+
+	atomic.AddInt64(&g.stats.gets, 1)
 
 	view, ok := g.mainCache.Get(ctx, key)
 	if ok {
@@ -187,7 +192,7 @@ func (g *Group) Set(ctx context.Context, key string, value []byte) error {
 
 	if !isPeerRequest(ctx) {
 		if peers := g.getPeers(); peers != nil {
-			go g.syncToPeers(ctx, peers, "set", key, value)
+			go g.syncToPeers(peers, "set", key, value)
 		}
 	}
 
@@ -207,20 +212,24 @@ func (g *Group) Delete(ctx context.Context, key string) error {
 
 	if !isPeerRequest(ctx) {
 		if peers := g.getPeers(); peers != nil {
-			go g.syncToPeers(ctx, peers, "delete", key, nil)
+			go g.syncToPeers(peers, "delete", key, nil)
 		}
 	}
 
 	return nil
 }
 
-func (g *Group) syncToPeers(ctx context.Context, peers PeerPicker, op string, key string, value []byte) {
+const peerSyncTimeout = 3 * time.Second
+
+func (g *Group) syncToPeers(peers PeerPicker, op string, key string, value []byte) {
 	peer, ok, isSelf := peers.PickPeer(key)
-	if !ok || isSelf {
+	if !ok || isSelf || peer == nil {
 		return
 	}
 
-	syncCtx := withPeerRequest(context.Background())
+	syncCtx, cancel := context.WithTimeout(withPeerRequest(context.Background()), peerSyncTimeout)
+	defer cancel()
+
 	var err error
 	switch op {
 	case "set":
@@ -266,7 +275,25 @@ func (g *Group) Close() error {
 func (g *Group) load(ctx context.Context, key string) (ByteView, error) {
 	startTime := time.Now()
 	viewInterface, err := g.loader.Do(key, func() (interface{}, error) {
-		return g.loadData(ctx, key)
+		// Singleflight only dedups concurrent overlapping calls; two serial
+		// callers can both miss the cache, so check again before loading.
+		if view, ok := g.mainCache.Get(ctx, key); ok {
+			return view, nil
+		}
+
+		atomic.AddInt64(&g.stats.loadsDeduped, 1)
+
+		view, err := g.loadData(ctx, key)
+		if err != nil {
+			return ByteView{}, err
+		}
+
+		if g.expiration > 0 {
+			g.mainCache.AddWithExpiration(key, view, time.Now().Add(g.expiration))
+		} else {
+			g.mainCache.Add(key, view)
+		}
+		return view, nil
 	})
 
 	loadDuration := time.Since(startTime).Nanoseconds()
@@ -278,19 +305,20 @@ func (g *Group) load(ctx context.Context, key string) (ByteView, error) {
 		return ByteView{}, err
 	}
 
-	view := viewInterface.(ByteView)
-	if g.expiration > 0 {
-		g.mainCache.AddWithExpiration(key, view, time.Now().Add(g.expiration))
-	} else {
-		g.mainCache.Add(key, view)
+	view, ok := viewInterface.(ByteView)
+	if !ok {
+		atomic.AddInt64(&g.stats.loaderErrors, 1)
+		return ByteView{}, fmt.Errorf("unexpected load result type %T", viewInterface)
 	}
 	return view, nil
 }
 
 func (g *Group) loadData(ctx context.Context, key string) (ByteView, error) {
-	if peers := g.getPeers(); peers != nil {
+	// Requests forwarded by a peer must be answered locally, otherwise
+	// transiently inconsistent hash rings can bounce a key between nodes.
+	if peers := g.getPeers(); peers != nil && !isPeerRequest(ctx) {
 		peer, ok, isSelf := peers.PickPeer(key)
-		if ok && !isSelf {
+		if ok && !isSelf && peer != nil {
 			value, err := g.getFromPeer(ctx, peer, key)
 			if err == nil {
 				atomic.AddInt64(&g.stats.peerHits, 1)
@@ -339,16 +367,19 @@ func (g *Group) getPeers() PeerPicker {
 // Stats returns a snapshot of group and cache statistics.
 func (g *Group) Stats() map[string]interface{} {
 	stats := map[string]interface{}{
-		"name":          g.name,
-		"closed":        atomic.LoadInt32(&g.closed) == 1,
-		"expiration":    g.expiration,
-		"loads":         atomic.LoadInt64(&g.stats.loads),
-		"local_hits":    atomic.LoadInt64(&g.stats.localHits),
-		"local_misses":  atomic.LoadInt64(&g.stats.localMisses),
-		"peer_hits":     atomic.LoadInt64(&g.stats.peerHits),
-		"peer_misses":   atomic.LoadInt64(&g.stats.peerMisses),
-		"loader_hits":   atomic.LoadInt64(&g.stats.loaderHits),
-		"loader_errors": atomic.LoadInt64(&g.stats.loaderErrors),
+		"name":            g.name,
+		"closed":          atomic.LoadInt32(&g.closed) == 1,
+		"expiration":      g.expiration,
+		"gets":            atomic.LoadInt64(&g.stats.gets),
+		"loads":           atomic.LoadInt64(&g.stats.loads),
+		"loads_deduped":   atomic.LoadInt64(&g.stats.loadsDeduped),
+		"local_hits":      atomic.LoadInt64(&g.stats.localHits),
+		"local_misses":    atomic.LoadInt64(&g.stats.localMisses),
+		"peer_hits":       atomic.LoadInt64(&g.stats.peerHits),
+		"peer_misses":     atomic.LoadInt64(&g.stats.peerMisses),
+		"loader_hits":     atomic.LoadInt64(&g.stats.loaderHits),
+		"loader_errors":   atomic.LoadInt64(&g.stats.loaderErrors),
+		"server_requests": atomic.LoadInt64(&g.stats.serverRequests),
 	}
 
 	totalGets := stats["local_hits"].(int64) + stats["local_misses"].(int64)

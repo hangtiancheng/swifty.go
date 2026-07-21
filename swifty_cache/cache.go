@@ -75,6 +75,9 @@ func (c *Cache) ensureInitialized() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if atomic.LoadInt32(&c.closed) == 1 {
+		return
+	}
 	if atomic.LoadInt32(&c.initialized) == 0 {
 		storeOpts := StoreOptions{
 			MaxBytes:        c.opts.MaxBytes,
@@ -98,6 +101,12 @@ func (c *Cache) Add(key string, value ByteView) {
 	}
 
 	c.ensureInitialized()
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.store == nil {
+		return
+	}
 	if err := c.store.Set(key, value); err != nil {
 		log.Printf("Failed to add key %s to cache: %v", key, err)
 	}
@@ -115,6 +124,11 @@ func (c *Cache) Get(ctx context.Context, key string) (ByteView, bool) {
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
+	if c.store == nil {
+		atomic.AddInt64(&c.misses, 1)
+		return ByteView{}, false
+	}
 
 	val, found := c.store.Get(key)
 	if !found {
@@ -147,6 +161,12 @@ func (c *Cache) AddWithExpiration(key string, value ByteView, expirationTime tim
 	}
 
 	c.ensureInitialized()
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.store == nil {
+		return
+	}
 	if err := c.store.SetWithExpiration(key, value, expiration); err != nil {
 		log.Printf("Failed to add key %s to cache with expiration: %v", key, err)
 	}
@@ -160,6 +180,9 @@ func (c *Cache) Delete(key string) bool {
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	if c.store == nil {
+		return false
+	}
 	return c.store.Delete(key)
 }
 
@@ -172,6 +195,9 @@ func (c *Cache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if c.store == nil {
+		return
+	}
 	c.store.Clear()
 	atomic.StoreInt64(&c.hits, 0)
 	atomic.StoreInt64(&c.misses, 0)
@@ -185,6 +211,9 @@ func (c *Cache) Len() int {
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	if c.store == nil {
+		return 0
+	}
 	return c.store.Len()
 }
 
@@ -219,6 +248,10 @@ func (c *Cache) Entries() []Entry {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	if c.store == nil {
+		return nil
+	}
+
 	var entries []Entry
 	c.store.Walk(func(e Entry) bool {
 		entries = append(entries, e)
@@ -244,6 +277,13 @@ func (c *Cache) Stats() map[string]any {
 		} else {
 			stats["hit_rate"] = 0.0
 		}
+
+		c.mu.RLock()
+		if s, ok := c.store.(*lruStore); ok {
+			stats["bytes"] = s.Bytes()
+			stats["evictions"] = s.Evictions()
+		}
+		c.mu.RUnlock()
 	}
 
 	return stats

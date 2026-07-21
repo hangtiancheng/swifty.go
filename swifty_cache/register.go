@@ -22,6 +22,7 @@ package swifty_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -40,41 +41,38 @@ var DefaultRegisterConfig = &RegisterConfig{
 	DialTimeout: 5 * time.Second,
 }
 
+// Register registers svcName/addr into etcd using DefaultRegisterConfig and
+// keeps the lease alive until stopCh is closed.
 func Register(svcName, addr string, stopCh <-chan error) error {
+	return registerWithConfig(svcName, addr, stopCh, DefaultRegisterConfig)
+}
+
+func registerWithConfig(svcName, addr string, stopCh <-chan error, cfg *RegisterConfig) error {
+	if addr == "" {
+		return errors.New("empty address")
+	}
+
 	cli, err := client_v3.New(client_v3.Config{
-		Endpoints:   DefaultRegisterConfig.Endpoints,
-		DialTimeout: DefaultRegisterConfig.DialTimeout,
+		Endpoints:   cfg.Endpoints,
+		DialTimeout: cfg.DialTimeout,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create etcd client: %v", err)
 	}
 
-	localIP, err := getLocalIP()
-	if err != nil {
-		cli.Close()
-		return fmt.Errorf("failed to get local IP: %v", err)
-	}
 	if addr[0] == ':' {
+		localIP, err := getLocalIP()
+		if err != nil {
+			cli.Close()
+			return fmt.Errorf("failed to get local IP: %v", err)
+		}
 		addr = fmt.Sprintf("%s%s", localIP, addr)
 	}
 
-	lease, err := cli.Grant(context.Background(), 10)
+	keepAliveCh, leaseID, err := registerLease(cli, svcName, addr)
 	if err != nil {
 		cli.Close()
-		return fmt.Errorf("failed to create lease: %v", err)
-	}
-
-	key := fmt.Sprintf("/services/%s/%s", svcName, addr)
-	_, err = cli.Put(context.Background(), key, addr, client_v3.WithLease(lease.ID))
-	if err != nil {
-		cli.Close()
-		return fmt.Errorf("failed to put key-value to etcd: %v", err)
-	}
-
-	keepAliveCh, err := cli.KeepAlive(context.Background(), lease.ID)
-	if err != nil {
-		cli.Close()
-		return fmt.Errorf("failed to keep lease alive: %v", err)
+		return err
 	}
 
 	go func() {
@@ -83,21 +81,69 @@ func Register(svcName, addr string, stopCh <-chan error) error {
 			select {
 			case <-stopCh:
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				cli.Revoke(ctx, lease.ID)
+				cli.Revoke(ctx, leaseID)
 				cancel()
 				return
-			case resp, ok := <-keepAliveCh:
+			case _, ok := <-keepAliveCh:
 				if !ok {
-					log.Print("keep alive channel closed")
-					return
+					// Lease renewal broke (etcd hiccup, network partition).
+					// Re-register with backoff so the node rejoins the cluster.
+					log.Print("[SwiftyCache] keep alive channel closed; re-registering")
+					var err error
+					keepAliveCh, leaseID, err = reRegister(cli, svcName, addr, stopCh)
+					if err != nil {
+						return
+					}
 				}
-				log.Printf("successfully renewed lease: %d", resp.ID)
 			}
 		}
 	}()
 
 	log.Printf("Service registered: %s at %s", svcName, addr)
 	return nil
+}
+
+func registerLease(cli *client_v3.Client, svcName, addr string) (<-chan *client_v3.LeaseKeepAliveResponse, client_v3.LeaseID, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	lease, err := cli.Grant(ctx, 10)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create lease: %v", err)
+	}
+
+	key := fmt.Sprintf("/services/%s/%s", svcName, addr)
+	if _, err = cli.Put(ctx, key, addr, client_v3.WithLease(lease.ID)); err != nil {
+		return nil, 0, fmt.Errorf("failed to put key-value to etcd: %v", err)
+	}
+
+	keepAliveCh, err := cli.KeepAlive(context.Background(), lease.ID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to keep lease alive: %v", err)
+	}
+	return keepAliveCh, lease.ID, nil
+}
+
+func reRegister(cli *client_v3.Client, svcName, addr string, stopCh <-chan error) (<-chan *client_v3.LeaseKeepAliveResponse, client_v3.LeaseID, error) {
+	backoff := time.Second
+	for {
+		select {
+		case <-stopCh:
+			return nil, 0, errors.New("registration stopped")
+		case <-time.After(backoff):
+		}
+
+		keepAliveCh, leaseID, err := registerLease(cli, svcName, addr)
+		if err == nil {
+			log.Printf("Service re-registered: %s at %s", svcName, addr)
+			return keepAliveCh, leaseID, nil
+		}
+		log.Printf("[SwiftyCache] re-registration failed: %v", err)
+
+		if backoff < 30*time.Second {
+			backoff *= 2
+		}
+	}
 }
 
 func getLocalIP() (string, error) {

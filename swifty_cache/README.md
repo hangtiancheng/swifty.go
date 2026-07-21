@@ -1,6 +1,6 @@
 # Swifty Cache
 
-A distributed caching framework written in Go, with an API style aligned to [groupcache](https://github.com/golang/groupcache). swifty_cache retains the elegant namespace model and read-through semantics of groupcache while extending it with write propagation, etcd-based service discovery, consistent hashing with automatic rebalancing, bucket-sharded dual-level LRU local storage, and a real-time WebSocket dashboard.
+A distributed caching framework written in Go, with an API style aligned to [groupcache](https://github.com/golang/groupcache). swifty_cache retains the elegant namespace model and read-through semantics of groupcache while extending it with write propagation, etcd-based service discovery, consistent hashing with virtual nodes, bucket-sharded dual-level LRU local storage, and a real-time WebSocket dashboard.
 
 Module path: `github.com/hangtiancheng/swifty.go/swifty_cache`
 
@@ -15,9 +15,9 @@ Source directory: `swifty_cache/`
 - Write propagation: extends the read-only groupcache model with `Set` / `Delete` operations that asynchronously sync to the owning peer via consistent hashing.
 - Bucket-sharded dual-level LRU: local storage is partitioned into buckets to reduce lock contention; frequently accessed keys are promoted from L1 to L2 for improved reuse.
 - TTL with background cleanup: supports per-key expiration with a background goroutine that periodically scans and evicts expired entries.
-- Consistent hashing with automatic rebalancing: supports virtual nodes; when load deviation among nodes exceeds a configurable threshold, virtual node counts are adjusted automatically.
+- Consistent hashing: virtual nodes with a stable key-to-node mapping (groupcache semantics).
 - etcd-based service discovery: the server registers with a lease and keepalive; clients watch etcd to dynamically maintain the peer list.
-- gRPC transport: cross-node RPC uses gRPC with health checking and optional TLS.
+- gRPC transport: cross-node RPC uses gRPC with health checking.
 - Real-time WebSocket dashboard: an optional monitoring endpoint streams live snapshots of all group statistics and cache entries to connected clients.
 - Comprehensive statistics: `Group.Stats()` exposes hit rate, average load latency, per-level hits, and more for integration with monitoring systems.
 - Explicit lifecycle management: `Group`, `Cache`, `Server`, and `ClientPicker` all provide `Close` / `Stop` methods for safe resource cleanup in tests and graceful shutdown scenarios.
@@ -228,7 +228,7 @@ Deduplicates concurrent loads for the same key: the first caller executes `fn`, 
 
 ### ConHashMap
 
-A consistent hash ring with virtual nodes and automatic load-based rebalancing. A background ticker checks every second: when cumulative requests exceed 1000 and node load deviation surpasses the configured threshold, virtual node counts are adjusted proportionally to restore balance.
+A consistent hash ring with a fixed number of virtual nodes per physical node (`DefaultReplicas`). The key-to-node mapping only changes when nodes are added or removed, keeping cache ownership stable (groupcache semantics).
 
 ---
 
@@ -289,11 +289,13 @@ func NewCache(opts CacheOptions) *Cache
 
 ```go
 type ConHashConfig struct {
-    DefaultReplicas      int                          // Initial virtual nodes per node (default: 50).
-    MinReplicas          int                          // Rebalance lower bound (default: 10).
-    MaxReplicas          int                          // Rebalance upper bound (default: 200).
+    DefaultReplicas      int                          // Virtual nodes per node (default: 50).
     HashFunc             func(data []byte) uint32     // Hash function (default: crc32.ChecksumIEEE).
-    LoadBalanceThreshold float64                      // Max deviation to trigger rebalance (default: 0.25).
+
+    // Deprecated: the auto-rebalancer was removed; these fields are ignored.
+    MinReplicas          int
+    MaxReplicas          int
+    LoadBalanceThreshold float64
 }
 
 func NewConHash(opts ...ConHashOption) *ConHashMap
@@ -312,7 +314,6 @@ func (m *ConHashMap) GetStats() map[string]float64
 func NewServer(addr, svcName string, opts ...ServerOption) (*Server, error)
 func WithEtcdEndpoints(endpoints []string) ServerOption
 func WithDialTimeout(timeout time.Duration) ServerOption
-func WithTLS(certFile, keyFile string) ServerOption
 
 func (s *Server) Start() error
 func (s *Server) Stop()
@@ -376,8 +377,8 @@ func Now() int64                           // Coarse-grained internal clock (nan
 | `CacheOptions.DashboardAddr`                | "" (disabled)        | Address to start the WebSocket dashboard server.              |
 | `WithExpiration`                            | 0 (no expiration)    | Group-level default TTL.                                      |
 | `ConHashConfig.DefaultReplicas`             | 50                   | Initial virtual nodes per physical node.                      |
-| `ConHashConfig.MinReplicas` / `MaxReplicas` | 10 / 200             | Lower and upper bounds for automatic rebalancing.             |
-| `ConHashConfig.LoadBalanceThreshold`        | 0.25                 | Triggers rebalancing when deviation exceeds 25%.              |
+| `ConHashConfig.MinReplicas` / `MaxReplicas` | -                    | Deprecated: ignored (rebalancer removed).                     |
+| `ConHashConfig.LoadBalanceThreshold`        | -                    | Deprecated: ignored (rebalancer removed).                     |
 | `ServerOptions.EtcdEndpoints`               | `["localhost:2379"]` | etcd endpoints (must be overridden for production).           |
 | `ServerOptions.DialTimeout`                 | 5 seconds            | etcd connection timeout.                                      |
 | `ServerOptions.MaxMsgSize`                  | 4 MiB                | gRPC `MaxRecvMsgSize`; responses exceeding this are rejected. |
@@ -456,7 +457,7 @@ StartDashboard(addr) or DashboardHandler()
 | Global registry      | Yes                          | Yes, plus `ListGroups` / `DestroyGroup`         |
 | Immutable value type | `ByteView`                   | `ByteView`                                      |
 | Stampede prevention  | `singleflight`               | `SingleFlightGroup`                             |
-| Consistent hashing   | `consistenthash`             | `ConHashMap` with automatic rebalancing         |
+| Consistent hashing   | `consistenthash`             | `ConHashMap` with fixed virtual nodes           |
 | Write propagation    | None (read-only)             | `Set` / `Delete` with async peer sync           |
 | Peer abstraction     | `PeerPicker` + `ProtoGetter` | `PeerPicker` + `Peer` (Get/Set/Delete)          |
 | Transport            | HTTP / Protobuf              | gRPC                                            |
@@ -497,10 +498,10 @@ swifty_cache/
   cache.go            # Cache wrapper: lazy init, hit/miss stats, idempotent close
   group.go            # Group, Getter, global registry, read-through / write propagation / stats
   single_flight.go    # Concurrent same-key load deduplication
-  con_hash.go         # Consistent hash ring with automatic rebalancing
+  con_hash.go         # Consistent hash ring with fixed virtual nodes
   config.go           # ConHashConfig defaults
   peers.go            # PeerPicker / Peer interfaces, ClientPicker (etcd-based discovery)
-  server.go           # gRPC server with health check and optional TLS
+  server.go           # gRPC server with health check
   client.go           # gRPC Peer client implementation
   register.go         # etcd service registration with lease keepalive
   dashboard.go        # WebSocket dashboard: live stats and entry inspection
@@ -513,11 +514,10 @@ swifty_cache/
 
 ## Known Limitations
 
-- `CacheOptions.MaxBytes` is declared as a byte budget but the current eviction policy operates on entry count per bucket. Users should primarily tune `CapPerBucket` and `Level2Cap`.
-- `Client` creates a new etcd client when none is provided, which may lead to connection leaks. Injecting a shared etcd client externally is recommended for production use.
-- `ConHashMap` starts a background rebalancing goroutine that lacks an explicit shutdown mechanism.
-- `SingleFlightGroup` does not recover from panics inside `fn`; callers should handle recovery within their Getter implementation.
-- gRPC does not enable TLS or authentication by default. Production deployments should add appropriate interceptors.
+- `CacheOptions.MaxBytes` is enforced as a byte budget divided evenly across buckets (`MaxBytes / BucketCount` per bucket); per-bucket entry caps (`CapPerBucket`, `Level2Cap`) still apply on top of it.
+- `Client` never creates its own etcd client; pass a shared `*clientv3.Client` (as `ClientPicker` does) when constructing clients manually.
+- `SingleFlightGroup` recovers panics inside `fn` and returns them as errors to every caller.
+- gRPC transport is plaintext: TLS is not supported. Run nodes on a trusted network or add transport security externally.
 - `ServerOptions.EtcdEndpoints` defaults to `localhost:2379` and must be overridden for multi-environment deployments.
 
 Contributions via issues and pull requests are welcome.

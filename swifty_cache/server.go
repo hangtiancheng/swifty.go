@@ -22,10 +22,10 @@ package swifty_cache
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"log"
@@ -33,7 +33,6 @@ import (
 	pb "github.com/hangtiancheng/swifty.go/swifty_cache/pb"
 	client_v3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	grpc_health "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -41,14 +40,14 @@ import (
 // Server exposes cache groups over gRPC.
 type Server struct {
 	pb.UnimplementedSwiftyCacheServer
-	addr       string
-	svcName    string
-	groups     *sync.Map
-	grpcServer *grpc.Server
-	etcdCli    *client_v3.Client
-	stopCh     chan error
-	stopOnce   sync.Once
-	opts       *ServerOptions
+	addr         string
+	svcName      string
+	grpcServer   *grpc.Server
+	healthServer *health.Server
+	etcdCli      *client_v3.Client
+	stopCh       chan error
+	stopOnce     sync.Once
+	opts         *ServerOptions
 }
 
 // ServerOptions configures a cache server.
@@ -56,9 +55,6 @@ type ServerOptions struct {
 	EtcdEndpoints []string
 	DialTimeout   time.Duration
 	MaxMsgSize    int
-	TLS           bool
-	CertFile      string
-	KeyFile       string
 }
 
 // DefaultServerOptions contains default server settings.
@@ -85,15 +81,6 @@ func WithDialTimeout(timeout time.Duration) ServerOption {
 	}
 }
 
-// WithTLS enables TLS for the gRPC server.
-func WithTLS(certFile, keyFile string) ServerOption {
-	return func(o *ServerOptions) {
-		o.TLS = true
-		o.CertFile = certFile
-		o.KeyFile = keyFile
-	}
-}
-
 // NewServer creates a gRPC cache server.
 func NewServer(addr, svcName string, opts ...ServerOption) (*Server, error) {
 	options := *DefaultServerOptions
@@ -110,19 +97,10 @@ func NewServer(addr, svcName string, opts ...ServerOption) (*Server, error) {
 	}
 
 	serverOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(options.MaxMsgSize)}
-	if options.TLS {
-		creds, err := loadTLSCredentials(options.CertFile, options.KeyFile)
-		if err != nil {
-			_ = etcdCli.Close()
-			return nil, fmt.Errorf("failed to load TLS credentials: %v", err)
-		}
-		serverOpts = append(serverOpts, grpc.Creds(creds))
-	}
 
 	srv := &Server{
 		addr:       addr,
 		svcName:    svcName,
-		groups:     &sync.Map{},
 		grpcServer: grpc.NewServer(serverOpts...),
 		etcdCli:    etcdCli,
 		stopCh:     make(chan error),
@@ -134,6 +112,7 @@ func NewServer(addr, svcName string, opts ...ServerOption) (*Server, error) {
 	healthServer := health.NewServer()
 	grpc_health.RegisterHealthServer(srv.grpcServer, healthServer)
 	healthServer.SetServingStatus(svcName, grpc_health.HealthCheckResponse_SERVING)
+	srv.healthServer = healthServer
 
 	return srv, nil
 }
@@ -146,7 +125,11 @@ func (s *Server) Start() error {
 	}
 
 	go func() {
-		if err := Register(s.svcName, s.addr, s.stopCh); err != nil {
+		regCfg := &RegisterConfig{
+			Endpoints:   s.opts.EtcdEndpoints,
+			DialTimeout: s.opts.DialTimeout,
+		}
+		if err := registerWithConfig(s.svcName, s.addr, s.stopCh, regCfg); err != nil {
 			log.Printf("failed to register service: %v", err)
 		}
 	}()
@@ -158,6 +141,9 @@ func (s *Server) Start() error {
 // Stop gracefully stops the server and closes external resources.
 func (s *Server) Stop() {
 	s.stopOnce.Do(func() {
+		if s.healthServer != nil {
+			s.healthServer.SetServingStatus(s.svcName, grpc_health.HealthCheckResponse_NOT_SERVING)
+		}
 		close(s.stopCh)
 		s.grpcServer.GracefulStop()
 		if s.etcdCli != nil {
@@ -172,8 +158,9 @@ func (s *Server) Get(ctx context.Context, req *pb.Request) (*pb.ResponseForGet, 
 	if group == nil {
 		return nil, fmt.Errorf("group %s not found", req.Group)
 	}
+	atomic.AddInt64(&group.stats.serverRequests, 1)
 
-	view, err := group.Get(ctx, req.Key)
+	view, err := group.Get(withPeerRequest(ctx), req.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -205,12 +192,4 @@ func (s *Server) Delete(ctx context.Context, req *pb.Request) (*pb.ResponseForDe
 
 	err := group.Delete(withPeerRequest(ctx), req.Key)
 	return &pb.ResponseForDelete{Value: err == nil}, err
-}
-
-func loadTLSCredentials(certFile, keyFile string) (credentials.TransportCredentials, error) {
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return nil, err
-	}
-	return credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}}), nil
 }

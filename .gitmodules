@@ -1,0 +1,15 @@
+[submodule "koa"]
+	path = koa
+	url = git@github.com:koajs/koa.git
+[submodule "knex"]
+	path = knex
+	url = git@github.com:knex/knex.git
+[submodule "groupcache"]
+	path = groupcache
+	url = git@github.com:golang/groupcache.git
+[submodule "websocket"]
+	path = websocket
+	url = git@github.com:gorilla/websocket.git
+[submodule "grpc-go"]
+	path = grpc-go
+	url = git@github.com:grpc/grpc-go.git

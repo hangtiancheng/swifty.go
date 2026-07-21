@@ -76,12 +76,20 @@ func (ctx *Context) Throw(status int, msg string) {
 	ctx.Body = H{"message": msg, "data": nil}
 }
 
+// SetStatus records an explicitly chosen status, like Koa's ctx.status setter.
+// Unlike assigning the Status field directly, a status set here is never
+// overridden by the automatic 404->200 promotion when a body is present.
+func (ctx *Context) SetStatus(status int) {
+	ctx.Status = status
+	ctx.statusSet = true
+}
+
 func (ctx *Context) Get(header string) string {
 	return ctx.Request.Header.Get(header)
 }
 
 func (ctx *Context) Set(header string, value string) {
-	ctx.headers[header] = value
+	ctx.headers[http.CanonicalHeaderKey(header)] = value
 }
 
 func (ctx *Context) Query(key string) string {

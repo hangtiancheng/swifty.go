@@ -183,7 +183,7 @@ func TestTemplates(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rec.Code != http.StatusCreated || rec.Body.String() != "Hello LARK" {
+	if rec.Code != http.StatusCreated || rec.Body.String() != "Hello SWIFTY" {
 		t.Fatalf("template response = %d %q", rec.Code, rec.Body.String())
 	}
 }
@@ -204,5 +204,117 @@ func TestMatchRouterPath(t *testing.T) {
 	}
 	if matchRouterPath("/v10", "/v1") || matchRouterPath("/api", "/v1") {
 		t.Fatal("router matched an unrelated path")
+	}
+}
+
+func TestNextCalledTwiceBecomes500(t *testing.T) {
+	r := Default()
+	r.Use(func(ctx *Context, next func()) {
+		next()
+		next() // koa-compose forbids this
+	})
+	r.Get("/twice", func(ctx *Context, next func()) {
+		ctx.String("ok")
+	})
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/twice", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 for double next()", rec.Code)
+	}
+}
+
+func TestRouterPrefixNormalized(t *testing.T) {
+	r := New()
+	var ran bool
+	v1 := r.Router("v1") // missing leading slash
+	v1.Use(func(ctx *Context, next func()) {
+		ran = true
+		next()
+	})
+	v1.Get("/ping", func(ctx *Context, next func()) {
+		ctx.String("pong")
+	})
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/ping", nil))
+
+	if rec.Code != http.StatusOK || rec.Body.String() != "pong" {
+		t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
+	}
+	if !ran {
+		t.Fatal("normalized router middleware did not run")
+	}
+}
+
+func TestStaticDirectoryListingDisabled(t *testing.T) {
+	dir, _ := os.MkdirTemp("", "swifty_http-staticdir-*")
+	defer os.RemoveAll(dir)
+	os.MkdirAll(filepath.Join(dir, "bare"), 0755)
+	os.WriteFile(filepath.Join(dir, "bare", "secret.txt"), []byte("secret"), 0644)
+	os.MkdirAll(filepath.Join(dir, "site"), 0755)
+	os.WriteFile(filepath.Join(dir, "site", "index.html"), []byte("<h1>home</h1>"), 0644)
+
+	r := New()
+	r.Static("/assets", dir)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/bare", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("directory without index.html should be 404, got %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/site/", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "home") {
+		t.Fatalf("directory with index.html should serve it, got %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+type trackedFile struct {
+	http.File
+	closes *int
+}
+
+func (f trackedFile) Close() error {
+	*f.closes += 1
+	return f.File.Close()
+}
+
+type trackedFS struct {
+	fs     http.FileSystem
+	opens  *int
+	closes *int
+}
+
+func (t trackedFS) Open(name string) (http.File, error) {
+	f, err := t.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	*t.opens += 1
+	return trackedFile{File: f, closes: t.closes}, nil
+}
+
+func TestStaticProbeClosesFileHandles(t *testing.T) {
+	dir, _ := os.MkdirTemp("", "swifty_http-staticfd-*")
+	defer os.RemoveAll(dir)
+	os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello"), 0644)
+	os.MkdirAll(filepath.Join(dir, "site"), 0755)
+	os.WriteFile(filepath.Join(dir, "site", "index.html"), []byte("home"), 0644)
+
+	opens, closes := 0, 0
+	fs := trackedFS{fs: http.Dir(dir), opens: &opens, closes: &closes}
+
+	staticFileExists(fs, "hello.txt")
+	staticFileExists(fs, "site")
+	staticFileExists(fs, "missing.txt")
+
+	if opens == 0 {
+		t.Fatal("probe never opened a file")
+	}
+	if opens != closes {
+		t.Fatalf("fd leak: %d opened, %d closed", opens, closes)
 	}
 }

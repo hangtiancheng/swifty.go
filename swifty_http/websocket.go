@@ -85,6 +85,10 @@ func (ctx *Context) Upgrade(opts *UpgradeOptions) (*WSConn, error) {
 		}
 	}
 
+	if ctx.Method != http.MethodGet {
+		ctx.Throw(http.StatusMethodNotAllowed, "websocket: request method is not GET")
+		return nil, errors.New("websocket: request method is not GET")
+	}
 	if !headerContains(ctx.Request.Header, "Connection", "upgrade") {
 		ctx.Throw(http.StatusBadRequest, "missing Connection: upgrade")
 		return nil, errors.New("websocket: missing Connection upgrade")
@@ -92,6 +96,11 @@ func (ctx *Context) Upgrade(opts *UpgradeOptions) (*WSConn, error) {
 	if !headerContains(ctx.Request.Header, "Upgrade", "websocket") {
 		ctx.Throw(http.StatusBadRequest, "missing Upgrade: websocket")
 		return nil, errors.New("websocket: missing Upgrade header")
+	}
+	if !headerContains(ctx.Request.Header, "Sec-WebSocket-Version", "13") {
+		ctx.Set("Sec-WebSocket-Version", "13")
+		ctx.Throw(http.StatusBadRequest, "unsupported websocket version: 13 required")
+		return nil, errors.New("websocket: unsupported version")
 	}
 	key := ctx.Request.Header.Get("Sec-WebSocket-Key")
 	if key == "" {
@@ -111,6 +120,8 @@ func (ctx *Context) Upgrade(opts *UpgradeOptions) (*WSConn, error) {
 		return nil, errors.New("websocket: hijack failed: " + err.Error())
 	}
 	ctx.flushed = true
+	ctx.Status = http.StatusSwitchingProtocols
+	ctx.statusSet = true
 
 	_ = conn.SetDeadline(time.Time{})
 
@@ -178,7 +189,7 @@ func (ws *WSConn) OnPong(fn func(data []byte)) {
 // It handles ping/pong automatically and calls OnMessage/OnClose/OnError.
 func (ws *WSConn) Listen() {
 	for {
-		opcode, payload, err := ws.readFrame()
+		opcode, payload, err := ws.readMessage()
 		if err != nil {
 			ws.handleError(err)
 			return
@@ -217,7 +228,7 @@ func (ws *WSConn) ReadMessage() (messageType int, data []byte, err error) {
 	defer ws.readMu.Unlock()
 
 	for {
-		opcode, payload, err := ws.readFrame()
+		opcode, payload, err := ws.readMessage()
 		if err != nil {
 			ws.handleError(err)
 			return 0, nil, err
@@ -335,8 +346,9 @@ func (ws *WSConn) Heartbeat(interval time.Duration) func() {
 		}
 	}()
 
+	var stopOnce sync.Once
 	return func() {
-		close(stop)
+		stopOnce.Do(func() { close(stop) })
 		<-done
 	}
 }
@@ -347,54 +359,116 @@ func (ws *WSConn) NetConn() net.Conn {
 
 // --- frame I/O (write directly to conn, read via bufio.Reader) ---
 
-func (ws *WSConn) readFrame() (opcode int, payload []byte, err error) {
+const continuationFrame = 0
+
+func (ws *WSConn) readFrame() (opcode int, fin bool, payload []byte, err error) {
 	header := make([]byte, 2)
 	if _, err := io.ReadFull(ws.br, header); err != nil {
-		return 0, nil, err
+		return 0, false, nil, err
 	}
 
+	fin = header[0]&0x80 != 0
+	if header[0]&0x70 != 0 {
+		// RSV1-3 must be zero: no extensions are negotiated (RFC 6455 5.2)
+		return 0, false, nil, ErrWSInvalidFrame
+	}
 	opcode = int(header[0] & 0x0F)
 	masked := header[1]&0x80 != 0
 	length := uint64(header[1] & 0x7F)
+
+	switch opcode {
+	case continuationFrame, TextMessage, BinaryMessage:
+	case CloseMessage, PingMessage, PongMessage:
+		// control frames must not be fragmented and carry at most 125 bytes
+		if !fin || length > 125 {
+			return 0, false, nil, ErrWSInvalidFrame
+		}
+	default:
+		return 0, false, nil, ErrWSInvalidFrame
+	}
+
+	// client-to-server frames must be masked (RFC 6455 5.1)
+	if !masked {
+		return 0, false, nil, ErrWSInvalidFrame
+	}
 
 	switch {
 	case length == 126:
 		ext := make([]byte, 2)
 		if _, err := io.ReadFull(ws.br, ext); err != nil {
-			return 0, nil, err
+			return 0, false, nil, err
 		}
 		length = uint64(binary.BigEndian.Uint16(ext))
 	case length == 127:
 		ext := make([]byte, 8)
 		if _, err := io.ReadFull(ws.br, ext); err != nil {
-			return 0, nil, err
+			return 0, false, nil, err
 		}
 		length = binary.BigEndian.Uint64(ext)
 	}
 
 	if length > maxFrameSize {
-		return 0, nil, ErrWSInvalidFrame
+		return 0, false, nil, ErrWSInvalidFrame
 	}
 
 	var maskKey [4]byte
-	if masked {
-		if _, err := io.ReadFull(ws.br, maskKey[:]); err != nil {
-			return 0, nil, err
-		}
+	if _, err := io.ReadFull(ws.br, maskKey[:]); err != nil {
+		return 0, false, nil, err
 	}
 
 	payload = make([]byte, length)
 	if _, err := io.ReadFull(ws.br, payload); err != nil {
-		return 0, nil, err
+		return 0, false, nil, err
 	}
 
-	if masked {
-		for i := range payload {
-			payload[i] ^= maskKey[i%4]
+	for i := range payload {
+		payload[i] ^= maskKey[i%4]
+	}
+
+	return opcode, fin, payload, nil
+}
+
+// readMessage returns the next complete message, reassembling fragmented
+// data frames. Control frames interleaved between fragments are returned
+// immediately, as permitted by RFC 6455 5.4.
+func (ws *WSConn) readMessage() (opcode int, payload []byte, err error) {
+	var (
+		msgType int
+		buf     []byte
+	)
+	for {
+		opcode, fin, data, err := ws.readFrame()
+		if err != nil {
+			return 0, nil, err
+		}
+
+		switch opcode {
+		case CloseMessage, PingMessage, PongMessage:
+			return opcode, data, nil
+		case continuationFrame:
+			if msgType == 0 {
+				// continuation without a preceding data frame
+				return 0, nil, ErrWSInvalidFrame
+			}
+			if len(buf)+len(data) > maxFrameSize {
+				return 0, nil, ErrWSInvalidFrame
+			}
+			buf = append(buf, data...)
+			if fin {
+				return msgType, buf, nil
+			}
+		default: // TextMessage, BinaryMessage
+			if msgType != 0 {
+				// new data frame while a fragmented message is in progress
+				return 0, nil, ErrWSInvalidFrame
+			}
+			if fin {
+				return opcode, data, nil
+			}
+			msgType = opcode
+			buf = append(buf, data...)
 		}
 	}
-
-	return opcode, payload, nil
 }
 
 func (ws *WSConn) writeFrame(opcode int, payload []byte) error {
@@ -436,8 +510,14 @@ func (ws *WSConn) writeCloseFrame(code int) error {
 }
 
 func (ws *WSConn) handleError(err error) {
-	if ws.onError != nil {
-		ws.onError(err)
+	select {
+	case <-ws.closed:
+		// already closed locally or by peer; the trailing read error
+		// ("use of closed network connection") is not an application error
+	default:
+		if ws.onError != nil {
+			ws.onError(err)
+		}
 	}
 	ws.once.Do(func() { close(ws.closed) })
 }

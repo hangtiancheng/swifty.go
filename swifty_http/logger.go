@@ -29,10 +29,6 @@ func Logger() Middleware {
 	return func(ctx *Context, next func()) {
 		t := time.Now()
 		next()
-		status := ctx.Status
-		if ctx.flushed {
-			status = 101
-		}
-		log.Printf("[%d] %s in %v", status, ctx.Request.RequestURI, time.Since(t))
+		log.Printf("[%d] %s in %v", ctx.Status, ctx.Request.RequestURI, time.Since(t))
 	}
 }

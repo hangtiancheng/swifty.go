@@ -20,7 +20,10 @@
 
 package swifty_cache
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 type call struct {
 	wg  sync.WaitGroup
@@ -34,6 +37,7 @@ type SingleFlightGroup struct {
 }
 
 // Do runs fn once for a key while concurrent duplicate callers wait for the same result.
+// A panic inside fn is recovered and surfaced as an error to every caller.
 func (g *SingleFlightGroup) Do(key string, fn func() (interface{}, error)) (interface{}, error) {
 	c := &call{}
 	c.wg.Add(1)
@@ -48,6 +52,14 @@ func (g *SingleFlightGroup) Do(key string, fn func() (interface{}, error)) (inte
 	defer g.m.Delete(key)
 	defer c.wg.Done()
 
-	c.val, c.err = fn()
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				c.val, c.err = nil, fmt.Errorf("singleflight: panic during call: %v", r)
+			}
+		}()
+		c.val, c.err = fn()
+	}()
+
 	return c.val, c.err
 }
