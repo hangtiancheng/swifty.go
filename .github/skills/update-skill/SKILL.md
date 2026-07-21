@@ -21,10 +21,10 @@ documentation for each package.
 
 | Source directory | Skill file to update                   |
 | ---------------- | -------------------------------------- |
-| `swifty_cache/`  | `.claude/skills/swifty-cache/SKILL.md` |
-| `swifty_http/`   | `.claude/skills/swifty-http/SKILL.md`  |
-| `swifty_orm/`    | `.claude/skills/swifty-orm/SKILL.md`   |
-| `swifty_rpc/`    | `.claude/skills/swifty-rpc/SKILL.md`   |
+| `swifty_cache/`  | `.github/skills/swifty-cache/SKILL.md` |
+| `swifty_http/`   | `.github/skills/swifty-http/SKILL.md`  |
+| `swifty_orm/`    | `.github/skills/swifty-orm/SKILL.md`   |
+| `swifty_rpc/`    | `.github/skills/swifty-rpc/SKILL.md`   |
 
 All paths are relative to the repository root.
 

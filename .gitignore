@@ -197,5 +197,4 @@ rules.ninja
 raw
 
 !swifty_cli/internal/remote/fe/dist
-old/
 swifty_agent/config.json
