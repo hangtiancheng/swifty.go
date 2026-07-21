@@ -48,6 +48,16 @@ export const VideoCall = forwardRef<VideoCallHandle>(
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
     const [rtc] = useState(() => new RtcManager());
 
+    const OUTGOING_CALL_TIMEOUT_MS = 30_000;
+    const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearCallTimeout = () => {
+      if (callTimeoutRef.current) {
+        clearTimeout(callTimeoutRef.current);
+        callTimeoutRef.current = null;
+      }
+    };
+
     useEffect(() => {
       rtc.onLocalStream = (stream) => {
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
@@ -56,6 +66,7 @@ export const VideoCall = forwardRef<VideoCallHandle>(
         if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream;
       };
       rtc.onCallEnded = () => {
+        clearCallTimeout();
         setInCall(false);
         setIncomingCall(false);
         showToast("Call ended", "info");
@@ -65,6 +76,7 @@ export const VideoCall = forwardRef<VideoCallHandle>(
         rtc.onLocalStream = null;
         rtc.onRemoteStream = null;
         rtc.onCallEnded = null;
+        clearCallTimeout();
         rtc.endCall();
       };
     }, [rtc]);
@@ -85,6 +97,10 @@ export const VideoCall = forwardRef<VideoCallHandle>(
       () => ({
         show: () => setVisible(true),
         handleSignal: (avData: Record<string, unknown>) => {
+          const signalType = avData.type as string | undefined;
+          if (signalType === "receive_call" || signalType === "reject_call") {
+            clearCallTimeout();
+          }
           const result = rtc.handleSignal(avData);
           if (result === "incoming_call") {
             setVisible(true);
@@ -99,6 +115,13 @@ export const VideoCall = forwardRef<VideoCallHandle>(
     const startCall = async () => {
       await rtc.startCall();
       setInCall(true);
+      clearCallTimeout();
+      callTimeoutRef.current = setTimeout(() => {
+        callTimeoutRef.current = null;
+        rtc.sendEndCall();
+        setInCall(false);
+        showToast("No answer", "warning");
+      }, OUTGOING_CALL_TIMEOUT_MS);
     };
 
     const acceptCall = async () => {
@@ -113,6 +136,7 @@ export const VideoCall = forwardRef<VideoCallHandle>(
     };
 
     const hangUp = () => {
+      clearCallTimeout();
       rtc.sendEndCall();
       setInCall(false);
     };

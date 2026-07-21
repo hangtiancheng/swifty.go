@@ -40,7 +40,6 @@ const (
 // MessageType
 const (
 	MessageText         int8 = 0
-	MessageVoice        int8 = 1
 	MessageFile         int8 = 2
 	MessageAudioOrVideo int8 = 3
 )

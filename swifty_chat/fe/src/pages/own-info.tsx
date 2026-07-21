@@ -86,11 +86,17 @@ export default function OwnInfo() {
     if (editEmail) data.email = editEmail;
     if (editBirthday) data.birthday = editBirthday;
     if (editSig) data.signature = editSig;
+    let avatarUrl = "";
     if (avatarFile) {
       const formData = new FormData();
       formData.append("file", avatarFile);
-      await api.uploadAvatar(formData);
-      data.avatar = "/static/avatars/" + avatarFile.name;
+      const uploadRes = await api.uploadAvatar(formData);
+      avatarUrl = (uploadRes.data as { url?: string } | null)?.url ?? "";
+      if (uploadRes.code !== 200 || !avatarUrl) {
+        showToast(uploadRes.message || "Avatar upload failed", "error");
+        return;
+      }
+      data.avatar = avatarUrl;
     }
     const res = await api.updateUserInfo(data);
     if (res.code === 200) {
@@ -100,7 +106,7 @@ export default function OwnInfo() {
       if (editEmail) updated.email = editEmail;
       if (editBirthday) updated.birthday = editBirthday;
       if (editSig) updated.signature = editSig;
-      if (avatarFile) updated.avatar = "/static/avatars/" + avatarFile.name;
+      if (avatarUrl) updated.avatar = avatarUrl;
       useAuthStore.getState().setUserInfo(updated);
       closeEditModal();
     } else {

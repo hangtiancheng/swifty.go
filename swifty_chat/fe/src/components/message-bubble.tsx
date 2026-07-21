@@ -151,7 +151,7 @@ export function MessageBubble({
 
         return (
           <div
-            key={`${message.session_id}-${message.created_at}-${index}`}
+            key={`${message.send_id}-${message.created_at}-${message.type}-${index}`}
             className={cn(
               "animate-in fade-in slide-in-from-bottom-2 flex items-start gap-2.5 duration-300",
               isSelf && "flex-row-reverse",
