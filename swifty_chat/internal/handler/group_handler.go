@@ -56,13 +56,13 @@ func LoadMyGroup(ctx *swifty_http.Context, next func()) {
 
 func GetGroupInfo(ctx *swifty_http.Context, next func()) {
 	var req struct {
-		Uuid string `json:"uuid"`
+		GroupId string `json:"group_id"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
 		JsonBack(ctx, "invalid request body", -1, nil)
 		return
 	}
-	msg, data, ret := service.GetGroupInfo(ctx.Request.Context(), req.Uuid)
+	msg, data, ret := service.GetGroupInfo(ctx.Request.Context(), req.GroupId)
 	JsonBack(ctx, msg, ret, data)
 }
 

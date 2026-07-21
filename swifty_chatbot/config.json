@@ -4,7 +4,7 @@
   "app_port": "8088",
   "rpc_addr": "127.0.0.1:19090",
   "mongo_uri": "mongodb://localhost:27017/",
-  "mongo_database": "ai_agent",
+  "mongo_database": "swifty_chatbot",
   "jwt_expire_hours": 8760,
   "jwt_issuer": "swifty-chatbot",
   "jwt_subject": "swifty-chatbot",

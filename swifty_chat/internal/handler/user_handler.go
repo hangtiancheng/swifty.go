@@ -90,13 +90,13 @@ func UpdateUserInfo(ctx *swifty_http.Context, next func()) {
 
 func GetUserInfo(ctx *swifty_http.Context, next func()) {
 	var req struct {
-		Uuid string `json:"uuid"`
+		OwnerId string `json:"owner_id"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
 		JsonBack(ctx, "invalid request body", -1, nil)
 		return
 	}
-	msg, data, ret := service.GetUserInfo(ctx.Request.Context(), req.Uuid)
+	msg, data, ret := service.GetUserInfo(ctx.Request.Context(), req.OwnerId)
 	JsonBack(ctx, msg, ret, data)
 }
 

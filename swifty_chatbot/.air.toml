@@ -22,8 +22,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/swifty_ai ."
-bin = "./tmp/swifty_ai"
+cmd = "go build -o ./tmp/swifty_chatbot ."
+bin = "./tmp/swifty_chatbot"
 delay = 1000
 exclude_dir = ["tmp", "docs", "uploads", "node_modules"]
 exclude_file = []

@@ -31,7 +31,7 @@ type cache struct {
 }
 
 func newCache() *cache {
-	return &cache{group: swifty_cache.NewGroup("swifty_ai", 64<<20, swifty_cache.GetterFunc(func(ctx context.Context, key string) ([]byte, error) {
+	return &cache{group: swifty_cache.NewGroup("swifty_chatbot", 64<<20, swifty_cache.GetterFunc(func(ctx context.Context, key string) ([]byte, error) {
 		return nil, swifty_cache.ErrKeyRequired
 	}))}
 }

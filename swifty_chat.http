@@ -41,7 +41,7 @@ POST {{host}}/user/get-user-info
 Content-Type: application/json
 
 {
-  "uuid": "U12345678901"
+  "owner_id": "U12345678901"
 }
 
 ### Get user info list (admin)
@@ -152,7 +152,7 @@ POST {{host}}/group/get-group-info
 Content-Type: application/json
 
 {
-  "uuid": "G12345678901"
+  "group_id": "G12345678901"
 }
 
 ### Update group info
