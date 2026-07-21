@@ -1,30 +1,16 @@
 {
   "name": "swifty.go",
   "version": "0.0.1",
-  "description": "swifty.go monorepo",
-  "keywords": [
-    "cache",
-    "demo",
-    "go",
-    "http",
-    "orm",
-    "rpc"
-  ],
+  "description": "Swifty",
+  "keywords": [],
   "license": "MIT",
   "author": "https://github.com/hangtiancheng",
   "type": "module",
   "scripts": {
     "tag": "node tag.js",
-    "deps": "node main.js deps",
-    "coverage": "node main.js coverage",
-    "coverage:standalone": "node main.js coverage:standalone",
-    "coverage:mongo": "node main.js coverage:mongo",
-    "build": "node main.js build",
-    "test": "node main.js test",
-    "clean": "node main.js clean",
-    "rename": "node scripts/rename.js",
     "add:license": "node scripts/add_licenses.js",
     "build:swifty": "node scripts/build_swifty.js",
+    "rename": "node scripts/rename.js",
     "git:precommit": "rm -rf ./.claude && ln -s ./.github ./.claude",
     "git:commit": "pnpm git:precommit && git add -A && git commit -m \"feat: Introduce new features\"",
     "git:push": "pnpm git:commit && git push origin main"
