@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "tag": "node tag.js",
-    "add:license": "node scripts/add_licenses.js",
+    "add:licenses": "node scripts/add_licenses.js",
     "build:swifty": "node scripts/build_swifty.js",
     "rename": "node scripts/rename.js",
     "git:precommit": "rm -rf ./.claude && ln -s ./.github ./.claude",
