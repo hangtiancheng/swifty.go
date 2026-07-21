@@ -23,8 +23,11 @@ package client
 import (
 	"context"
 	"errors"
+	"io"
+	"sync"
 	"time"
 
+	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/breaker"
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/codec"
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/protocol"
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/stream"
@@ -37,9 +40,13 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 		return nil, err
 	}
 	go func() {
+		timer := time.NewTimer(c.timeout)
+		defer timer.Stop()
 		select {
 		case <-future.DoneChan():
-		case <-time.After(c.timeout):
+		case <-timer.C:
+			// Resolving the future here also fires OnComplete, so the
+			// timeout is recorded on the circuit breaker exactly once.
 			future.Done(nil, context.DeadlineExceeded)
 		}
 	}()
@@ -55,7 +62,13 @@ func (c *Client) Invoke(ctx context.Context, service string, method string, args
 	if err != nil {
 		return err
 	}
-	return future.GetResultWithContext(callCtx, reply)
+	err = future.GetResultWithContext(callCtx, reply)
+	if err != nil && callCtx.Err() != nil {
+		// Resolve the future on timeout/cancel so the breaker records the
+		// failure; a late server response then becomes a no-op.
+		future.Done(nil, callCtx.Err())
+	}
+	return err
 }
 
 func (c *Client) InvokeStream(ctx context.Context, service string, method string, args interface{}) (stream.ClientStream, error) {
@@ -73,8 +86,11 @@ func (c *Client) InvokeStream(ctx context.Context, service string, method string
 		return nil, errors.New("circuit breaker open")
 	}
 
-	conn, err := c.getPool(addr).Acquire(ctx)
+	acquireCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	conn, err := c.getPool(addr).Acquire(acquireCtx)
+	cancel()
 	if err != nil {
+		br.RecordFailure()
 		return nil, err
 	}
 
@@ -87,6 +103,7 @@ func (c *Client) InvokeStream(ctx context.Context, service string, method string
 		Header: &protocol.Header{
 			ServiceName: service,
 			MethodName:  method,
+			CodecType:   protocol.CodecType(c.codecType),
 			Compression: codec.CompressionGzip,
 		},
 		Body: body,
@@ -97,7 +114,33 @@ func (c *Client) InvokeStream(ctx context.Context, service string, method string
 		br.RecordFailure()
 		return nil, err
 	}
-	return s, nil
+	return &observedStream{inner: s, br: br}, nil
+}
+
+// observedStream feeds the stream outcome back into the circuit breaker:
+// a clean EOF counts as success, any other terminal error as failure.
+type observedStream struct {
+	inner stream.ClientStream
+	br    *breaker.CircuitBreaker
+	once  sync.Once
+}
+
+func (o *observedStream) Recv(msg interface{}) error {
+	err := o.inner.Recv(msg)
+	switch {
+	case err == nil:
+	case errors.Is(err, io.EOF):
+		o.once.Do(o.br.RecordSuccess)
+	case errors.Is(err, context.Canceled):
+		// Caller-initiated cancellation is not a service failure.
+	default:
+		o.once.Do(o.br.RecordFailure)
+	}
+	return err
+}
+
+func (o *observedStream) Context() context.Context {
+	return o.inner.Context()
 }
 
 func (c *Client) invokeAsync(ctx context.Context, service string, method string, args interface{}) (*transport.Future, error) {
@@ -115,8 +158,11 @@ func (c *Client) invokeAsync(ctx context.Context, service string, method string,
 		return nil, errors.New("circuit breaker open")
 	}
 
-	conn, err := c.getPool(addr).Acquire(ctx)
+	acquireCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	conn, err := c.getPool(addr).Acquire(acquireCtx)
+	cancel()
 	if err != nil {
+		br.RecordFailure()
 		return nil, err
 	}
 
@@ -129,6 +175,7 @@ func (c *Client) invokeAsync(ctx context.Context, service string, method string,
 		Header: &protocol.Header{
 			ServiceName: service,
 			MethodName:  method,
+			CodecType:   protocol.CodecType(c.codecType),
 			Compression: codec.CompressionGzip,
 		},
 		Body: body,

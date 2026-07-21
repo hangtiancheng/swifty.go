@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/codec"
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/protocol"
@@ -57,7 +58,19 @@ func NewHandler(s interface{}, opts ...HandleOption) (*Handler, error) {
 	return h, nil
 }
 
-func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server interface{}) {
+func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server interface{}, streamWg *sync.WaitGroup) {
+	// Honour the codec announced by the client; fall back to the server
+	// codec for peers that do not set Header.CodecType.
+	reqCodec := h.codec
+	if ct := msg.Header.CodecType; ct != 0 {
+		cc, err := codec.New(codec.Type(ct))
+		if err != nil {
+			h.writeError(conn, msg.Header.RequestID, err.Error())
+			return
+		}
+		reqCodec = cc
+	}
+
 	result, streaming, err := h.invoke(
 		context.Background(),
 		conn,
@@ -66,6 +79,8 @@ func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, 
 		msg.Header.ServiceName,
 		msg.Header.MethodName,
 		msg.Body,
+		reqCodec,
+		streamWg,
 	)
 
 	if streaming {
@@ -80,7 +95,7 @@ func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, 
 	var body []byte
 	if result != nil {
 		var marshalErr error
-		body, marshalErr = h.codec.Marshal(result)
+		body, marshalErr = reqCodec.Marshal(result)
 		if marshalErr != nil {
 			h.writeError(conn, msg.Header.RequestID, marshalErr.Error())
 			return
@@ -109,7 +124,18 @@ func (h *Handler) writeError(conn *transport.TCPConnection, requestID uint64, er
 	_ = conn.Write(resp)
 }
 
-func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, requestID uint64, service interface{}, serviceName, methodName string, body []byte) (interface{}, bool, error) {
+// safeCall invokes a service method and converts panics into errors so a
+// misbehaving handler cannot crash the whole server process.
+func safeCall(method reflect.Value, args []reflect.Value) (results []reflect.Value, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("handler panic: %v", r)
+		}
+	}()
+	return method.Call(args), nil
+}
+
+func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, requestID uint64, service interface{}, serviceName, methodName string, body []byte, cc codec.Codec, streamWg *sync.WaitGroup) (interface{}, bool, error) {
 	if service == nil {
 		return nil, false, fmt.Errorf("service not found: %s", serviceName)
 	}
@@ -128,15 +154,19 @@ func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, req
 	if numIn == 2 && numOut == 2 &&
 		methodType.In(0).Implements(contextType) &&
 		methodType.In(1).Kind() == reflect.Ptr &&
+		methodType.Out(0).Kind() == reflect.Ptr &&
 		methodType.Out(1).Implements(errorType) {
 
 		req := reflect.New(methodType.In(1).Elem())
 		if len(body) > 0 {
-			if err := h.codec.Unmarshal(body, req.Interface()); err != nil {
+			if err := cc.Unmarshal(body, req.Interface()); err != nil {
 				return nil, false, err
 			}
 		}
-		results := method.Call([]reflect.Value{reflect.ValueOf(ctx), req})
+		results, err := safeCall(method, []reflect.Value{reflect.ValueOf(ctx), req})
+		if err != nil {
+			return nil, false, err
+		}
 		if errVal := results[1].Interface(); errVal != nil {
 			return nil, false, errVal.(error)
 		}
@@ -156,7 +186,7 @@ func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, req
 
 		req := reflect.New(reqType.Elem())
 		if len(body) > 0 {
-			if err := h.codec.Unmarshal(body, req.Interface()); err != nil {
+			if err := cc.Unmarshal(body, req.Interface()); err != nil {
 				return nil, false, err
 			}
 		}
@@ -167,21 +197,45 @@ func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, req
 			ss := &serverStream{
 				conn:      conn,
 				requestID: requestID,
-				codec:     h.codec,
+				codec:     cc,
 				ctx:       ctx,
 			}
-			results := method.Call([]reflect.Value{req, reflect.ValueOf(ss).Convert(secondParam)})
-			if errVal := results[0].Interface(); errVal != nil {
-				_ = ss.sendError(errVal.(error).Error())
+			args := []reflect.Value{req, reflect.ValueOf(ss).Convert(secondParam)}
+			run := func() {
+				results, err := safeCall(method, args)
+				if err == nil {
+					if errVal := results[0].Interface(); errVal != nil {
+						err = errVal.(error)
+					}
+				}
+				if err != nil {
+					_ = ss.sendError(err.Error())
+				} else {
+					_ = ss.end()
+				}
+			}
+			// Run the streaming handler asynchronously so a long-lived
+			// stream does not block every other request multiplexed on
+			// this connection. streamWg keeps the connection open until
+			// all streams complete.
+			if streamWg != nil {
+				streamWg.Add(1)
+				go func() {
+					defer streamWg.Done()
+					run()
+				}()
 			} else {
-				_ = ss.end()
+				run()
 			}
 			return nil, true, nil
 		}
 
 		if secondParam.Kind() == reflect.Ptr {
 			reply := reflect.New(secondParam.Elem())
-			results := method.Call([]reflect.Value{req, reply})
+			results, err := safeCall(method, []reflect.Value{req, reply})
+			if err != nil {
+				return nil, false, err
+			}
 			if errVal := results[0].Interface(); errVal != nil {
 				return nil, false, errVal.(error)
 			}

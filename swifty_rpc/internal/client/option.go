@@ -37,6 +37,7 @@ func WithClientCodec(t codec.Type) ClientOption {
 			return err
 		}
 		c.codec = cc
+		c.codecType = t
 		return nil
 	}
 }

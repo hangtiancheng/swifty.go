@@ -32,12 +32,13 @@ import (
 )
 
 type Client struct {
-	reg     *registry.Registry
-	lb      load_balance.LoadBalancer
-	limiter *limiter.TokenBucket
-	timeout time.Duration
-	codec   codec.Codec
-	breaker sync.Map // map[string]*CircuitBreaker
+	reg       *registry.Registry
+	lb        load_balance.LoadBalancer
+	limiter   *limiter.TokenBucket
+	timeout   time.Duration
+	codec     codec.Codec
+	codecType codec.Type
+	breaker   sync.Map // map[string]*CircuitBreaker
 
 	pools sync.Map // map[string]*transport.ConnectionPool
 }
@@ -49,11 +50,12 @@ func NewClient(reg *registry.Registry, opts ...ClientOption) (*Client, error) {
 	}
 
 	c := &Client{
-		reg:     reg,
-		lb:      &load_balance.RoundRobin{},
-		limiter: limiter.NewTokenBucket(10000),
-		timeout: 5 * time.Second,
-		codec:   cc,
+		reg:       reg,
+		lb:        &load_balance.RoundRobin{},
+		limiter:   limiter.NewTokenBucket(10000),
+		timeout:   5 * time.Second,
+		codec:     cc,
+		codecType: codec.JSON,
 	}
 	for _, opt := range opts {
 		if err := opt(c); err != nil {
@@ -64,6 +66,7 @@ func NewClient(reg *registry.Registry, opts ...ClientOption) (*Client, error) {
 }
 
 func (c *Client) Close() {
+	c.limiter.Stop()
 	c.pools.Range(func(key, value interface{}) bool {
 		pool := value.(*transport.ConnectionPool)
 		pool.Close()

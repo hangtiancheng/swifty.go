@@ -26,6 +26,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/protocol"
 )
@@ -48,12 +49,12 @@ func (pb *PacketBuffer) Read() []byte {
 	pb.lock.Lock()
 	defer pb.lock.Unlock()
 
-	if len(pb.buf) < 10 {
-		return nil
+	// Resync: skip garbage until the buffer starts with the magic number.
+	for len(pb.buf) >= 2 && binary.BigEndian.Uint16(pb.buf[0:2]) != protocol.Magic {
+		pb.buf = pb.buf[1:]
 	}
 
-	if binary.BigEndian.Uint16(pb.buf[0:2]) != protocol.Magic {
-		pb.buf = pb.buf[1:]
+	if len(pb.buf) < 10 {
 		return nil
 	}
 
@@ -137,6 +138,11 @@ func (tc *TCPConnection) Close() error {
 		tcp.SetLinger(0)
 	}
 	return tc.conn.Close()
+}
+
+// SetReadDeadline interrupts a blocked Read; used for graceful shutdown.
+func (tc *TCPConnection) SetReadDeadline(t time.Time) error {
+	return tc.conn.SetReadDeadline(t)
 }
 
 func (tc *TCPConnection) RemoteAddr() string {

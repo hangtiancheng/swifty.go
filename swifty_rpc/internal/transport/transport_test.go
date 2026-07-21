@@ -23,6 +23,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -232,5 +233,78 @@ func TestTCPClientCloseAndPool(t *testing.T) {
 	pool.Close()
 	if _, err := pool.Acquire(context.Background()); !errors.Is(err, ErrPoolClosed) {
 		t.Fatalf("Acquire after Close = %v, want ErrPoolClosed", err)
+	}
+}
+
+func TestTCPClientCloseUnblocksPending(t *testing.T) {
+	lis, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen returned error: %v", err)
+	}
+	defer lis.Close()
+	go func() {
+		conn, err := lis.Accept()
+		if err != nil {
+			return
+		}
+		// Never respond; just hold the connection open.
+		buf := make([]byte, 1024)
+		for {
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	client, err := newTCPClient(lis.Addr().String())
+	if err != nil {
+		t.Fatalf("newTCPClient returned error: %v", err)
+	}
+	future, err := client.SendAsync(&protocol.Message{Header: &protocol.Header{}, Body: []byte("request")})
+	if err != nil {
+		t.Fatalf("SendAsync returned error: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := future.Wait()
+		done <- err
+	}()
+	_ = client.Close()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected connection closed error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not unblock pending future")
+	}
+}
+
+func TestClientStreamTerminalNonBlocking(t *testing.T) {
+	s := NewClientStreamConn(context.Background(), testCodec{})
+	// Fill the data buffer completely.
+	for i := 0; i < 64; i++ {
+		s.Push([]byte("frame"))
+	}
+	// End must not block even though the buffer is full.
+	terminated := make(chan struct{})
+	go func() {
+		s.End()
+		close(terminated)
+	}()
+	select {
+	case <-terminated:
+	case <-time.After(time.Second):
+		t.Fatal("End blocked on a full stream buffer")
+	}
+	// All buffered frames must still be delivered before EOF.
+	for i := 0; i < 64; i++ {
+		var out string
+		if err := s.Recv(&out); err != nil {
+			t.Fatalf("Recv[%d] returned error: %v", i, err)
+		}
+	}
+	var out string
+	if err := s.Recv(&out); err != io.EOF {
+		t.Fatalf("Recv after end = %v, want io.EOF", err)
 	}
 }

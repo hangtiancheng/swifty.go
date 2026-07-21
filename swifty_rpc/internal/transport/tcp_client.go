@@ -79,6 +79,14 @@ func (c *TCPClient) SendAsyncWithCodec(msg *protocol.Message, cc codec.Codec) (*
 	future := NewFutureWithCodec(cc)
 	c.pending.Store(seq, future)
 
+	// Re-check after Store: a concurrent fail() may have drained pending
+	// before our entry was visible, which would leak the future forever.
+	if atomic.LoadInt32(&c.closed) == 1 {
+		if _, ok := c.pending.LoadAndDelete(seq); ok {
+			return nil, errors.New("connection closed")
+		}
+	}
+
 	c.writeMu.Lock()
 	err := c.conn.Write(msg)
 	c.writeMu.Unlock()
@@ -141,6 +149,12 @@ func (c *TCPClient) SendStream(ctx context.Context, msg *protocol.Message, cc co
 	stream := NewClientStreamConn(ctx, cc)
 	c.streams.Store(seq, stream)
 
+	if atomic.LoadInt32(&c.closed) == 1 {
+		if _, ok := c.streams.LoadAndDelete(seq); ok {
+			return nil, errors.New("connection closed")
+		}
+	}
+
 	c.writeMu.Lock()
 	err := c.conn.Write(msg)
 	c.writeMu.Unlock()
@@ -155,6 +169,10 @@ func (c *TCPClient) SendStream(ctx context.Context, msg *protocol.Message, cc co
 }
 
 func (c *TCPClient) fail(err error) {
+	c.shutdown(err)
+}
+
+func (c *TCPClient) shutdown(err error) {
 	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
 		return
 	}
@@ -176,8 +194,6 @@ func (c *TCPClient) fail(err error) {
 }
 
 func (c *TCPClient) Close() error {
-	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
-		return nil
-	}
-	return c.conn.Close()
+	c.shutdown(errors.New("connection closed"))
+	return nil
 }

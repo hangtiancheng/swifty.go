@@ -24,6 +24,7 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/codec"
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/load_balance"
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/registry"
+	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/transport"
 )
 
 type CodecType = codec.Type
@@ -31,6 +32,9 @@ type CodecType = codec.Type
 type Registry = registry.Registry
 type Instance = registry.Instance
 type LoadBalancer = load_balance.LoadBalancer
+
+// Future is the asynchronous invocation handle returned by ClientConn.InvokeAsync.
+type Future = transport.Future
 
 var (
 	CodecJSON  = codec.JSON

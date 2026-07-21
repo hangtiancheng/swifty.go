@@ -31,7 +31,6 @@ import (
 
 type streamFrame struct {
 	body []byte
-	err  error
 }
 
 type ClientStreamConn struct {
@@ -39,7 +38,12 @@ type ClientStreamConn struct {
 	cancel context.CancelFunc
 	ch     chan streamFrame
 	codec  codec.Codec
-	once   sync.Once
+
+	// Terminal state is delivered out-of-band so End/Error never block the
+	// caller (readLoop) even when the data buffer is full.
+	once    sync.Once
+	termCh  chan struct{}
+	termErr error
 }
 
 func NewClientStreamConn(ctx context.Context, cc codec.Codec) *ClientStreamConn {
@@ -49,6 +53,7 @@ func NewClientStreamConn(ctx context.Context, cc codec.Codec) *ClientStreamConn 
 		cancel: cancel,
 		ch:     make(chan streamFrame, 64),
 		codec:  cc,
+		termCh: make(chan struct{}),
 	}
 }
 
@@ -56,37 +61,44 @@ func (s *ClientStreamConn) Push(body []byte) {
 	select {
 	case s.ch <- streamFrame{body: body}:
 	case <-s.ctx.Done():
+	case <-s.termCh:
 	}
 }
 
 func (s *ClientStreamConn) End() {
-	s.once.Do(func() {
-		select {
-		case s.ch <- streamFrame{err: io.EOF}:
-		case <-s.ctx.Done():
-		}
-	})
+	s.terminate(io.EOF)
 }
 
 func (s *ClientStreamConn) Error(err error) {
+	s.terminate(err)
+}
+
+func (s *ClientStreamConn) terminate(err error) {
 	s.once.Do(func() {
-		select {
-		case s.ch <- streamFrame{err: err}:
-		case <-s.ctx.Done():
-		}
+		s.termErr = err
+		close(s.termCh)
 	})
 }
 
 func (s *ClientStreamConn) Recv(msg interface{}) error {
+	// Drain buffered data frames before reporting the terminal state so no
+	// frame received prior to StreamEnd/StreamError is lost.
 	select {
-	case frame, ok := <-s.ch:
-		if !ok {
-			return io.EOF
-		}
-		if frame.err != nil {
-			return frame.err
-		}
+	case frame := <-s.ch:
 		return s.codec.Unmarshal(frame.body, msg)
+	default:
+	}
+
+	select {
+	case frame := <-s.ch:
+		return s.codec.Unmarshal(frame.body, msg)
+	case <-s.termCh:
+		select {
+		case frame := <-s.ch:
+			return s.codec.Unmarshal(frame.body, msg)
+		default:
+		}
+		return s.termErr
 	case <-s.ctx.Done():
 		return s.ctx.Err()
 	}

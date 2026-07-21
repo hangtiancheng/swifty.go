@@ -69,6 +69,7 @@ type ClientConn struct {
 	pool      *transport.ConnectionPool
 	regClient *internal_client.Client
 	codec     codec.Codec
+	codecType codec.Type
 	timeout   time.Duration
 }
 
@@ -101,16 +102,18 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 			mode:      modeRegistry,
 			regClient: regClient,
 			codec:     cc,
+			codecType: o.codecType,
 			timeout:   o.timeout,
 		}, nil
 	}
 
 	pool := transport.NewConnectionPool(target, 0, 1)
 	return &ClientConn{
-		mode:    modeStatic,
-		pool:    pool,
-		codec:   cc,
-		timeout: o.timeout,
+		mode:      modeStatic,
+		pool:      pool,
+		codec:     cc,
+		codecType: o.codecType,
+		timeout:   o.timeout,
 	}, nil
 }
 
@@ -127,28 +130,64 @@ func (cc *ClientConn) invokeStatic(ctx context.Context, service, method string, 
 	ctx, cancel := context.WithTimeout(ctx, cc.timeout)
 	defer cancel()
 
-	conn, err := cc.pool.Acquire(ctx)
-	if err != nil {
-		return err
-	}
-
-	body, err := cc.codec.Marshal(args)
-	if err != nil {
-		return err
-	}
-
-	future, err := conn.SendAsyncWithCodec(&protocol.Message{
-		Header: &protocol.Header{
-			ServiceName: service,
-			MethodName:  method,
-			Compression: codec.CompressionGzip,
-		},
-		Body: body,
-	}, cc.codec)
+	future, err := cc.sendAsyncStatic(ctx, service, method, args)
 	if err != nil {
 		return err
 	}
 	return future.GetResultWithContext(ctx, reply)
+}
+
+// InvokeAsync sends a request without waiting for the response. The returned
+// Future resolves with the reply, an error, or context.DeadlineExceeded once
+// the dial timeout elapses.
+func (cc *ClientConn) InvokeAsync(ctx context.Context, service, method string, args interface{}) (*Future, error) {
+	switch cc.mode {
+	case modeRegistry:
+		return cc.regClient.InvokeAsync(ctx, service, method, args)
+	default:
+		return cc.invokeAsyncStatic(ctx, service, method, args)
+	}
+}
+
+func (cc *ClientConn) invokeAsyncStatic(ctx context.Context, service, method string, args interface{}) (*Future, error) {
+	acquireCtx, cancel := context.WithTimeout(ctx, cc.timeout)
+	future, err := cc.sendAsyncStatic(acquireCtx, service, method, args)
+	cancel()
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		timer := time.NewTimer(cc.timeout)
+		defer timer.Stop()
+		select {
+		case <-future.DoneChan():
+		case <-timer.C:
+			future.Done(nil, context.DeadlineExceeded)
+		}
+	}()
+	return future, nil
+}
+
+func (cc *ClientConn) sendAsyncStatic(ctx context.Context, service, method string, args interface{}) (*Future, error) {
+	conn, err := cc.pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := cc.codec.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn.SendAsyncWithCodec(&protocol.Message{
+		Header: &protocol.Header{
+			ServiceName: service,
+			MethodName:  method,
+			CodecType:   protocol.CodecType(cc.codecType),
+			Compression: codec.CompressionGzip,
+		},
+		Body: body,
+	}, cc.codec)
 }
 
 func (cc *ClientConn) NewStream(ctx context.Context, service, method string, args interface{}) (ClientStream, error) {
@@ -161,7 +200,9 @@ func (cc *ClientConn) NewStream(ctx context.Context, service, method string, arg
 }
 
 func (cc *ClientConn) newStreamStatic(ctx context.Context, service, method string, args interface{}) (ClientStream, error) {
-	conn, err := cc.pool.Acquire(ctx)
+	acquireCtx, cancel := context.WithTimeout(ctx, cc.timeout)
+	conn, err := cc.pool.Acquire(acquireCtx)
+	cancel()
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +216,7 @@ func (cc *ClientConn) newStreamStatic(ctx context.Context, service, method strin
 		Header: &protocol.Header{
 			ServiceName: service,
 			MethodName:  method,
+			CodecType:   protocol.CodecType(cc.codecType),
 			Compression: codec.CompressionGzip,
 		},
 		Body: body,

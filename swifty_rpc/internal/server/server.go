@@ -24,6 +24,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/codec"
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/limiter"
@@ -37,11 +38,12 @@ type Server struct {
 	listener net.Listener
 	handler  *Handler
 
-	conns   map[*transport.TCPConnection]struct{}
-	closing chan struct{}
-	mu      sync.Mutex
-	wg      sync.WaitGroup
-	once    sync.Once
+	conns        map[*transport.TCPConnection]struct{}
+	closing      chan struct{}
+	mu           sync.Mutex
+	wg           sync.WaitGroup
+	serveWg      sync.WaitGroup
+	shutdownOnce sync.Once
 }
 
 func NewServer(opts ...ServerOption) (*Server, error) {
@@ -73,7 +75,10 @@ func (s *Server) Register(name string, service interface{}) {
 }
 
 func (s *Server) Handle(conn *transport.TCPConnection) {
+	var streamWg sync.WaitGroup
 	defer conn.Close()
+	defer streamWg.Wait()
+
 	for {
 		msg, err := conn.Read()
 		if err != nil {
@@ -94,7 +99,7 @@ func (s *Server) Handle(conn *transport.TCPConnection) {
 		s.mu.Lock()
 		service := s.services[msg.Header.ServiceName]
 		s.mu.Unlock()
-		s.handler.Process(conn, msg, service)
+		s.handler.Process(conn, msg, service, &streamWg)
 	}
 }
 
@@ -102,6 +107,18 @@ func (s *Server) Serve(lis net.Listener) error {
 	s.mu.Lock()
 	s.listener = lis
 	s.mu.Unlock()
+
+	// A shutdown that ran before the listener was registered could not
+	// close it; honour that shutdown here instead of blocking in Accept.
+	select {
+	case <-s.closing:
+		_ = lis.Close()
+		return nil
+	default:
+	}
+
+	s.serveWg.Add(1)
+	defer s.serveWg.Done()
 
 	for {
 		conn, err := lis.Accept()
@@ -141,36 +158,50 @@ func (s *Server) Addr() string {
 }
 
 func (s *Server) GracefulStop() {
-	s.once.Do(func() {
-		close(s.closing)
+	s.beginShutdown()
 
-		if s.listener != nil {
-			_ = s.listener.Close()
-		}
+	// Wait for the accept loop to exit so no new connection can be
+	// registered after the interrupt sweep below.
+	s.serveWg.Wait()
 
-		s.wg.Wait()
-		s.limiter.Stop()
+	// Interrupt connections blocked in Read. Handlers that are mid-request
+	// (including active streams) finish their work before the connection
+	// goroutine exits; idle connections exit immediately.
+	s.mu.Lock()
+	for conn := range s.conns {
+		_ = conn.SetReadDeadline(time.Now())
+	}
+	s.mu.Unlock()
 
-		log.Println("server graceful stop complete")
-	})
+	s.wg.Wait()
+	s.limiter.Stop()
+
+	log.Println("server graceful stop complete")
 }
 
 func (s *Server) Stop() {
-	s.once.Do(func() {
+	s.beginShutdown()
+
+	s.serveWg.Wait()
+
+	s.mu.Lock()
+	for conn := range s.conns {
+		_ = conn.Close()
+	}
+	s.mu.Unlock()
+	s.limiter.Stop()
+
+	log.Println("server stop complete")
+}
+
+func (s *Server) beginShutdown() {
+	s.shutdownOnce.Do(func() {
 		close(s.closing)
 
+		s.mu.Lock()
 		if s.listener != nil {
 			_ = s.listener.Close()
 		}
-
-		s.limiter.Stop()
-
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		for conn := range s.conns {
-			_ = conn.Close()
-		}
-
-		log.Println("server stop complete")
+		s.mu.Unlock()
 	})
 }

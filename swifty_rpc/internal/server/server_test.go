@@ -80,17 +80,17 @@ func TestHandlerInvokeGRPCStyle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal returned error: %v", err)
 	}
-	result, _, err := h.invoke(t.Context(), nil, 1, &grpcStyleService{}, "Test", "Add", body)
+	result, _, err := h.invoke(t.Context(), nil, 1, &grpcStyleService{}, "Test", "Add", body, cc, nil)
 	if err != nil {
 		t.Fatalf("invoke returned error: %v", err)
 	}
 	if result.(testReply).Result != 7 {
 		t.Fatalf("result = %+v", result)
 	}
-	if _, _, err := h.invoke(t.Context(), nil, 1, &grpcStyleService{}, "Test", "Fail", body); err == nil || !strings.Contains(err.Error(), "service failed") {
+	if _, _, err := h.invoke(t.Context(), nil, 1, &grpcStyleService{}, "Test", "Fail", body, cc, nil); err == nil || !strings.Contains(err.Error(), "service failed") {
 		t.Fatalf("expected service error, got %v", err)
 	}
-	result, _, err = h.invoke(t.Context(), nil, 1, &grpcStyleService{}, "Test", "NilReply", body)
+	result, _, err = h.invoke(t.Context(), nil, 1, &grpcStyleService{}, "Test", "NilReply", body, cc, nil)
 	if err != nil {
 		t.Fatalf("NilReply returned error: %v", err)
 	}
@@ -109,26 +109,26 @@ func TestHandlerInvoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal returned error: %v", err)
 	}
-	result, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Add", body)
+	result, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Add", body, cc, nil)
 	if err != nil {
 		t.Fatalf("invoke returned error: %v", err)
 	}
 	if result.(testReply).Result != 7 {
 		t.Fatalf("result = %+v", result)
 	}
-	if _, _, err := h.invoke(t.Context(), nil, 1, nil, "Missing", "Add", body); err == nil || !strings.Contains(err.Error(), "service not found") {
+	if _, _, err := h.invoke(t.Context(), nil, 1, nil, "Missing", "Add", body, cc, nil); err == nil || !strings.Contains(err.Error(), "service not found") {
 		t.Fatalf("expected missing service error, got %v", err)
 	}
-	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Missing", body); err == nil || !strings.Contains(err.Error(), "method not found") {
+	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Missing", body, cc, nil); err == nil || !strings.Contains(err.Error(), "method not found") {
 		t.Fatalf("expected missing method error, got %v", err)
 	}
-	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Fail", body); err == nil || !strings.Contains(err.Error(), "service failed") {
+	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Fail", body, cc, nil); err == nil || !strings.Contains(err.Error(), "service failed") {
 		t.Fatalf("expected service error, got %v", err)
 	}
-	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Bad", body); err == nil || !strings.Contains(err.Error(), "unsupported") {
+	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Bad", body, cc, nil); err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("expected unsupported signature error, got %v", err)
 	}
-	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Add", []byte("{bad")); err == nil {
+	if _, _, err := h.invoke(t.Context(), nil, 1, &testService{}, "Test", "Add", []byte("{bad"), cc, nil); err == nil {
 		t.Fatal("expected unmarshal error")
 	}
 }
@@ -151,7 +151,7 @@ func TestHandlerProcessWritesResponses(t *testing.T) {
 	go h.Process(serverConnWrapper, &protocol.Message{
 		Header: &protocol.Header{RequestID: 1, ServiceName: "Test", MethodName: "Add"},
 		Body:   body,
-	}, &testService{})
+	}, &testService{}, nil)
 	resp, err := client.Read()
 	if err != nil {
 		t.Fatalf("Read returned error: %v", err)
@@ -167,7 +167,7 @@ func TestHandlerProcessWritesResponses(t *testing.T) {
 	go h.Process(serverConnWrapper, &protocol.Message{
 		Header: &protocol.Header{RequestID: 2, ServiceName: "Test", MethodName: "Fail"},
 		Body:   body,
-	}, &testService{})
+	}, &testService{}, nil)
 	resp, err = client.Read()
 	if err != nil {
 		t.Fatalf("Read returned error: %v", err)
