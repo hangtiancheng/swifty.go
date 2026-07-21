@@ -22,20 +22,89 @@ package swifty_orm
 
 import (
 	"context"
+	"errors"
+	"reflect"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func (q *Query) Distinct(ctx context.Context, field string) ([]interface{}, error) {
-	if err := q.requireCollection(); err != nil {
+	if err := q.preflight(); err != nil {
 		return nil, err
 	}
-	return q.collection.Distinct(ctx, field, q.buildFilter())
+	return q.collection.Distinct(q.execCtx(ctx), field, q.buildFilter())
 }
 
+// CountDistinct returns the number of distinct values of the field among
+// matching documents.
+func (q *Query) CountDistinct(ctx context.Context, field string) (int64, error) {
+	values, err := q.Distinct(ctx, field)
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(values)), nil
+}
+
+// Pluck collects the value of a single field from all matching documents into
+// out, which must be a pointer to a slice of the value type (e.g. *[]string).
+// Documents missing the field contribute the zero value. Sort, limit, and
+// offset are honored; the Query's projection is not mutated.
 func (q *Query) Pluck(ctx context.Context, field string, out interface{}) error {
-	q.fields = []string{field}
-	return q.Find(ctx, out)
+	if err := q.preflight(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(field) == "" {
+		return errors.New("pluck: field is required")
+	}
+	outVal := reflect.ValueOf(out)
+	if outVal.Kind() != reflect.Pointer || outVal.IsNil() || outVal.Elem().Kind() != reflect.Slice {
+		return errors.New("pluck: out must be a non-nil pointer to a slice")
+	}
+
+	ctx = q.execCtx(ctx)
+	opts := options.Find()
+	if len(q.sort) > 0 {
+		opts.SetSort(q.sort)
+	}
+	if q.limit > 0 {
+		opts.SetLimit(q.limit)
+	}
+	if q.skip > 0 {
+		opts.SetSkip(q.skip)
+	}
+	projection := bson.M{field: 1}
+	if field != "_id" {
+		projection["_id"] = 0
+	}
+	opts.SetProjection(projection)
+
+	cursor, err := q.collection.Find(ctx, q.buildFilter(), opts)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	sliceType := outVal.Elem().Type()
+	result := reflect.MakeSlice(sliceType, 0, 0)
+	elemType := sliceType.Elem()
+	path := strings.Split(field, ".")
+	for cursor.Next(ctx) {
+		elem := reflect.New(elemType)
+		raw := cursor.Current.Lookup(path...)
+		if raw.Type != 0 {
+			if err := raw.Unmarshal(elem.Interface()); err != nil {
+				return err
+			}
+		}
+		result = reflect.Append(result, elem.Elem())
+	}
+	if err := cursor.Err(); err != nil {
+		return err
+	}
+	outVal.Elem().Set(result)
+	return nil
 }
 
 func (q *Query) Sum(ctx context.Context, field string) (float64, error) {
@@ -55,9 +124,10 @@ func (q *Query) Max(ctx context.Context, field string) (float64, error) {
 }
 
 func (q *Query) aggregate(ctx context.Context, accumulator bson.M) (float64, error) {
-	if err := q.requireCollection(); err != nil {
+	if err := q.preflight(); err != nil {
 		return 0, err
 	}
+	ctx = q.execCtx(ctx)
 	pipeline := bson.A{
 		bson.M{"$match": q.buildFilter()},
 		bson.M{"$group": bson.M{"_id": nil, "result": accumulator}},

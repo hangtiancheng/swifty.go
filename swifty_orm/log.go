@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	errorLogger = log.New(os.Stdout, "\033[31m[error]\033[0m ", log.LstdFlags|log.Lshortfile)
+	errorLogger = log.New(os.Stderr, "\033[31m[error]\033[0m ", log.LstdFlags|log.Lshortfile)
 	infoLogger  = log.New(os.Stdout, "\033[34m[info ]\033[0m ", log.LstdFlags|log.Lshortfile)
 	loggers     = []*log.Logger{errorLogger, infoLogger}
 	mu          sync.Mutex
@@ -57,6 +57,7 @@ func SetLevel(level int) {
 	for _, logger := range loggers {
 		logger.SetOutput(os.Stdout)
 	}
+	errorLogger.SetOutput(os.Stderr)
 
 	if ErrorLevel < level {
 		errorLogger.SetOutput(io.Discard)

@@ -8,11 +8,14 @@ Module path: `github.com/hangtiancheng/swifty.go/swifty_orm`
 
 ## Features
 
-- Chainable query builder with Where / OrWhere / WhereIn / WhereNotIn / WhereBetween / WhereNull / WhereNotNull predicates
-- Automatic `$set` wrapping: plain `bson.M` updates without MongoDB operators are transparently wrapped in `$set`
-- Built-in aggregation methods: Count / Sum / Avg / Min / Max / Distinct / Pluck
+- Chainable query builder with Where (equality / operator / object form) / WhereNot / OrWhere and Or-variants / WhereIn / WhereNotIn / WhereBetween / WhereNotBetween / WhereNull / WhereNotNull / WhereLike / WhereILike predicates
+- Safe filter construction: conditions on the same field are always AND-combined (never silently overwritten); invalid builder input surfaces as an error at execution instead of panicking
+- Automatic `$set` wrapping: plain `bson.M`, `map[string]interface{}`, `bson.D`, and struct updates without MongoDB operators are transparently wrapped in `$set`
+- knex-style write helpers: Upsert, Increment / Decrement, Insert accepts a slice of documents
+- Built-in aggregation methods: Count / CountDistinct / Sum / Avg / Min / Max / Distinct / Pluck
+- Query Clone for deriving variants from a shared base without state sharing
 - Reflection-based collection naming: pass a struct and the collection name is derived automatically (snake_case + pluralization)
-- Transaction support: wraps MongoDB sessions with automatic commit and rollback
+- Transaction support: wraps MongoDB sessions with automatic commit and rollback; queries made through the transaction sub-Engine automatically join the session
 - Auto-increment sequences: classic `counters` collection pattern for globally unique sequential IDs
 - Index management: create multiple indexes in a single call via EnsureIndexes
 - Colored, level-controlled logger with independent toggle
@@ -139,58 +142,113 @@ Pluralization rules cover common cases: consonant + y becomes -ies; endings in s
 
 ```go
 q.Where("name", "Alice")                  // name == "Alice"
+q.Where("deleted_at", nil)                // nil value becomes a null check
 q.Where("age", ">=", 18)                  // age >= 18
+q.Where(bson.M{"a": 1, "b": 2})           // object form: a == 1 AND b == 2
+q.WhereNot("role", "guest")               // role != "guest"
 q.WhereIn("status", []string{"a", "b"})   // status in ["a", "b"]
-q.WhereNotIn("role", []string{"guest"})   // status not in ["guest"]
+q.WhereNotIn("role", []string{"guest"})   // role not in ["guest"]
 q.WhereNull("deleted_at")                 // deleted_at == null
 q.WhereNotNull("email")                   // email != null
 q.WhereBetween("age", 18, 30)             // 18 <= age <= 30
+q.WhereNotBetween("age", 18, 30)          // NOT (18 <= age <= 30)
+q.WhereLike("name", "To%")                // SQL LIKE pattern, case-sensitive
+q.WhereILike("name", "to_")               // SQL LIKE pattern, case-insensitive
 q.OrWhere("vip", true)                    // combined with the main chain via $or
+q.OrWhere(bson.M{"a": 1, "b": 2})         // OR (a == 1 AND b == 2)
+q.OrWhereIn("age", []int{25, 30})         // OR age in [25, 30]
+// Also available: OrWhereNot / OrWhereNotIn / OrWhereNull / OrWhereNotNull / OrWhereBetween
 ```
 
-Supported comparison operators (second argument in `Where(field, op, value)`):
+Supported comparison operators (second argument in `Where(field, op, value)`,
+case-insensitive):
 
 ```
-=  !=  <>  >  >=  <  <=  $in  $nin
+=  ==  !=  <>  >  >=  <  <=  in  not in  like  ilike  between  not between
 ```
 
-Unrecognized operators are passed through to MongoDB as-is, so native operators like `$regex` or `$exists` can be used directly.
+Operators starting with `$` (e.g. `"$regex"`, `"$exists"`, `"$in"`) are passed
+through to MongoDB directly. Any other unrecognized operator is rejected: the
+builder records the error and the next execution method returns it instead of
+sending a broken query (or panicking). The same applies to malformed arguments
+such as a non-string field name or a wrong argument count.
 
-Multiple operators on the same field are merged automatically:
+`WhereLike` / `WhereILike` translate SQL LIKE patterns into anchored regular
+expressions: `%` matches any sequence, `_` matches a single character, and all
+regex metacharacters in the pattern are escaped.
+
+Multiple conditions on the same field are always AND-combined; nothing is
+silently overwritten:
 
 ```go
 q.Where("age", ">", 18).Where("age", "<", 30)
-// produces { age: { $gt: 18, $lt: 30 } }
+// { age: { $gt: 18, $lt: 30 } }
+
+q.Where("age", 18).Where("age", ">", 10)
+// { age: 18, $and: [ { age: { $gt: 10 } } ] }
+
+q.OrWhere("a", 1).OrWhere("b", 2)   // no preceding Where
+// { $or: [ { a: 1 }, { b: 2 } ] }  -- no match-all empty branch
 ```
+
+Note: a `Where` added after an `OrWhere` still joins the main AND chain, i.e.
+`Where(a).OrWhere(b).Where(c)` produces `(a AND c) OR b`. This differs from
+SQL operator precedence; keep OrWhere calls last for clarity.
 
 ### Sorting, Pagination, and Projection
 
 ```go
 q.OrderBy("created_at")           // ascending (default)
-q.OrderBy("age", "desc")          // descending; accepts "asc" or "desc"
+q.OrderBy("age", "desc")          // descending; direction is case-insensitive
 q.Limit(20)
 q.Offset(40)
 q.Select("name", "email")         // inclusive projection
+q.Select("name", "-_id")          // "-" prefix excludes a field
+```
+
+MongoDB only allows mixing inclusion with the exclusion of `_id`; other
+mixtures are rejected by the server.
+
+### Cloning
+
+`Query` is a mutable struct. To branch multiple variants from a shared base,
+use `Clone`, which deep-copies all builder state:
+
+```go
+base := engine.Collection("users").Where("active", true)
+adults := base.Clone().Where("age", ">=", 18)
+minors := base.Clone().Where("age", "<", 18)
 ```
 
 ### Terminal Methods
 
 ```go
-// Insert: single or multiple documents
+// Insert: single, multiple, or a slice of documents
 res, err := q.Insert(ctx, doc1, doc2, doc3)
+res, err := q.Insert(ctx, []*User{u1, u2})   // slices are expanded automatically
 // res.InsertedIDs / res.InsertedCount
 
 // Retrieve a single document
 var u User
-err := q.First(ctx, &u)            // returns mongo.ErrNoDocuments if nothing matches
+err := q.First(ctx, &u)            // returns ErrNotFound (mongo.ErrNoDocuments) if nothing matches
 
 // Retrieve multiple documents
 var us []User
 err := q.Find(ctx, &us)
 
-// Update (plain bson.M without $ operators is auto-wrapped in $set)
-modified, err := q.Update(ctx, bson.M{"age": 29})
-modified, err := q.Update(ctx, bson.M{"$inc": bson.M{"login_count": 1}})
+// Update: returns the number of MATCHED documents (knex-style affected rows).
+// Plain documents without $ operators (bson.M, map, bson.D, struct) are
+// auto-wrapped in $set.
+matched, err := q.Update(ctx, bson.M{"age": 29})
+matched, err := q.Update(ctx, bson.M{"$inc": bson.M{"login_count": 1}})
+
+// Upsert: update matching documents, insert when nothing matches
+res, err := q.Where("_id", 1).Upsert(ctx, bson.M{"name": "Alice"})
+// res.MatchedCount / res.ModifiedCount / res.UpsertedCount / res.UpsertedID
+
+// Atomic counters (integer amounts; default 1)
+matched, err := q.Increment(ctx, "login_count")
+matched, err := q.Decrement(ctx, "credits", 5)
 
 // Delete
 deleted, err := q.Delete(ctx)
@@ -216,13 +274,89 @@ avg, err := engine.Collection("orders").Avg(ctx, "amount")
 mn,  err := engine.Collection("orders").Min(ctx, "amount")
 mx,  err := engine.Collection("orders").Max(ctx, "amount")
 
-vals, err := engine.Collection("users").Distinct(ctx, "city")  // []interface{}
+vals, err := engine.Collection("users").Distinct(ctx, "city")       // []interface{}
+n,    err := engine.Collection("users").CountDistinct(ctx, "city")  // number of distinct values
 
+// Pluck collects one field into a slice of the value type. Sort/limit/offset
+// are honored and the Query's projection is left untouched.
 var names []string
-err = engine.Collection("users").Where("active", true).Pluck(ctx, "name", &names)
+err = engine.Collection("users").Where("active", true).OrderBy("name").Pluck(ctx, "name", &names)
 ```
 
-Sum / Avg / Min / Max return `float64`. They are designed for numeric fields. For non-numeric fields, use Distinct or build a custom aggregation pipeline.
+Sum / Avg / Min / Max return `float64` and are designed for numeric fields.
+Sum / Avg return 0 for missing or non-numeric fields; Min / Max on non-numeric
+fields (e.g. strings, dates) fail at decode -- use Distinct or a custom
+aggregation pipeline for those.
+
+### Grouped Aggregation (GroupBy / Having)
+
+`GroupBy` + accumulator aliases + `Aggregate` run a `$match -> $group ->
+$project -> $match(having) -> $sort -> $skip -> $limit` pipeline. Each result
+row contains the group keys and aliases as top-level fields:
+
+```go
+type cityAgg struct {
+    City  string  `bson:"city"`
+    N     int64   `bson:"n"`
+    Total float64 `bson:"total"`
+}
+
+var rows []cityAgg
+err := engine.Collection("orders").
+    Where("status", "paid").          // filter before grouping
+    GroupBy("city").                  // one or more group keys
+    CountAs("n").                     // per-group document count
+    SumAs("amount", "total").         // also: AvgAs / MinAs / MaxAs
+    Having("n", ">=", 2).             // filter after grouping (same forms as Where)
+    OrderBy("total", "desc").         // references result columns
+    Limit(10).
+    Aggregate(ctx, &rows)
+```
+
+Rules enforced at build time (returned as errors, never silently wrong):
+
+- `Aggregate` requires at least one `GroupBy` key.
+- Dotted group keys are flattened in the result (`addr.city` -> `addr_city`);
+  duplicate flattened keys are rejected.
+- `Having` and `OrderBy` may only reference result columns (flattened group
+  keys or aliases).
+- Aliases must not collide with group keys, repeat, be `_id`, start with `$`,
+  or contain `.`.
+- `Select` cannot be combined with `GroupBy`.
+- Pending GroupBy/Having state on any other execution method (`Find`, `Count`,
+  `Delete`, ...) is an error instead of being silently ignored.
+
+### Streaming (Cursor / Each)
+
+For large result sets, stream documents one at a time instead of loading
+everything with `Find`:
+
+```go
+// Callback style: the cursor is closed automatically.
+err := engine.Collection("orders").
+    Where("status", "paid").
+    OrderBy("amount", "desc").
+    Each(ctx, func(c *swifty_orm.Cursor) error {
+        var o Order
+        if err := c.Decode(&o); err != nil {
+            return err
+        }
+        return process(o) // returning an error stops iteration
+    })
+
+// Manual style: remember to Close.
+cursor, err := engine.Collection("orders").Cursor(ctx)
+if err != nil { ... }
+defer cursor.Close(ctx)
+for cursor.Next(ctx) {
+    var o Order
+    if err := cursor.Decode(&o); err != nil { ... }
+}
+if err := cursor.Err(); err != nil { ... }
+```
+
+Both honor the Query's filter, sort, limit, offset, and projection, and join
+the transaction session when used through a Transaction sub-Engine.
 
 ## Transactions
 
@@ -246,7 +380,11 @@ err := engine.Transaction(ctx, func(sc context.Context, tx *swifty_orm.Engine) e
 
 Important notes:
 
-- Always use the `sc` parameter as the context inside the callback; otherwise the driver cannot associate operations with the session and the transaction will not take effect.
+- Queries made through the `tx` sub-Engine automatically join the transaction
+  session, even when a plain context is passed instead of `sc`. Prefer `sc`
+  regardless -- it carries the correct deadline/cancellation semantics.
+- Do not retain `tx` outside the callback; its session ends when the callback
+  returns.
 - Transactions require a MongoDB replica set or sharded cluster deployment. They will fail on standalone instances.
 
 ## Auto-Increment Sequences
@@ -291,7 +429,9 @@ It is recommended that callers build centralized error-wrapping for common cases
 | `engine.go`          | Engine type, connection lifecycle, Collection, Model, Transaction, NextSequence                     |
 | `query.go`           | Query type and all chainable condition / sort / pagination / projection methods                     |
 | `query_exec.go`      | Terminal methods: Insert, First, Find, Update, Delete, Count, Exists, EnsureIndexes, DropCollection |
-| `query_aggregate.go` | Aggregation methods: Sum, Avg, Min, Max, Distinct, Pluck                                            |
+| `query_aggregate.go` | Aggregation methods: Sum, Avg, Min, Max, Distinct, CountDistinct, Pluck                            |
+| `query_group.go`     | Grouped aggregation: GroupBy, Having, CountAs/SumAs/AvgAs/MinAs/MaxAs, Aggregate                    |
+| `query_stream.go`    | Streaming: Cursor, Each                                                                             |
 | `filter.go`          | Translation of the condition chain into a `bson.M` filter document                                  |
 | `naming.go`          | Struct name to collection name conversion (snake_case + pluralization)                              |
 | `log.go`             | Colored, level-controlled logger                                                                    |
@@ -301,11 +441,11 @@ It is recommended that callers build centralized error-wrapping for common cases
 ## Usage Notes
 
 1. Update and Delete without any Where conditions will affect the entire collection. Ensure at least one condition is present at the application layer.
-2. `Query` is a mutable, stateful struct. To branch multiple query variants from a common base, always start fresh from `engine.Collection(...)` to avoid unintended state sharing through underlying slices.
-3. `Pluck` mutates the Query's projection fields. Do not reuse the same Query for other operations after calling Pluck.
-4. Calling `Select` multiple times replaces the previous projection. Only inclusive projection is supported.
-5. Aggregation methods are designed for numeric fields. If the field does not exist or is not numeric, they return 0 with no error.
-6. Inside transaction callbacks, the `sc` context parameter must be used for all operations; otherwise the transaction will not take effect.
+2. `Query` is a mutable, stateful struct. To branch multiple query variants from a common base, use `Clone()`.
+3. Calling `Select` multiple times replaces the previous projection. Inclusion is the default; prefix a field with `-` to exclude it (MongoDB only allows mixing inclusion with `-_id`).
+4. Sum / Avg return 0 for missing or non-numeric fields; Min / Max on non-numeric fields fail at decode.
+5. Struct updates are wrapped in `$set` with all marshaled fields, including zero values (honoring `omitempty` bson tags). Use `bson.M` for partial updates.
+6. A `Where` added after an `OrWhere` still joins the main AND chain: `Where(a).OrWhere(b).Where(c)` means `(a AND c) OR b`.
 
 ## Running Tests
 
@@ -324,20 +464,23 @@ The test suite creates a timestamp-isolated temporary database for each test cas
 
 Implemented:
 
-- `where / andWhere / orWhere`
-- `whereIn / whereNotIn / whereNull / whereNotNull / whereBetween`
-- `orderBy / limit / offset / select`
-- `insert / update / del / first / find / count / pluck / distinct`
+- `where / andWhere / whereNot / orWhere` (equality, operator, and object forms)
+- `whereIn / whereNotIn / whereNull / whereNotNull / whereBetween / whereNotBetween`
+- `whereLike / whereILike` (SQL LIKE patterns via `$regex`)
+- `orWhereIn / orWhereNotIn / orWhereNull / orWhereNotNull / orWhereBetween / orWhereNot`
+- `orderBy / limit / offset / select` (with `-field` exclusion)
+- `insert (incl. array form) / update (returns matched count) / del / first / find / count / pluck / distinct / countDistinct`
+- `increment / decrement`
+- upsert (`onConflict().merge()` equivalent via `Upsert`)
 - `min / max / sum / avg`
-- `transaction`
+- `groupBy / having` (grouped aggregation via `GroupBy` + `CountAs`/`SumAs`/... + `Aggregate`)
+- Streaming (`Cursor` / `Each`, knex `.stream()` equivalent)
+- `clone`
+- `transaction` (with automatic session binding)
 
 Not yet implemented (planned):
 
 - Callback-based grouping `where(qb => { ... })`
-- `groupBy / having`
-- Explicit `upsert` semantics
-- `whereRaw` / `whereExists` / `whereLike`
-- Iterator / streaming cursor
 - Generics-based typed query
 
 ## License

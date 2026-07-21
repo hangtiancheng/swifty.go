@@ -119,10 +119,23 @@ func (e *Engine) NextSequence(ctx context.Context, name string) (int64, error) {
 	var result struct {
 		Value int64 `bson:"value"`
 	}
-	if err := counters.FindOneAndUpdate(ctx, bson.M{"_id": name}, update, opts).Decode(&result); err != nil {
+	if err := counters.FindOneAndUpdate(e.sessionContext(ctx), bson.M{"_id": name}, update, opts).Decode(&result); err != nil {
 		return 0, err
 	}
 	return result.Value, nil
+}
+
+// sessionContext binds the engine's transaction session to ctx so that
+// operations join the transaction even when a plain context is passed. A
+// context that already carries a session is returned unchanged.
+func (e *Engine) sessionContext(ctx context.Context) context.Context {
+	if e == nil || e.session == nil {
+		return ctx
+	}
+	if mongo.SessionFromContext(ctx) != nil {
+		return ctx
+	}
+	return mongo.NewSessionContext(ctx, e.session)
 }
 
 func (e *Engine) Transaction(ctx context.Context, fn func(sc context.Context, tx *Engine) error) error {
