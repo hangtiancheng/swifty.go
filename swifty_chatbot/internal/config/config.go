@@ -106,7 +106,7 @@ func defaults() Config {
 	return Config{
 		AppName:        "swifty-chatbot",
 		AppHost:        "0.0.0.0",
-		AppPort:        "8080",
+		AppPort:        "8088",
 		RPCAddr:        "127.0.0.1:19090",
 		MongoURI:       "mongodb://root:pass@localhost:27017/?authSource=admin",
 		MongoDatabase:  "ai_agent",

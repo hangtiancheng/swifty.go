@@ -205,7 +205,7 @@ func (a *App) createSessionAndSendMessageStream(ctx *swifty_http.Context, next f
 	}
 	a.invalidateSessionCaches(ctx.Request.Context(), username, sessionID)
 	sse := ctx.SSE()
-	sse.ID(sessionID)
+	sse.JSON("", swifty_http.H{"session_id": sessionID})
 	stream, err := a.rpc.CompleteStream(ctx.Request.Context(), rpc_client.AIRequest{Username: username, SessionID: sessionID, Question: req.Question, ModelType: req.ModelType})
 	if err != nil {
 		sse.Event("error", err.Error())
