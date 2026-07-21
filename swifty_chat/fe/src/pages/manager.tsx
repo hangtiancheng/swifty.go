@@ -46,8 +46,24 @@ type Panel =
   | "set-admin"
   | "disable-group"
   | "delete-group";
-type UserRow = Record<string, string>;
-type GroupRow = Record<string, string>;
+
+interface UserRow {
+  uuid: string;
+  nickname: string;
+  telephone: string;
+  is_admin: number;
+  status: number;
+  is_deleted?: boolean;
+}
+
+interface GroupRow {
+  group_id: string;
+  name: string;
+  owner_id: string;
+  member_cnt: number;
+  avatar: string;
+  status: number;
+}
 
 const USER_PANELS: { panel: Panel; label: string }[] = [
   { panel: "disable-user", label: "Enable / Disable" },
@@ -306,7 +322,7 @@ export default function Manager() {
                         <TableCell>{user.nickname}</TableCell>
                         <TableCell>{user.telephone}</TableCell>
                         <TableCell>
-                          {user.is_admin === "1" ? (
+                          {user.is_admin === 1 ? (
                             <Badge
                               variant="secondary"
                               className="bg-success/15 text-success"
@@ -318,7 +334,7 @@ export default function Manager() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {user.status === "1" ? (
+                          {user.status === 1 ? (
                             <Badge
                               variant="destructive"
                               className="bg-destructive/15 text-destructive border-0"
@@ -412,7 +428,7 @@ export default function Manager() {
                           {group.owner_id}
                         </TableCell>
                         <TableCell>
-                          {group.status === "1" ? (
+                          {group.status === 1 ? (
                             <Badge
                               variant="destructive"
                               className="bg-destructive/15 text-destructive border-0"

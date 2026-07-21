@@ -205,12 +205,15 @@ export default function Chat() {
         return;
       }
 
+      const currentContactId = chat.contactInfo?.contact_id;
       const isRelevant =
         (message.receive_id.startsWith("G") &&
-          message.receive_id === chat.contactInfo?.contact_id) ||
+          message.receive_id === currentContactId) ||
         (message.receive_id.startsWith("U") &&
-          message.receive_id === auth.userInfo.uuid) ||
-        message.send_id === auth.userInfo.uuid;
+          message.receive_id === auth.userInfo.uuid &&
+          message.send_id === currentContactId) ||
+        (message.send_id === auth.userInfo.uuid &&
+          message.receive_id === currentContactId);
 
       if (isRelevant) {
         message.send_avatar = resolveAvatar(message.send_avatar);

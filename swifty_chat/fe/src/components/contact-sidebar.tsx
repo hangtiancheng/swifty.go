@@ -48,9 +48,29 @@ import { api } from "@/service/api";
 import useAuthStore from "@/store/auth";
 import { showToast } from "@/utils/toast";
 
-type ContactEntry = Record<string, string>;
-type GroupEntry = Record<string, string>;
-type RequestEntry = Record<string, string>;
+interface ContactEntry {
+  user_id: string;
+  nickname: string;
+  avatar: string;
+}
+
+interface GroupEntry {
+  group_id: string;
+  name: string;
+  member_cnt: number;
+  owner_id: string;
+  avatar: string;
+}
+
+interface RequestEntry {
+  apply_id: string;
+  user_id: string;
+  contact_id: string;
+  contact_name: string;
+  contact_type: number;
+  status: number;
+  message: string;
+}
 
 interface ContactSidebarProps {
   onNavigate: (contactId: string) => void;

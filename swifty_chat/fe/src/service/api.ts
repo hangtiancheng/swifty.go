@@ -27,23 +27,51 @@ async function request<T>(
   endpoint: string,
   data?: unknown,
 ): Promise<ApiResponse<T>> {
-  const response = await fetch(BASE_URL + endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data || {}),
-  });
-  return response.json();
+  try {
+    const response = await fetch(BASE_URL + endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data || {}),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      return {
+        code: response.status,
+        message: `HTTP ${response.status}: ${response.statusText}`,
+        data: null as T,
+      };
+    }
+    return await response.json();
+  } catch (err) {
+    const message =
+      err instanceof DOMException && err.name === "TimeoutError"
+        ? "Request timed out"
+        : "Network error";
+    return { code: -1, message, data: null as T };
+  }
 }
 
 async function upload(
   endpoint: string,
   formData: FormData,
 ): Promise<ApiResponse> {
-  const response = await fetch(BASE_URL + endpoint, {
-    method: "POST",
-    body: formData,
-  });
-  return response.json();
+  try {
+    const response = await fetch(BASE_URL + endpoint, {
+      method: "POST",
+      body: formData,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) {
+      return {
+        code: response.status,
+        message: `HTTP ${response.status}: ${response.statusText}`,
+        data: null,
+      };
+    }
+    return await response.json();
+  } catch {
+    return { code: -1, message: "Upload failed", data: null };
+  }
 }
 
 export const api = {

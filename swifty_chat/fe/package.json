@@ -7,7 +7,7 @@
     "dev": "vite",
     "dual": "concurrently \"pnpm dev\" \"pnpm dev\"",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --fix",
     "preview": "vite preview",
     "format": "prettier -w ./ --experimental-cli",
     "typecheck": "tsc -b --noEmit"

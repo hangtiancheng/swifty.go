@@ -24,44 +24,80 @@ import { create } from "zustand";
 import { WS_URL } from "../config";
 
 export interface WsState {
-  status: string;
+  status: "disconnected" | "connecting" | "connected";
   onMessageHandler: ((msg: MessageEvent) => void) | null;
   connect: (uuid: string) => void;
   disconnect: () => void;
   send: (data: unknown) => void;
-  setOnMessage: (handler: (msg: MessageEvent) => void) => void;
+  setOnMessage: (handler: ((msg: MessageEvent) => void) | null) => void;
 }
 
 let rawSocket: WebSocket | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectDelay = 1000;
+let intentionalClose = false;
 
-const useWsStore = create<WsState>((set, get) => ({
+const MAX_RECONNECT_DELAY = 30_000;
+
+function scheduleReconnect(uuid: string) {
+  if (intentionalClose) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+    doConnect(uuid);
+  }, reconnectDelay);
+}
+
+function doConnect(uuid: string) {
+  if (rawSocket) {
+    rawSocket.onclose = null;
+    rawSocket.close();
+  }
+  useWsStore.setState({ status: "connecting" });
+  const ws = new WebSocket(WS_URL + "/wss?client_id=" + uuid);
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+    useWsStore.setState({ status: "connected" });
+  };
+  ws.onmessage = (msg: MessageEvent) => {
+    const handler = useWsStore.getState().onMessageHandler;
+    if (handler) handler(msg);
+  };
+  ws.onclose = () => {
+    rawSocket = null;
+    useWsStore.setState({ status: "disconnected" });
+    scheduleReconnect(uuid);
+  };
+  ws.onerror = () => {
+    ws.close();
+  };
+  rawSocket = ws;
+}
+
+const useWsStore = create<WsState>((set) => ({
   status: "disconnected",
-  onMessageHandler: null as ((msg: MessageEvent) => void) | null,
+  onMessageHandler: null,
 
   connect(uuid: string) {
-    if (rawSocket) rawSocket.close();
-    set({ status: "connecting" });
-    const ws = new WebSocket(WS_URL + "/wss?client_id=" + uuid);
-    ws.onopen = () => {
-      set({ status: "connected" });
-    };
-    ws.onmessage = (msg: MessageEvent) => {
-      const handler = get().onMessageHandler;
-      if (handler) handler(msg);
-    };
-    ws.onclose = () => {
-      set({ status: "disconnected" });
-      rawSocket = null;
-    };
-    ws.onerror = () => {
-      set({ status: "disconnected" });
-    };
-    rawSocket = ws;
+    intentionalClose = false;
+    reconnectDelay = 1000;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    doConnect(uuid);
   },
 
   disconnect() {
-    if (rawSocket) rawSocket.close();
-    rawSocket = null;
+    intentionalClose = true;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (rawSocket) {
+      rawSocket.onclose = null;
+      rawSocket.close();
+      rawSocket = null;
+    }
     set({ status: "disconnected" });
   },
 
@@ -71,7 +107,7 @@ const useWsStore = create<WsState>((set, get) => ({
     }
   },
 
-  setOnMessage(handler: (msg: MessageEvent) => void) {
+  setOnMessage(handler: ((msg: MessageEvent) => void) | null) {
     set({ onMessageHandler: handler });
   },
 }));

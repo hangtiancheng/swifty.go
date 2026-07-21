@@ -172,6 +172,7 @@ export function SessionSidebar({ onChat }: SessionSidebarProps) {
 
   // Users section is open by default, so load it on mount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUserSessions();
   }, [loadUserSessions]);
 
