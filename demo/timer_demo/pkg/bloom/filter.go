@@ -9,9 +9,13 @@ import (
 )
 
 // m: length of the bit vector; backed by Redis, a single bitmap uses a string of up to 512M,
-//    providing 2^32 bits, so m = 2^32.
+//
+//	providing 2^32 bits, so m = 2^32.
+//
 // n: number of elements in the filter; vectors are isolated per day, assuming 1 million
-//    execution tasks per day, so n = 10^6.
+//
+//	execution tasks per day, so n = 10^6.
+//
 // The false positive probability is (1-e^(-nk/m))^k. With k = 3, it is approximately 2*10^(-10).
 // With k = 2, it is approximately 2*10^(-7).
 // Therefore, k = 2 is sufficient for the requirements.

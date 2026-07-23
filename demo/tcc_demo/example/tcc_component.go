@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	go_redis "github.com/redis/go-redis/v9"
 	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/pkg"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 // Transaction status recorded on the TCC component side

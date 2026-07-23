@@ -86,7 +86,7 @@ func (t *TXRecordDAO) UpdateTXRecord(ctx context.Context, record *TXRecordPO) er
 
 func (t *TXRecordDAO) LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao TXRecordUpdater, record *TXRecordPO) error) error {
 	return t.db.Transaction(func(tx *gorm.DB) error {
-		// 加写锁
+		// Acquire write lock
 		var record TXRecordPO
 
 		if err := tx.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).First(&record, id).Error; err != nil {

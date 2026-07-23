@@ -5,20 +5,20 @@ import (
 	"time"
 )
 
-// 事务日志存储模块
+// Transaction log storage module
 type TXStore interface {
-	// 创建一条事务明细记录
+	// Creates a transaction detail record
 	CreateTX(ctx context.Context, components ...TCCComponent) (txID string, err error)
-	// 更新事务进度：实际更新的是每个组件的 try 请求响应结果
+	// Updates transaction progress: updates each component's try response result
 	TXUpdate(ctx context.Context, txID string, componentID string, accept bool) error
-	// 提交事务的最终状态, 标识事务执行结果为成功或失败
+	// Submits the final transaction status, indicating success or failure
 	TXSubmit(ctx context.Context, txID string, success bool) error
-	// 获取到所有未完成的事务
+	// Retrieves all incomplete transactions
 	GetHangingTXs(ctx context.Context) ([]*Transaction, error)
-	// 获取指定的一笔事务
+	// Retrieves a specific transaction by ID
 	GetTX(ctx context.Context, txID string) (*Transaction, error)
-	// 锁住整个 TXStore 模块（要求为分布式锁）
+	// Locks the entire TXStore module (requires a distributed lock)
 	Lock(ctx context.Context, expireDuration time.Duration) error
-	// 解锁TXStore 模块
+	// Unlocks the TXStore module
 	Unlock(ctx context.Context) error
 }

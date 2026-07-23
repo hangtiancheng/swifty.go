@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	nethttp "net/http"
+	net_http "net/http"
 	"strings"
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/consts"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/model/vo"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/utils"
-	taskdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
+	task_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/bloom"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/log"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/promethus"
@@ -20,13 +20,13 @@ import (
 
 type Worker struct {
 	timerService *TimerService
-	taskDAO      *taskdao.TaskDAO
+	taskDAO      *task_dao.TaskDAO
 	httpClient   *xhttp.JSONClient
 	bloomFilter  *bloom.Filter
 	reporter     *promethus.Reporter
 }
 
-func NewWorker(timerService *TimerService, taskDAO *taskdao.TaskDAO, httpClient *xhttp.JSONClient, bloomFilter *bloom.Filter, reporter *promethus.Reporter) *Worker {
+func NewWorker(timerService *TimerService, taskDAO *task_dao.TaskDAO, httpClient *xhttp.JSONClient, bloomFilter *bloom.Filter, reporter *promethus.Reporter) *Worker {
 	return &Worker{
 		timerService: timerService,
 		taskDAO:      taskDAO,
@@ -50,8 +50,8 @@ func (w *Worker) Work(ctx context.Context, timerIDUnixKey string) error {
 	if exist, err := w.bloomFilter.Exist(ctx, utils.GetTaskBloomFilterKey(utils.GetDayStr(time.UnixMilli(unix))), timerIDUnixKey); err != nil || exist {
 		log.WarnContextf(ctx, "bloom filter check failed, start to check db, bloom key: %s, timerIDUnixKey: %s, err: %v, exist: %t", utils.GetTaskBloomFilterKey(utils.GetDayStr(time.UnixMilli(unix))), timerIDUnixKey, err, exist)
 		// Query the database to check the timer status
-		task, err := w.taskDAO.GetTask(ctx, taskdao.WithTimerID(timerID), taskdao.WithRunTimer(time.UnixMilli(unix)))
-		if err == nil && task.Status != consts.NotRunned.ToInt() {
+		task, err := w.taskDAO.GetTask(ctx, task_dao.WithTimerID(timerID), task_dao.WithRunTimer(time.UnixMilli(unix)))
+		if err == nil && task.Status != consts.NotRun.ToInt() {
 			// Duplicate execution
 			log.WarnContextf(ctx, "task is already executed, timerID: %d, exec_time: %v", timerID, task.RunTimer)
 			return nil
@@ -69,8 +69,8 @@ func (w *Worker) executeAndPostProcess(ctx context.Context, timerID uint, unix i
 	}
 
 	// If the timer is disabled, no need to process the task
-	if timer.Status != consts.Enabled {
-		log.WarnContextf(ctx, "timer has already been unabled, timerID: %d", timerID)
+	if timer.Status != consts.Enable {
+		log.WarnContextf(ctx, "timer has already been unable, timerID: %d", timerID)
 		return nil
 	}
 
@@ -85,13 +85,13 @@ func (w *Worker) execute(ctx context.Context, timer *vo.Timer) (map[string]inter
 		err  error
 	)
 	switch strings.ToUpper(timer.NotifyHTTPParam.Method) {
-	case nethttp.MethodGet:
+	case net_http.MethodGet:
 		err = w.httpClient.Get(ctx, timer.NotifyHTTPParam.URL, timer.NotifyHTTPParam.Header, nil, &resp)
-	case nethttp.MethodPatch:
+	case net_http.MethodPatch:
 		err = w.httpClient.Patch(ctx, timer.NotifyHTTPParam.URL, timer.NotifyHTTPParam.Header, timer.NotifyHTTPParam.Body, &resp)
-	case nethttp.MethodDelete:
+	case net_http.MethodDelete:
 		err = w.httpClient.Delete(ctx, timer.NotifyHTTPParam.URL, timer.NotifyHTTPParam.Header, timer.NotifyHTTPParam.Body, &resp)
-	case nethttp.MethodPost:
+	case net_http.MethodPost:
 		err = w.httpClient.Post(ctx, timer.NotifyHTTPParam.URL, timer.NotifyHTTPParam.Header, timer.NotifyHTTPParam.Body, &resp)
 	default:
 		err = fmt.Errorf("invalid http method: %s, timer: %s", timer.NotifyHTTPParam.Method, timer.Name)
@@ -106,7 +106,7 @@ func (w *Worker) postProcess(ctx context.Context, resp map[string]interface{}, e
 		log.ErrorContextf(ctx, "set bloom filter failed, key: %s, err: %v", utils.GetTaskBloomFilterKey(utils.GetDayStr(time.UnixMilli(unix))), err)
 	}
 
-	task, err := w.taskDAO.GetTask(ctx, taskdao.WithTimerID(timerID), taskdao.WithRunTimer(time.UnixMilli(unix)))
+	task, err := w.taskDAO.GetTask(ctx, task_dao.WithTimerID(timerID), task_dao.WithRunTimer(time.UnixMilli(unix)))
 	if err != nil {
 		return fmt.Errorf("get task failed, timerID: %d, runTimer: %v, err: %w", timerID, time.UnixMilli(unix), err)
 	}
@@ -117,14 +117,14 @@ func (w *Worker) postProcess(ctx context.Context, resp map[string]interface{}, e
 	if execErr != nil {
 		task.Status = consts.Failed.ToInt()
 	} else {
-		task.Status = consts.Successed.ToInt()
+		task.Status = consts.Succeed.ToInt()
 	}
 
 	return w.taskDAO.UpdateTask(ctx, task)
 }
 
-func (w *Worker) reportMonitorData(app string, expectExecTimeUnix int64, acutalExecTime time.Time) {
+func (w *Worker) reportMonitorData(app string, expectExecTimeUnix int64, actualExecTime time.Time) {
 	w.reporter.ReportExecRecord(app)
 	// Report delay in milliseconds
-	w.reporter.ReportTimerDelayRecord(app, float64(acutalExecTime.UnixMilli()-expectExecTimeUnix))
+	w.reporter.ReportTimerDelayRecord(app, float64(actualExecTime.UnixMilli()-expectExecTimeUnix))
 }

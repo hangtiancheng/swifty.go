@@ -102,18 +102,18 @@ func newStandardLogger(options Options) *standardLogger {
 	}
 }
 
-func (l *standardLogger) output(level logLevel, levelStr string, calldepth int, v ...interface{}) {
+func (l *standardLogger) output(level logLevel, levelStr string, callDepth int, v ...interface{}) {
 	if level < l.level {
 		return
 	}
-	_ = l.logger.Output(calldepth, fmt.Sprintf("[%s] %s", levelStr, fmt.Sprint(v...)))
+	_ = l.logger.Output(callDepth, fmt.Sprintf("[%s] %s", levelStr, fmt.Sprint(v...)))
 }
 
-func (l *standardLogger) outputf(level logLevel, levelStr string, calldepth int, format string, v ...interface{}) {
+func (l *standardLogger) outputf(level logLevel, levelStr string, callDepth int, format string, v ...interface{}) {
 	if level < l.level {
 		return
 	}
-	_ = l.logger.Output(calldepth, fmt.Sprintf("[%s] %s", levelStr, fmt.Sprintf(format, v...)))
+	_ = l.logger.Output(callDepth, fmt.Sprintf("[%s] %s", levelStr, fmt.Sprintf(format, v...)))
 }
 
 func (l *standardLogger) Error(v ...interface{}) { l.output(levelError, "ERROR", 3, v...) }

@@ -12,16 +12,16 @@ import (
 )
 
 type TaskService struct {
-	confPrivder *conf.SchedulerAppConfProvider
-	cache       *dao.TaskCache
-	dao         taskDAO
+	confProvider *conf.SchedulerAppConfProvider
+	cache        *dao.TaskCache
+	dao          taskDAO
 }
 
-func NewTaskService(dao *dao.TaskDAO, cache *dao.TaskCache, confPrivder *conf.SchedulerAppConfProvider) *TaskService {
+func NewTaskService(dao *dao.TaskDAO, cache *dao.TaskCache, confProvider *conf.SchedulerAppConfProvider) *TaskService {
 	return &TaskService{
-		confPrivder: confPrivder,
-		dao:         dao,
-		cache:       cache,
+		confProvider: confProvider,
+		dao:          dao,
+		cache:        cache,
 	}
 }
 
@@ -32,12 +32,12 @@ func (t *TaskService) GetTasksByTime(ctx context.Context, key string, bucket int
 	}
 
 	// Fall back to database on cache miss
-	tasks, err := t.dao.GetTasks(ctx, dao.WithStartTime(start), dao.WithEndTime(end), dao.WithStatus(int32(consts.NotRunned.ToInt())))
+	tasks, err := t.dao.GetTasks(ctx, dao.WithStartTime(start), dao.WithEndTime(end), dao.WithStatus(int32(consts.NotRun.ToInt())))
 	if err != nil {
 		return nil, err
 	}
 
-	maxBucket := t.confPrivder.Get().BucketsNum
+	maxBucket := t.confProvider.Get().BucketsNum
 	var validTask []*po.Task
 	for _, task := range tasks {
 		if task.TimerID%uint(maxBucket) != uint(bucket) {

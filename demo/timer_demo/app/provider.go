@@ -8,8 +8,8 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/app/scheduler"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/app/webserver"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/conf"
-	taskdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
-	timerdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
+	task_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
+	timer_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/bloom"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/cron"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/hash"
@@ -17,12 +17,12 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/promethus"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/redis"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/xhttp"
-	executorservice "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/executor"
-	migratorservice "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/migrator"
-	monitorservice "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/monitor"
-	schedulerservice "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/scheduler"
+	executor_service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/executor"
+	migrator_service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/migrator"
+	monitor_service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/monitor"
+	scheduler_service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/scheduler"
 	triggerservice "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/trigger"
-	webservice "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/webserver"
+	web_service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/webserver"
 )
 
 var (
@@ -60,22 +60,22 @@ func providePKG(c *dig.Container) {
 }
 
 func provideDAO(c *dig.Container) {
-	c.Provide(timerdao.NewTimerDAO)
-	c.Provide(taskdao.NewTaskDAO)
-	c.Provide(taskdao.NewTaskCache)
+	c.Provide(timer_dao.NewTimerDAO)
+	c.Provide(task_dao.NewTaskDAO)
+	c.Provide(task_dao.NewTaskCache)
 }
 
 func provideService(c *dig.Container) {
-	c.Provide(migratorservice.NewWorker)
-	c.Provide(migratorservice.NewWorker)
-	c.Provide(webservice.NewTaskService)
-	c.Provide(webservice.NewTimerService)
-	c.Provide(executorservice.NewTimerService)
-	c.Provide(executorservice.NewWorker)
+	c.Provide(migrator_service.NewWorker)
+	c.Provide(migrator_service.NewWorker)
+	c.Provide(web_service.NewTaskService)
+	c.Provide(web_service.NewTimerService)
+	c.Provide(executor_service.NewTimerService)
+	c.Provide(executor_service.NewWorker)
 	c.Provide(triggerservice.NewWorker)
 	c.Provide(triggerservice.NewTaskService)
-	c.Provide(schedulerservice.NewWorker)
-	c.Provide(monitorservice.NewWorker)
+	c.Provide(scheduler_service.NewWorker)
+	c.Provide(monitor_service.NewWorker)
 }
 
 func provideApp(c *dig.Container) {

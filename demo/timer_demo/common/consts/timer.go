@@ -22,11 +22,11 @@ func (t TimerStatus) ToInt() int {
 }
 
 const (
-	NotRunned TaskStatus = 0
-	Running   TaskStatus = 1
-	Successed TaskStatus = 2
-	Failed    TaskStatus = 3
+	NotRun  TaskStatus = 0
+	Running TaskStatus = 1
+	Succeed TaskStatus = 2
+	Failed  TaskStatus = 3
 
-	Unabled TimerStatus = 1
-	Enabled TimerStatus = 2
+	Unable TimerStatus = 1
+	Enable TimerStatus = 2
 )

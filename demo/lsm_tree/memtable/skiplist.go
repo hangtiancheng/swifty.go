@@ -8,9 +8,9 @@ import (
 
 // Skiplist is an unsynchronized skip list; it is not safe for concurrent use.
 type Skiplist struct {
-	head      *skipNode // head sentinel node
+	head       *skipNode // head sentinel node
 	entriesCnt int       // number of key-value pairs
-	size      int       // data size in bytes
+	size       int       // data size in bytes
 }
 
 // skipNode is a node in the skip list.

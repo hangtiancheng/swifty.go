@@ -40,7 +40,7 @@ type skiplist struct {
 	scoreToNode   map[int64]*skipNode
 	memberToScore map[string]int64
 	head          *skipNode
-	randInst        *rand.Rand
+	randInst      *rand.Rand
 }
 
 func newSkiplist(key string) SortedSet {
@@ -49,7 +49,7 @@ func newSkiplist(key string) SortedSet {
 		memberToScore: make(map[string]int64),
 		scoreToNode:   make(map[int64]*skipNode),
 		head:          newSkipNode(0, 0),
-		randInst:        rand.New((rand.NewSource(lib.TimeNow().UnixNano()))),
+		randInst:      rand.New((rand.NewSource(lib.TimeNow().UnixNano()))),
 	}
 }
 

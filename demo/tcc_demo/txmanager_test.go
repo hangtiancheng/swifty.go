@@ -24,7 +24,7 @@ func newMockTXStore() TXStore {
 	}
 }
 
-// 创建一条事务明细记录
+// Creates a transaction detail record
 func (m *mockTXStore) CreateTX(ctx context.Context, components ...TCCComponent) (string, error) {
 	txid := uuid.NewString()
 	m.mutex.Lock()
@@ -51,7 +51,7 @@ func (m *mockTXStore) CreateTX(ctx context.Context, components ...TCCComponent) 
 	return txid, nil
 }
 
-// 更新事务进度：实际更新的是每个组件的 try 请求响应结果
+// Updates transaction progress: updates each component's try response result
 func (m *mockTXStore) TXUpdate(ctx context.Context, txID string, componentID string, accept bool) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -76,7 +76,7 @@ func (m *mockTXStore) TXUpdate(ctx context.Context, txID string, componentID str
 	return fmt.Errorf("[TXUpdate]invalid component id: %s for txid: %s", componentID, txID)
 }
 
-// 提交事务的最终状态, 标识事务执行结果为成功或失败
+// Submits the final transaction status, indicating success or failure
 func (m *mockTXStore) TXSubmit(ctx context.Context, txID string, success bool) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -98,7 +98,7 @@ func (m *mockTXStore) TXSubmit(ctx context.Context, txID string, success bool) e
 	return nil
 }
 
-// 获取到所有未完成的事务
+// Retrieves all incomplete transactions
 func (m *mockTXStore) GetHangingTXs(ctx context.Context) ([]*Transaction, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -112,7 +112,7 @@ func (m *mockTXStore) GetHangingTXs(ctx context.Context) ([]*Transaction, error)
 	return hangingTXs, nil
 }
 
-// 获取指定的一笔事务
+// Retrieves a specific transaction by ID
 func (m *mockTXStore) GetTX(ctx context.Context, txID string) (*Transaction, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -123,12 +123,12 @@ func (m *mockTXStore) GetTX(ctx context.Context, txID string) (*Transaction, err
 	return tx, nil
 }
 
-// 锁住整个 TXStore 模块
+// Locks the entire TXStore module
 func (m *mockTXStore) Lock(ctx context.Context, expireDuration time.Duration) error {
 	return nil
 }
 
-// 解锁TXStore 模块
+// Unlocks the TXStore module
 func (m *mockTXStore) Unlock(ctx context.Context) error {
 	return nil
 }
@@ -154,12 +154,12 @@ func newMockComponent(id string) TCCComponent {
 	}
 }
 
-// 返回组件唯一 id
+// Returns the unique component ID
 func (m *mockComponent) ID() string {
 	return m.id
 }
 
-// 执行第一阶段的 try 操作
+// Executes the first-phase try operation
 func (m *mockComponent) Try(ctx context.Context, req *TCCReq) (*TCCResp, error) {
 	resp := TCCResp{
 		ComponentID: m.id,
@@ -190,7 +190,7 @@ func (m *mockComponent) Try(ctx context.Context, req *TCCReq) (*TCCResp, error) 
 	return &resp, nil
 }
 
-// 执行第二阶段的 confirm 操作
+// Executes the second-phase confirm operation
 func (m *mockComponent) Confirm(ctx context.Context, txID string) (*TCCResp, error) {
 	resp := TCCResp{
 		ComponentID: m.id,
@@ -208,7 +208,7 @@ func (m *mockComponent) Confirm(ctx context.Context, txID string) (*TCCResp, err
 	return &resp, nil
 }
 
-// 执行第二阶段的 cancel 操作
+// Executes the second-phase cancel operation
 func (m *mockComponent) Cancel(ctx context.Context, txID string) (*TCCResp, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -228,7 +228,7 @@ func Test_txmanager_transaction_success(t *testing.T) {
 	txmanager := NewTXManager(newMockTXStore())
 	defer txmanager.Stop()
 
-	// 注册 5 个 component
+	// Register 5 components
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
@@ -262,12 +262,12 @@ func Test_txmanager_transaction_success(t *testing.T) {
 	}
 }
 
-// 验证分布式事务失败场景
+// Verify distributed transaction failure scenario
 func Test_txmanager_transaction_fail(t *testing.T) {
 	txmanager := NewTXManager(newMockTXStore())
 	defer txmanager.Stop()
 
-	// 注册 5 个 component
+	// Register 5 components
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
@@ -308,7 +308,7 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 	txmanager := NewTXManager(newMockTXStore(), WithMonitorTick(0), WithTimeout(0))
 	defer txmanager.Stop()
 
-	// 注册 10 个 component
+	// Register 10 components
 	componentsCnt := 10
 	for i := 0; i < componentsCnt; i++ {
 		componentID := strconv.Itoa(i)
@@ -318,7 +318,7 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 		}
 	}
 
-	// 并发 100 个分布式事务，随机取 3 个 component
+	// 100 concurrent distributed transactions, randomly picking 3 components
 	ctx := context.Background()
 	concurrentTXs := 100
 	componentReqCnt := 3
@@ -367,7 +367,7 @@ func Test_txmanager_transaction_advance_progress(t *testing.T) {
 	txmanager := NewTXManager(newMockTXStore(), WithMonitorTick(100*time.Millisecond))
 	defer txmanager.Stop()
 
-	// 注册 5 个 component
+	// Register 5 components
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()

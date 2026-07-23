@@ -27,7 +27,7 @@ func (t *TaskService) GetTask(ctx context.Context, id uint) (*vo.Task, error) {
 func (t *TaskService) GetTasks(ctx context.Context, req *vo.GetTasksReq) ([]*vo.Task, int64, error) {
 	total, err := t.dao.Count(ctx, dao.WithTimerID(req.TimerID), dao.WithStatuses([]int32{
 		int32(consts.Running),
-		int32(consts.Successed),
+		int32(consts.Succeed),
 		int32(consts.Failed),
 	}))
 	if err != nil {
@@ -40,7 +40,7 @@ func (t *TaskService) GetTasks(ctx context.Context, req *vo.GetTasksReq) ([]*vo.
 	}
 	tasks, err := t.dao.GetTasks(ctx, dao.WithTimerID(req.TimerID), dao.WithPageLimit(offset, limit), dao.WithStatuses([]int32{
 		int32(consts.Running),
-		int32(consts.Successed),
+		int32(consts.Succeed),
 		int32(consts.Failed),
 	}), dao.WithDesc())
 	if err != nil {

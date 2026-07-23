@@ -9,18 +9,18 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/conf"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/log"
 
-	gredis "github.com/redis/go-redis/v9"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 // Client is a Redis client backed by go-redis/v9.
 type Client struct {
-	client *gredis.Client
+	client *go_redis.Client
 }
 
 // GetClient creates a new Redis client from configuration.
 func GetClient(confProvider *conf.RedisConfigProvider) *Client {
 	config := confProvider.Get()
-	client := gredis.NewClient(&gredis.Options{
+	client := go_redis.NewClient(&go_redis.Options{
 		Addr:            config.Address,
 		Password:        config.Password,
 		PoolSize:        config.MaxActive,
@@ -70,8 +70,8 @@ func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs
 // Get executes the Redis GET command.
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	val, err := c.client.Get(ctx, key).Result()
-	if err == gredis.Nil {
-		return "", gredis.Nil
+	if err == go_redis.Nil {
+		return "", go_redis.Nil
 	}
 	return val, err
 }
@@ -91,7 +91,7 @@ func (c *Client) Exists(ctx context.Context, keys ...string) (bool, error) {
 // HGet executes the Redis HGET command.
 func (c *Client) HGet(ctx context.Context, table, key string) (string, error) {
 	val, err := c.client.HGet(ctx, table, key).Result()
-	if err == gredis.Nil {
+	if err == go_redis.Nil {
 		return "", nil
 	}
 	return val, err
@@ -104,7 +104,7 @@ func (c *Client) HSet(ctx context.Context, table, key string, value interface{})
 
 // ZrangeByScore executes the Redis ZRANGEBYSCORE command.
 func (c *Client) ZrangeByScore(ctx context.Context, table string, score1, score2 int64) ([]string, error) {
-	return c.client.ZRangeByScore(ctx, table, &gredis.ZRangeBy{
+	return c.client.ZRangeByScore(ctx, table, &go_redis.ZRangeBy{
 		Min: strconv.FormatInt(score1, 10),
 		Max: strconv.FormatInt(score2, 10),
 	}).Result()
@@ -112,7 +112,7 @@ func (c *Client) ZrangeByScore(ctx context.Context, table string, score1, score2
 
 // ZAdd executes the Redis ZADD command.
 func (c *Client) ZAdd(ctx context.Context, table string, score int64, value interface{}) error {
-	return c.client.ZAdd(ctx, table, gredis.Z{Score: float64(score), Member: value}).Err()
+	return c.client.ZAdd(ctx, table, go_redis.Z{Score: float64(score), Member: value}).Err()
 }
 
 // Expire executes the Redis EXPIRE command.
@@ -159,7 +159,7 @@ func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]inter
 		return nil, nil
 	}
 
-	results, err := c.client.TxPipelined(ctx, func(pipe gredis.Pipeliner) error {
+	results, err := c.client.TxPipelined(ctx, func(pipe go_redis.Pipeliner) error {
 		for _, cmd := range commands {
 			switch cmd.Name {
 			case "SET":
@@ -168,7 +168,7 @@ func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]inter
 			case "ZADD":
 				key := cmd.Args[0].(string)
 				score := toInt64(cmd.Args[1])
-				pipe.ZAdd(ctx, key, gredis.Z{Score: float64(score), Member: cmd.Args[2]})
+				pipe.ZAdd(ctx, key, go_redis.Z{Score: float64(score), Member: cmd.Args[2]})
 			case "SETBIT":
 				key := cmd.Args[0].(string)
 				offset := toInt64(cmd.Args[1])

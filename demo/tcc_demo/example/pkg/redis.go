@@ -29,7 +29,7 @@ func GetRedisClient() *redis_lock.Client {
 	return redisClient
 }
 
-// 构造事务 id key，用于幂等去重
+// BuildTXKey constructs the transaction ID key for idempotency deduplication
 func BuildTXKey(componentID, txID string) string {
 	return fmt.Sprintf("txKey:%s:%s", componentID, txID)
 }
@@ -38,12 +38,12 @@ func BuildTXDetailKey(componentID, txID string) string {
 	return fmt.Sprintf("txDetailKey:%s:%s", componentID, txID)
 }
 
-// 构造请求 id，用于记录状态机
+// BuildDataKey constructs the request ID key for state machine tracking
 func BuildDataKey(componentID, txID, bizID string) string {
 	return fmt.Sprintf("txKey:%s:%s:%s", componentID, txID, bizID)
 }
 
-// 构造事务锁 key
+// BuildTXLockKey constructs the transaction lock key
 func BuildTXLockKey(componentID, txID string) string {
 	return fmt.Sprintf("txLockKey:%s:%s", componentID, txID)
 }

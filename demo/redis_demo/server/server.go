@@ -27,14 +27,14 @@ type Server struct {
 	stopOnce sync.Once
 	handler  Handler
 	logger   log.Logger
-	stopChan    chan struct{}
+	stopChan chan struct{}
 }
 
 func NewServer(handler Handler, logger log.Logger) *Server {
 	return &Server{
-		handler: handler,
-		logger:  logger,
-		stopChan:   make(chan struct{}),
+		handler:  handler,
+		logger:   logger,
+		stopChan: make(chan struct{}),
 	}
 }
 

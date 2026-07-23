@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	gredis "github.com/redis/go-redis/v9"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/utils"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 const ftimerLockKeyPrefix = "FTIMER_LOCK_PREFIX_"
@@ -34,7 +34,7 @@ func NewReentrantDistributeLock(key string, client *Client) *ReentrantDistribute
 // Lock acquires the distributed lock.
 func (r *ReentrantDistributeLock) Lock(ctx context.Context, expireSeconds int64) error {
 	res, err := r.client.Get(ctx, r.key)
-	if err != nil && !errors.Is(err, gredis.Nil) {
+	if err != nil && !errors.Is(err, go_redis.Nil) {
 		return err
 	}
 

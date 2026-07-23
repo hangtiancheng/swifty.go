@@ -26,21 +26,21 @@ func init() {
 	defaultLogger = NewSugarLogger(NewOptions())
 }
 
-// Options 选项配置
+// Options configuration
 type Options struct {
-	LogName    string // 日志名称
-	LogLevel   string // 日志级别
-	FileName   string // 文件名称
-	MaxAge     int    // 日志保留时间，以天为单位
-	MaxSize    int    // 日志保留大小，以 M 为单位
-	MaxBackups int    // 保留文件个数
-	Compress   bool   // 是否压缩
+	LogName    string // Log name
+	LogLevel   string // Log level
+	FileName   string // File name
+	MaxAge     int    // Log retention time in days
+	MaxSize    int    // Log retention size in MB
+	MaxBackups int    // Number of backup files to keep
+	Compress   bool   // Whether to compress
 }
 
-// Option 选项方法
+// Option is a functional option type
 type Option func(*Options)
 
-// NewOptions 初始化
+// NewOptions initializes with defaults
 func NewOptions(opts ...Option) Options {
 
 	options := Options{
@@ -58,14 +58,14 @@ func NewOptions(opts ...Option) Options {
 	return options
 }
 
-// WithLogLevel 日志级别
+// WithLogLevel sets the log level
 func WithLogLevel(level string) Option {
 	return func(o *Options) {
 		o.LogLevel = level
 	}
 }
 
-// WithFileName 日志文件
+// WithFileName sets the log file name
 func WithFileName(filename string) Option {
 	return func(o *Options) {
 		o.FileName = filename
@@ -146,62 +146,62 @@ func (w *stdLoggerWrapper) Errorf(format string, v ...interface{}) {
 	}
 }
 
-// GetDefaultLogger 获取默认日志实现
+// GetDefaultLogger returns the default logger
 func GetDefaultLogger() Logger {
 	return defaultLogger
 }
 
-// Debugf 打印 Debug 日志
+// Debugf logs a message at Debug level
 func Debugf(format string, args ...interface{}) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
-// Infof 打印 Info 日志
+// Infof logs a message at Info level
 func Infof(format string, args ...interface{}) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
-// Warnf 打印 Warn 日志
+// Warnf logs a message at Warn level
 func Warnf(format string, args ...interface{}) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
-// Errorf 打印 Error 日志
+// Errorf logs a message at Error level
 func Errorf(format string, args ...interface{}) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
-// DebugContext 打印 Debug 日志
+// DebugContext logs at Debug level with context
 func DebugContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Debug(args...)
 }
 
-// DebugContextf 打印 Debug 日志
+// DebugContextf logs at Debug level with context
 func DebugContextf(ctx context.Context, format string, args ...interface{}) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
-// InfoContext 打印 Info 日志
+// InfoContext logs at Info level with context
 func InfoContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Info(args...)
 }
 
-// InfoContextf 打印 Info 日志
+// InfoContextf logs at Info level with context
 func InfoContextf(ctx context.Context, format string, args ...interface{}) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
-// WarnContext 打印 Warn 日志
+// WarnContext logs at Warn level with context
 func WarnContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Warn(args...)
 }
 
-// WarnContextf 打印 Warn 日志
+// WarnContextf logs at Warn level with context
 func WarnContextf(ctx context.Context, format string, args ...interface{}) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
-// ErrorContext 打印 Error 日志
+// ErrorContext logs at Error level with context
 func ErrorContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Error(args...)
 }

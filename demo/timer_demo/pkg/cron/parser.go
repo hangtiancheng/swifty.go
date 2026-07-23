@@ -68,13 +68,13 @@ func (c *CronParser) NextAfter(expr string, after time.Time) (time.Time, error) 
 }
 
 type cronSchedule struct {
-	minute       []int
-	hour         []int
-	dayOfMonth   []int
-	month        []int
-	dayOfWeek    []int
-	domWildCard  bool
-	dowWildCard  bool
+	minute      []int
+	hour        []int
+	dayOfMonth  []int
+	month       []int
+	dayOfWeek   []int
+	domWildCard bool
+	dowWildCard bool
 }
 
 func (s *cronSchedule) Next(t time.Time) time.Time {

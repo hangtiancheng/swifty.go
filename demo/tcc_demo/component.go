@@ -2,29 +2,29 @@ package tcc_demo
 
 import "context"
 
-// tcc 请求参数
+// TCC request parameters
 type TCCReq struct {
-	// 全局唯一的事务 id
+	// Globally unique transaction ID
 	ComponentID string                 `json:"componentID"`
 	TXID        string                 `json:"txID"`
 	Data        map[string]interface{} `json:"data"`
 }
 
-// tcc 响应结果
+// TCC response result
 type TCCResp struct {
 	ComponentID string `json:"componentID"`
 	ACK         bool   `json:"ack"`
 	TXID        string `json:"txID"`
 }
 
-// tcc 组件
+// TCC component interface
 type TCCComponent interface {
-	// 返回组件唯一 id
+	// Returns the unique component ID
 	ID() string
-	// 执行第一阶段的 try 操作
+	// Executes the first-phase try operation
 	Try(ctx context.Context, req *TCCReq) (*TCCResp, error)
-	// 执行第二阶段的 confirm 操作
+	// Executes the second-phase confirm operation
 	Confirm(ctx context.Context, txID string) (*TCCResp, error)
-	// 执行第二阶段的 cancel 操作
+	// Executes the second-phase cancel operation
 	Cancel(ctx context.Context, txID string) (*TCCResp, error)
 }

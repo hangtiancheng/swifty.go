@@ -131,7 +131,7 @@ func (t *Timer) ToPO() (*po.Timer, error) {
 		NotifyHTTPParam: string(param),
 	}
 	if timer.Status == 0 {
-		timer.Status = consts.Unabled.ToInt()
+		timer.Status = consts.Unable.ToInt()
 	}
 	return &timer, nil
 }

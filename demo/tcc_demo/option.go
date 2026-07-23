@@ -3,9 +3,9 @@ package tcc_demo
 import "time"
 
 type Options struct {
-	// 事务执行时长限制
+	// Transaction execution timeout
 	Timeout time.Duration
-	// 轮询监控任务间隔时长
+	// Polling interval for the monitor task
 	MonitorTick time.Duration
 }
 

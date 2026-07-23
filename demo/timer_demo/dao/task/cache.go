@@ -92,13 +92,13 @@ func (t *TaskCache) BatchCreateTasks(ctx context.Context, tasks []*po.Task, star
 }
 
 func (t *TaskCache) GetTasksByTime(ctx context.Context, table string, start, end int64) ([]*po.Task, error) {
-	timerIDUnixs, err := t.client.ZrangeByScore(ctx, table, start, end-1)
+	timerIDUnix, err := t.client.ZrangeByScore(ctx, table, start, end-1)
 	if err != nil {
 		return nil, err
 	}
 
-	tasks := make([]*po.Task, 0, len(timerIDUnixs))
-	for _, timerIDUnix := range timerIDUnixs {
+	tasks := make([]*po.Task, 0, len(timerIDUnix))
+	for _, timerIDUnix := range timerIDUnix {
 		timerID, unix, _ := utils.SplitTimerIDUnix(timerIDUnix)
 		tasks = append(tasks, &po.Task{
 			TimerID:  timerID,

@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	mconf "github.com/hangtiancheng/swifty.go/demo/timer_demo/common/conf"
+	common_conf "github.com/hangtiancheng/swifty.go/demo/timer_demo/common/conf"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/consts"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/utils"
-	taskdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
-	timerdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
+	task_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
+	timer_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/cron"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/log"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/pool"
@@ -16,17 +16,17 @@ import (
 )
 
 type Worker struct {
-	timerDAO          *timerdao.TimerDAO
-	taskDAO           *taskdao.TaskDAO
-	taskCache         *taskdao.TaskCache
+	timerDAO          *timer_dao.TimerDAO
+	taskDAO           *task_dao.TaskDAO
+	taskCache         *task_dao.TaskCache
 	cronParser        *cron.CronParser
 	lockService       *redis.Client
-	appConfigProvider *mconf.MigratorAppConfProvider
+	appConfigProvider *common_conf.MigratorAppConfProvider
 	pool              pool.WorkerPool
 }
 
-func NewWorker(timerDAO *timerdao.TimerDAO, taskDAO *taskdao.TaskDAO, taskCache *taskdao.TaskCache, lockService *redis.Client,
-	cronParser *cron.CronParser, appConfigProvider *mconf.MigratorAppConfProvider) *Worker {
+func NewWorker(timerDAO *timer_dao.TimerDAO, taskDAO *task_dao.TaskDAO, taskCache *task_dao.TaskCache, lockService *redis.Client,
+	cronParser *cron.CronParser, appConfigProvider *common_conf.MigratorAppConfProvider) *Worker {
 	return &Worker{
 		pool:              pool.NewGoWorkerPool(appConfigProvider.Get().WorkersNum),
 		timerDAO:          timerDAO,
@@ -62,13 +62,13 @@ func (w *Worker) Start(ctx context.Context) error {
 			continue
 		}
 
-		_ = locker.ExpireLock(ctx, int64(conf.MigrateSucessExpireMinutes)*int64(time.Minute/time.Second))
+		_ = locker.ExpireLock(ctx, int64(conf.MigrateSuccessExpireMinutes)*int64(time.Minute/time.Second))
 	}
 	return nil
 }
 
 func (w *Worker) migrate(ctx context.Context) error {
-	timers, err := w.timerDAO.GetTimers(ctx, timerdao.WithStatus(int32(consts.Enabled.ToInt())))
+	timers, err := w.timerDAO.GetTimers(ctx, timer_dao.WithStatus(int32(consts.Enable.ToInt())))
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (w *Worker) migrate(ctx context.Context) error {
 	// 	return err
 	// }
 
-	// log.InfoContext(ctx, "migrator batch create db tasks susccess")
+	// log.InfoContext(ctx, "migrator batch create db tasks success")
 	return w.migrateToCache(ctx, start, end)
 }
 
@@ -105,11 +105,11 @@ func (w *Worker) migrate(ctx context.Context) error {
 
 func (w *Worker) migrateToCache(ctx context.Context, start, end time.Time) error {
 	// After migration, retrieve all added tasks and add them to Redis
-	tasks, err := w.taskDAO.GetTasks(ctx, taskdao.WithStartTime(start), taskdao.WithEndTime(end))
+	tasks, err := w.taskDAO.GetTasks(ctx, task_dao.WithStartTime(start), task_dao.WithEndTime(end))
 	if err != nil {
 		log.ErrorContextf(ctx, "migrator batch get tasks failed, err: %v", err)
 		return err
 	}
-	// log.InfoContext(ctx, "migrator batch get tasks susccess")
+	// log.InfoContext(ctx, "migrator batch get tasks success")
 	return w.taskCache.BatchCreateTasks(ctx, tasks, start, end)
 }

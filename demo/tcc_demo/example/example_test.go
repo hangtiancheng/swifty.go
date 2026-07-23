@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	dsn      = "请输入 mysql sdn"
+	dsn      = "enter mysql dsn"
 	network  = "tcp"
-	address  = "请输入 redis ip:port"
-	password = "请输入 redis 密码"
+	address  = "enter redis ip:port"
+	password = "enter redis password"
 )
 
 func main() {
@@ -29,19 +29,19 @@ func main() {
 	componentBID := "componentB"
 	componentCID := "componentC"
 
-	// 构造出对应的 tcc component
+	// Construct TCC components
 	componentA := NewMockComponent(componentAID, redisClient)
 	componentB := NewMockComponent(componentBID, redisClient)
 	componentC := NewMockComponent(componentCID, redisClient)
 
-	// 构造出事务日志存储模块
+	// Construct the transaction log storage module
 	txRecordDAO := dao.NewTXRecordDAO(mysqlDB)
 	txStore := NewMockTXStore(txRecordDAO, redisClient)
 
 	txManager := tcc_demo.NewTXManager(txStore, tcc_demo.WithMonitorTick(time.Second))
 	defer txManager.Stop()
 
-	// 完成各组件的注册
+	// Register all components
 	if err := txManager.Register(componentA); err != nil {
 		fmt.Println(err)
 		return

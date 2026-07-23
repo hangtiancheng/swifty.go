@@ -6,8 +6,8 @@ import (
 
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/consts"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/utils"
-	taskdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
-	timerdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
+	task_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
+	timer_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/log"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/promethus"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/redis"
@@ -15,12 +15,12 @@ import (
 
 type Worker struct {
 	lockService *redis.Client
-	taskDAO     *taskdao.TaskDAO
-	timerDAO    *timerdao.TimerDAO
+	taskDAO     *task_dao.TaskDAO
+	timerDAO    *timer_dao.TimerDAO
 	reporter    *promethus.Reporter
 }
 
-func NewWorker(taskDAO *taskdao.TaskDAO, timerDAO *timerdao.TimerDAO, lockService *redis.Client, reporter *promethus.Reporter) *Worker {
+func NewWorker(taskDAO *task_dao.TaskDAO, timerDAO *timer_dao.TimerDAO, lockService *redis.Client, reporter *promethus.Reporter) *Worker {
 	return &Worker{
 		taskDAO:     taskDAO,
 		timerDAO:    timerDAO,
@@ -49,23 +49,23 @@ func (w *Worker) Start(ctx context.Context) {
 
 		// Query timers from the previous minute
 		minute := utils.GetMinute(now)
-		go w.reportUnexecedTasksCnt(ctx, minute)
+		go w.reportNoExceedTasksCnt(ctx, minute)
 		go w.reportEnabledTimersCnt(ctx)
 	}
 }
 
-func (w *Worker) reportUnexecedTasksCnt(ctx context.Context, minute time.Time) {
-	unexecedTasksCnt, err := w.taskDAO.Count(ctx, taskdao.WithStartTime(minute.Add(-time.Minute)), taskdao.WithEndTime(minute), taskdao.WithStatus(int32(consts.NotRunned)))
+func (w *Worker) reportNoExceedTasksCnt(ctx context.Context, minute time.Time) {
+	noExceedTasksCnt, err := w.taskDAO.Count(ctx, task_dao.WithStartTime(minute.Add(-time.Minute)), task_dao.WithEndTime(minute), task_dao.WithStatus(int32(consts.NotRun)))
 	if err != nil {
-		log.ErrorContextf(ctx, "[monitor] get unexeced tasks cnt failed, err: %v", err)
+		log.ErrorContextf(ctx, "[monitor] get no exceed tasks cnt failed, err: %v", err)
 		return
 	}
-	w.reporter.ReportTimerUnexecedRecord(float64(unexecedTasksCnt))
-	log.InfoContextf(ctx, "[monitor] report unexeced tasks cnt success, cnt: %d", unexecedTasksCnt)
+	w.reporter.ReportTimerNoExceedRecord(float64(noExceedTasksCnt))
+	log.InfoContextf(ctx, "[monitor] report no exceed tasks cnt success, cnt: %d", noExceedTasksCnt)
 }
 
 func (w *Worker) reportEnabledTimersCnt(ctx context.Context) {
-	enabledTimerCnt, err := w.timerDAO.Count(ctx, timerdao.WithStatus(int32(consts.Enabled)))
+	enabledTimerCnt, err := w.timerDAO.Count(ctx, timer_dao.WithStatus(int32(consts.Enable)))
 	if err != nil {
 		log.ErrorContextf(ctx, "[monitor] get enabled timer cnt failed, err: %v", err)
 		return

@@ -17,7 +17,7 @@ type TimeWheel struct {
 	sync.Once
 	interval     time.Duration
 	ticker       *time.Ticker
-	stopChan        chan struct{}
+	stopChan     chan struct{}
 	addTaskCh    chan *taskElement
 	removeTaskCh chan string
 	slots        []*list.List
@@ -36,7 +36,7 @@ func NewTimeWheel(slotNum int, interval time.Duration) *TimeWheel {
 	t := TimeWheel{
 		interval:     interval,
 		ticker:       time.NewTicker(interval),
-		stopChan:        make(chan struct{}),
+		stopChan:     make(chan struct{}),
 		keyToETask:   make(map[string]*list.Element),
 		slots:        make([]*list.List, 0, slotNum),
 		addTaskCh:    make(chan *taskElement),

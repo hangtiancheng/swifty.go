@@ -12,8 +12,8 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/model/po"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/model/vo"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/utils"
-	taskdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
-	timerdao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
+	task_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/task"
+	timer_dao "github.com/hangtiancheng/swifty.go/demo/timer_demo/dao/timer"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/cron"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/log"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/mysql"
@@ -31,7 +31,7 @@ type TimerService struct {
 	lockService         *redis.Client
 }
 
-func NewTimerService(dao *timerdao.TimerDAO, taskCache *taskdao.TaskCache, lockService *redis.Client,
+func NewTimerService(dao *timer_dao.TimerDAO, taskCache *task_dao.TaskCache, lockService *redis.Client,
 	confProvider *conf.WebServerAppConfProvider, migrateConfProvider *conf.MigratorAppConfProvider, parser *cron.CronParser) *TimerService {
 	return &TimerService{
 		dao:                 dao,
@@ -77,7 +77,7 @@ func (t *TimerService) UpdateTimer(ctx context.Context, timer *vo.Timer) error {
 }
 
 func (t *TimerService) GetTimer(ctx context.Context, id uint) (*vo.Timer, error) {
-	pTimer, err := t.dao.GetTimer(ctx, timerdao.WithID(id))
+	pTimer, err := t.dao.GetTimer(ctx, timer_dao.WithID(id))
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +92,10 @@ func (t *TimerService) EnableTimer(ctx context.Context, app string, id uint) err
 		return errors.New("enable/disable operations too frequent, please try again later")
 	}
 
-	do := func(ctx context.Context, dao *timerdao.TimerDAO, timer *po.Timer) error {
+	do := func(ctx context.Context, dao *timer_dao.TimerDAO, timer *po.Timer) error {
 		// Status validation
-		if timer.Status != consts.Unabled.ToInt() {
-			return fmt.Errorf("not unabled status, enable failed, timer id: %d", id)
+		if timer.Status != consts.Unable.ToInt() {
+			return fmt.Errorf("not unable status, enable failed, timer id: %d", id)
 		}
 
 		// Get batch execution times
@@ -121,7 +121,7 @@ func (t *TimerService) EnableTimer(ctx context.Context, app string, id uint) err
 		}
 
 		// Update timer status to enabled
-		timer.Status = consts.Enabled.ToInt()
+		timer.Status = consts.Enable.ToInt()
 		return dao.UpdateTimer(ctx, timer)
 	}
 
@@ -135,14 +135,14 @@ func (t *TimerService) UnableTimer(ctx context.Context, app string, id uint) err
 		return errors.New("enable/disable operations too frequent, please try again later")
 	}
 
-	do := func(ctx context.Context, dao *timerdao.TimerDAO, timer *po.Timer) error {
+	do := func(ctx context.Context, dao *timer_dao.TimerDAO, timer *po.Timer) error {
 		// Status validation
-		if timer.Status != consts.Enabled.ToInt() {
+		if timer.Status != consts.Enable.ToInt() {
 			return fmt.Errorf("not enabled status, unable failed, timer id: %d", id)
 		}
 
 		// Update timer status to disabled
-		timer.Status = consts.Unabled.ToInt()
+		timer.Status = consts.Unable.ToInt()
 		return dao.UpdateTimer(ctx, timer)
 	}
 
@@ -150,7 +150,7 @@ func (t *TimerService) UnableTimer(ctx context.Context, app string, id uint) err
 }
 
 func (t *TimerService) GetAppTimers(ctx context.Context, req *vo.GetAppTimersReq) ([]*vo.Timer, int64, error) {
-	total, err := t.dao.Count(ctx, timerdao.WithApp(req.App))
+	total, err := t.dao.Count(ctx, timer_dao.WithApp(req.App))
 	if err != nil {
 		return nil, -1, err
 	}
@@ -160,7 +160,7 @@ func (t *TimerService) GetAppTimers(ctx context.Context, req *vo.GetAppTimersReq
 		return []*vo.Timer{}, total, nil
 	}
 
-	timers, err := t.dao.GetTimers(ctx, timerdao.WithApp(req.App), timerdao.WithPageLimit(offset, limit), timerdao.WithDesc())
+	timers, err := t.dao.GetTimers(ctx, timer_dao.WithApp(req.App), timer_dao.WithPageLimit(offset, limit), timer_dao.WithDesc())
 	if err != nil {
 		return nil, -1, err
 	}
@@ -174,7 +174,7 @@ func (t *TimerService) GetAppTimers(ctx context.Context, req *vo.GetAppTimersReq
 }
 
 func (t *TimerService) GetTimersByName(ctx context.Context, req *vo.GetTimersByNameReq) ([]*vo.Timer, int64, error) {
-	total, err := t.dao.Count(ctx, timerdao.WithApp(req.App), timerdao.WithFuzzyName(req.FuzzyName))
+	total, err := t.dao.Count(ctx, timer_dao.WithApp(req.App), timer_dao.WithFuzzyName(req.FuzzyName))
 	if err != nil {
 		return nil, -1, err
 	}
@@ -184,7 +184,7 @@ func (t *TimerService) GetTimersByName(ctx context.Context, req *vo.GetTimersByN
 		return []*vo.Timer{}, total, nil
 	}
 
-	timers, err := t.dao.GetTimers(ctx, timerdao.WithApp(req.App), timerdao.WithPageLimit(offset, limit), timerdao.WithFuzzyName(req.FuzzyName))
+	timers, err := t.dao.GetTimers(ctx, timer_dao.WithApp(req.App), timer_dao.WithPageLimit(offset, limit), timer_dao.WithFuzzyName(req.FuzzyName))
 	if err != nil {
 		return nil, -1, err
 	}
@@ -201,11 +201,11 @@ type timerDAO interface {
 	CreateTimer(ctx context.Context, timer *po.Timer) (uint, error)
 	DeleteTimer(ctx context.Context, id uint) error
 	UpdateTimer(ctx context.Context, timer *po.Timer) error
-	GetTimer(ctx context.Context, opts ...timerdao.Option) (*po.Timer, error)
+	GetTimer(ctx context.Context, opts ...timer_dao.Option) (*po.Timer, error)
 	BatchCreateRecords(ctx context.Context, tasks []*po.Task) error
-	DoWithLock(ctx context.Context, id uint, do func(ctx context.Context, dao *timerdao.TimerDAO, timer *po.Timer) error) error
-	GetTimers(ctx context.Context, opts ...timerdao.Option) ([]*po.Timer, error)
-	Count(ctx context.Context, opts ...timerdao.Option) (int64, error)
+	DoWithLock(ctx context.Context, id uint, do func(ctx context.Context, dao *timer_dao.TimerDAO, timer *po.Timer) error) error
+	GetTimers(ctx context.Context, opts ...timer_dao.Option) ([]*po.Timer, error)
+	Count(ctx context.Context, opts ...timer_dao.Option) (int64, error)
 }
 
 type confProvider interface {

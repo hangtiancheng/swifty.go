@@ -5,9 +5,9 @@ import (
 )
 
 type RequestEntity struct {
-	// 组件名称
+	// Component name
 	ComponentID string `json:"componentName"`
-	// 组件入参
+	// Component request parameters
 	Request map[string]interface{} `json:"request"`
 }
 
@@ -26,15 +26,15 @@ type ComponentEntity struct {
 	Component TCCComponent
 }
 
-// 事务状态
+// Transaction status
 type TXStatus string
 
 const (
-	// 事务执行中
+	// Transaction in progress
 	TXHanging TXStatus = "hanging"
-	// 事务成功
+	// Transaction succeeded
 	TXSuccessful TXStatus = "successful"
-	// 事务失败
+	// Transaction failed
 	TXFailure TXStatus = "failure"
 )
 
@@ -50,9 +50,9 @@ func (c ComponentTryStatus) String() string {
 
 const (
 	TryHanging ComponentTryStatus = "hanging"
-	// 事务成功
+	// Try succeeded
 	TrySuccessful ComponentTryStatus = "successful"
-	// 事务失败
+	// Try failed
 	TryFailure ComponentTryStatus = "failure"
 )
 
@@ -61,7 +61,7 @@ type ComponentTryEntity struct {
 	TryStatus   ComponentTryStatus
 }
 
-// 事务
+// Transaction
 type Transaction struct {
 	TXID       string `json:"txID"`
 	Components []*ComponentTryEntity
@@ -70,7 +70,7 @@ type Transaction struct {
 }
 
 func (t *Transaction) getStatus(createdBefore time.Time) TXStatus {
-	// 1 如果当中出现失败的，直接置为失败
+	// 1. If any component failed, the transaction is failed
 	var hangingExist bool
 	for _, component := range t.Components {
 		if component.TryStatus == TryFailure {
@@ -79,16 +79,16 @@ func (t *Transaction) getStatus(createdBefore time.Time) TXStatus {
 		hangingExist = hangingExist || (component.TryStatus != TrySuccessful)
 	}
 
-	// 2 如果存在 hanging 状态，并且已经超时，也直接置为失败
+	// 2. If any component is hanging and the transaction has timed out, mark as failed
 	if hangingExist && t.CreatedAt.Before(createdBefore) {
 		return TXFailure
 	}
 
-	// 3 如果存在组件 try 操作处于 hanging 状态，则返回 hanging 状态
+	// 3. If any component is still hanging, the transaction remains hanging
 	if hangingExist {
 		return TXHanging
 	}
 
-	// 4 走到这个分支必然意味着所有组件的 try 操作都成功了
+	// 4. All components succeeded
 	return TXSuccessful
 }

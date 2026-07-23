@@ -19,16 +19,16 @@ import (
 
 // QualityInspector is the redis_demo test driver.
 type QualityInspector struct {
-	times  int
-	app    *app.Application
-	t      *testing.T
+	times    int
+	app      *app.Application
+	t        *testing.T
 	randInst *rand.Rand
 }
 
 func NewQualityInspector(t *testing.T, times int) *QualityInspector {
 	return &QualityInspector{
-		t:      t,
-		times:  times,
+		t:        t,
+		times:    times,
 		randInst: rand.New(rand.NewSource(lib.TimeNow().UnixNano())),
 	}
 }

@@ -39,14 +39,14 @@ func loadConfig() {
 }
 
 // gConf holds the fallback default configuration.
-var gConf GloablConf = GloablConf{
+var gConf GlobalConf = GlobalConf{
 	Migrator: &MigratorAppConf{
 		// Number of concurrent goroutines per node
 		WorkersNum: 1000,
 		// Time interval for each data migration step, in minutes
 		MigrateStepMinutes: 60,
 		// Lock expiration time updated after successful migration, in minutes
-		MigrateSucessExpireMinutes: 120,
+		MigrateSuccessExpireMinutes: 120,
 		// Initial lock expiration time when the migrator acquires the lock, in minutes
 		MigrateTryLockMinutes: 20,
 		// How long the migrator caches timer details in memory ahead of time, in minutes
@@ -93,7 +93,7 @@ var gConf GloablConf = GloablConf{
 	},
 }
 
-type GloablConf struct {
+type GlobalConf struct {
 	Migrator  *MigratorAppConf  `yaml:"migrator"`
 	Mysql     *MySQLConfig      `yaml:"mysql"`
 	Redis     *RedisConfig      `yaml:"redis"`

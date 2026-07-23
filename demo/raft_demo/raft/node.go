@@ -40,7 +40,7 @@ func StartNode(conf *Config, peers []Peer) Node {
 
 func newNode() Node {
 	return Node{
-		proc:   make(chan Message),
+		proc:      make(chan Message),
 		recvChan:  make(chan Message),
 		confChan:  make(chan Message),
 		readyChan: make(chan Ready),
@@ -59,7 +59,7 @@ func (n *Node) run(r *raft) {
 		prevHard = emptyHardState
 
 		prevLastUnstableI, prevLastUnstableJ uint64
-		hasPrevLastUnstableI                  bool
+		hasPrevLastUnstableI                 bool
 	)
 
 	for {

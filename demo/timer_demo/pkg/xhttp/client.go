@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	neturl "net/url"
+	net_url "net/url"
 	"time"
 )
 
@@ -80,12 +80,12 @@ func (j *JSONClient) Do(ctx context.Context, method string, url string, header m
 }
 
 func getCompleteURL(originURL string, params map[string]string) string {
-	values := neturl.Values{}
+	values := net_url.Values{}
 	for k, v := range params {
 		values.Add(k, v)
 	}
 
-	queriesStr, _ := neturl.QueryUnescape(values.Encode())
+	queriesStr, _ := net_url.QueryUnescape(values.Encode())
 	if len(queriesStr) == 0 {
 		return originURL
 	}

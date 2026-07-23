@@ -25,8 +25,8 @@ const (
 	timerEnabledCntSummary = "Total number of enabled timers"
 
 	// Number of unexecuted timers.
-	timerUnexecedCnt        = "timer_unexeced_cnt"
-	timerUnexecedCntSummary = "Number of unexecuted timers"
+	timerNoExceedCnt        = "timer_no_exceed_cnt"
+	timerNoExceedCntSummary = "Number of unexecuted timers"
 
 	reportName = "_name"
 	reportType = "_type"
@@ -41,7 +41,7 @@ type Reporter struct {
 	timerExecRecorder     *prometheus.CounterVec
 	timeDelayRecorder     prometheus.ObserverVec
 	timerEnabledRecorder  *prometheus.GaugeVec
-	timerUnexecedRecorder *prometheus.GaugeVec
+	timerNoExceedRecorder *prometheus.GaugeVec
 }
 
 var reporter = newReporter()
@@ -84,14 +84,14 @@ func newReporter() *Reporter {
 		}).MustCurryWith(prometheus.Labels{reportName: timerEnabledCntSummary,
 			reportType: string(gauge)}),
 
-		timerUnexecedRecorder: promauto.NewGaugeVec(prometheus.GaugeOpts{
-			Name: timerUnexecedCnt,
-			Help: timerUnexecedCntSummary,
+		timerNoExceedRecorder: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: timerNoExceedCnt,
+			Help: timerNoExceedCntSummary,
 		}, []string{
 			label,
 			reportName,
 			reportType,
-		}).MustCurryWith(prometheus.Labels{reportName: timerUnexecedCntSummary,
+		}).MustCurryWith(prometheus.Labels{reportName: timerNoExceedCntSummary,
 			reportType: string(gauge)}),
 	}
 
@@ -110,6 +110,6 @@ func (r *Reporter) ReportTimerEnabledRecord(total float64) {
 	r.timerEnabledRecorder.WithLabelValues(timer).Set(total)
 }
 
-func (r *Reporter) ReportTimerUnexecedRecord(total float64) {
-	r.timerUnexecedRecorder.WithLabelValues(timer).Set(total)
+func (r *Reporter) ReportTimerNoExceedRecord(total float64) {
+	r.timerNoExceedRecorder.WithLabelValues(timer).Set(total)
 }
