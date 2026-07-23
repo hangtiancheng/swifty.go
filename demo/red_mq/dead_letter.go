@@ -7,12 +7,12 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/red_mq/redis"
 )
 
-// 死信队列，当消息处理失败达到指定次数时，会被投递到此处
+// DeadLetterMailbox receives messages that have exceeded the retry limit.
 type DeadLetterMailbox interface {
 	Deliver(ctx context.Context, msg *redis.MsgEntity) error
 }
 
-// 默认使用的死信队列，仅仅对消息失败的信息进行日志打印
+// DeadLetterLogger is the default DeadLetterMailbox. It simply logs the message.
 type DeadLetterLogger struct{}
 
 func NewDeadLetterLogger() *DeadLetterLogger {

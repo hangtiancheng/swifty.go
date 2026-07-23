@@ -6,73 +6,71 @@ import (
 	"time"
 )
 
-// 跳表，未加锁，不保证并发安全
+// Skiplist is an unsynchronized skip list; it is not safe for concurrent use.
 type Skiplist struct {
-	head      *skipNode // 跳表的头结点
-	entrisCnt int       // 跳表中的 kv 对个数
-	size      int       // 跳表数据量大小，单位 byte
+	head      *skipNode // head sentinel node
+	entrisCnt int       // number of key-value pairs
+	size      int       // data size in bytes
 }
 
-// 跳表节点
+// skipNode is a node in the skip list.
 type skipNode struct {
-	nexts      []*skipNode // 通过 next slice 来实现跳表节点多层指针结构
-	key, value []byte      // 节点内存储的 kv 对数据
+	nexts      []*skipNode // multi-level forward pointers
+	key, value []byte      // stored key-value pair
 }
 
-// 构造跳表实例
+// NewSkiplist constructs a Skiplist instance.
 func NewSkiplist() MemTable {
 	return &Skiplist{
-		head: &skipNode{}, // 需要初始化根节点
+		head: &skipNode{}, // initialize the head sentinel
 	}
 }
 
-// 写入一笔 kv 对到跳表. 如果 key 不存在，则为插入操作；如果 key 已存在则为覆盖操作
+// Put inserts or updates a key-value pair. If the key already exists, the value is overwritten.
 func (s *Skiplist) Put(key, value []byte) {
-	// 倘若 key 已存在
+	// If the key already exists, update the value.
 	if node := s.getNode(key); node != nil {
-		// 根据新老 value dif 值，调整 skiplist 数据量 size 大小
+		// Adjust the size by the value-length delta.
 		s.size += (len(value) - len(node.value))
-		// 覆盖之
 		node.value = value
 		return
 	}
 
-	// key 不存在，则为插入行为. 在跳表 size 基础上加上 key 和 value 的大小
+	// New key: add the key and value sizes to the total.
 	s.size += (len(key) + len(value))
 	s.entrisCnt++
-	// roll 出新节点高度
+	// Roll a height for the new node.
 	newNodeHeight := s.roll()
 
-	// 倘若跳表原高度不足，则补齐高度
+	// Grow the head's level slice if the list is not tall enough.
 	if len(s.head.nexts) < newNodeHeight {
 		dif := make([]*skipNode, newNodeHeight+1-len(s.head.nexts))
 		s.head.nexts = append(s.head.nexts, dif...)
 	}
 
-	// 构造新节点
+	// Build the new node.
 	newNode := skipNode{
 		nexts: make([]*skipNode, newNodeHeight),
 		key:   key,
 		value: value,
 	}
 
-	// 层数自高向低，每层按序插入节点
+	// Top-down level traversal, inserting the node at each level.
 	move := s.head
 	for level := newNodeHeight - 1; level >= 0; level-- {
-		// 层内持续向右遍历，直到右侧节点不存在或者 key 值更大
+		// Walk right until the next node is nil or has a larger key.
 		for move.nexts[level] != nil && bytes.Compare(move.nexts[level].key, key) < 0 {
 			move = move.nexts[level]
 		}
 
-		// 插入节点
+		// Splice in the new node.
 		newNode.nexts[level] = move.nexts[level]
 		move.nexts[level] = &newNode
 	}
 }
 
-// 从跳表中读取 kv 对
+// Get returns the value for the given key.
 func (s *Skiplist) Get(key []byte) ([]byte, bool) {
-	// 倘若 key 存在，返回对应 val
 	if node := s.getNode(key); node != nil {
 		return node.value, true
 	}
@@ -80,14 +78,14 @@ func (s *Skiplist) Get(key []byte) ([]byte, bool) {
 	return nil, false
 }
 
-// 获取跳表中全量 kv 对数据
+// All returns all key-value pairs in ascending key order.
 func (s *Skiplist) All() []*KV {
 	if len(s.head.nexts) == 0 {
 		return nil
 	}
 
 	kvs := make([]*KV, 0, s.entrisCnt)
-	// 从第 0 层开始自左向右依次遍历读取
+	// Walk the bottom level from left to right.
 	for move := s.head; move.nexts[0] != nil; move = move.nexts[0] {
 		kvs = append(kvs, &KV{
 			Key:   move.nexts[0].key,
@@ -98,26 +96,26 @@ func (s *Skiplist) All() []*KV {
 	return kvs
 }
 
-// 跳表数据量大小，单位 byte
+// Size returns the data size in bytes.
 func (s *Skiplist) Size() int {
 	return s.size
 }
 
-// 跳表 kv 对数量
+// EntriesCnt returns the number of key-value pairs.
 func (s *Skiplist) EntriesCnt() int {
 	return s.entrisCnt
 }
 
-// 根据 key 获取跳表中对应节点
+// getNode returns the node matching the key, or nil if not found.
 func (s *Skiplist) getNode(key []byte) *skipNode {
 	move := s.head
-	// 层数自高向低，逐层检索
+	// Top-down level traversal.
 	for level := len(s.head.nexts) - 1; level >= 0; level-- {
-		// 持续向右移动，直到右侧为空或者右侧节点 key >= 检索 key
+		// Walk right until the next node is nil or its key >= the search key.
 		for move.nexts[level] != nil && bytes.Compare(move.nexts[level].key, key) < 0 {
 			move = move.nexts[level]
 		}
-		// 如果右侧节点 key = 检索 key，则找到目标返回. 否则进入下一层
+		// If the next node's key equals the search key, return it. Otherwise descend.
 		if move.nexts[level] != nil && bytes.Equal(move.nexts[level].key, key) {
 			return move.nexts[level]
 		}
@@ -126,7 +124,7 @@ func (s *Skiplist) getNode(key []byte) *skipNode {
 	return nil
 }
 
-// roll 出一个节点的高度. 最小为 1，每提高 1 层，概率减少为 1//2
+// roll returns a random node height. Minimum is 1; each extra level has probability 1/2.
 func (s *Skiplist) roll() int {
 	var level int
 	rander := rand.New(rand.NewSource(time.Now().Unix()))

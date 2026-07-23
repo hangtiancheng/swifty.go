@@ -1,9 +1,8 @@
 package memtable
 
 import (
+	"bytes"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_Skiplist(t *testing.T) {
@@ -16,29 +15,59 @@ func Test_Skiplist(t *testing.T) {
 	skiplist.Put([]byte("ab"), []byte("bb"))
 
 	val, _ := skiplist.Get([]byte("a"))
-	assert.Equal(t, val, []byte("c"))
+	if !bytes.Equal(val, []byte("c")) {
+		t.Errorf("key: a, expect: c, got: %s", val)
+	}
 	val, _ = skiplist.Get([]byte("ab"))
-	assert.Equal(t, val, []byte("bb"))
+	if !bytes.Equal(val, []byte("bb")) {
+		t.Errorf("key: ab, expect: bb, got: %s", val)
+	}
 	val, _ = skiplist.Get([]byte("abc"))
-	assert.Equal(t, val, []byte("aaa"))
+	if !bytes.Equal(val, []byte("aaa")) {
+		t.Errorf("key: abc, expect: aaa, got: %s", val)
+	}
 	val, _ = skiplist.Get([]byte("bc"))
-	assert.Equal(t, val, []byte("bbb"))
+	if !bytes.Equal(val, []byte("bbb")) {
+		t.Errorf("key: bc, expect: bbb, got: %s", val)
+	}
 	_, ok := skiplist.Get([]byte("bcd"))
-	assert.Equal(t, ok, false)
-	assert.Equal(t, skiplist.Size(), 4)
+	if ok {
+		t.Errorf("key: bcd, expect ok: false, got: true")
+	}
+	if skiplist.Size() != 4 {
+		t.Errorf("size, expect: 4, got: %d", skiplist.Size())
+	}
 
 	kvs := skiplist.All()
-	assert.Equal(t, len(kvs), 4)
+	if len(kvs) != 4 {
+		t.Errorf("kvs len, expect: 4, got: %d", len(kvs))
+	}
 
-	assert.Equal(t, kvs[0].Key, []byte("a"))
-	assert.Equal(t, kvs[0].Value, []byte("c"))
+	if !bytes.Equal(kvs[0].Key, []byte("a")) {
+		t.Errorf("kvs[0] key, expect: a, got: %s", kvs[0].Key)
+	}
+	if !bytes.Equal(kvs[0].Value, []byte("c")) {
+		t.Errorf("kvs[0] value, expect: c, got: %s", kvs[0].Value)
+	}
 
-	assert.Equal(t, kvs[1].Key, []byte("ab"))
-	assert.Equal(t, kvs[1].Value, []byte("bb"))
+	if !bytes.Equal(kvs[1].Key, []byte("ab")) {
+		t.Errorf("kvs[1] key, expect: ab, got: %s", kvs[1].Key)
+	}
+	if !bytes.Equal(kvs[1].Value, []byte("bb")) {
+		t.Errorf("kvs[1] value, expect: bb, got: %s", kvs[1].Value)
+	}
 
-	assert.Equal(t, kvs[2].Key, []byte("abc"))
-	assert.Equal(t, kvs[2].Value, []byte("aaa"))
+	if !bytes.Equal(kvs[2].Key, []byte("abc")) {
+		t.Errorf("kvs[2] key, expect: abc, got: %s", kvs[2].Key)
+	}
+	if !bytes.Equal(kvs[2].Value, []byte("aaa")) {
+		t.Errorf("kvs[2] value, expect: aaa, got: %s", kvs[2].Value)
+	}
 
-	assert.Equal(t, kvs[3].Key, []byte("bc"))
-	assert.Equal(t, kvs[3].Value, []byte("bbb"))
+	if !bytes.Equal(kvs[3].Key, []byte("bc")) {
+		t.Errorf("kvs[3] key, expect: bc, got: %s", kvs[3].Key)
+	}
+	if !bytes.Equal(kvs[3].Value, []byte("bbb")) {
+		t.Errorf("kvs[3] value, expect: bbb, got: %s", kvs[3].Value)
+	}
 }

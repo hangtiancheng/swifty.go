@@ -9,49 +9,48 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/lsm_tree/wal"
 )
 
-// 1 构造一棵树，基于 config 与磁盘文件映射
-// 2 写入一笔数据
-// 3 查询一笔数据
+// Tree is an lsm tree backed by config and on-disk sst files.
+// It supports writing and reading key-value pairs.
 type Tree struct {
 	conf *Config
 
-	// 读写数据时使用的锁
+	// Lock for read/write operations.
 	dataLock sync.RWMutex
 
-	// 每层 node 节点使用的读写锁
+	// Per-level read/write locks.
 	levelLocks []sync.RWMutex
 
-	// 读写 memtable
+	// Active read-write memtable.
 	memTable memtable.MemTable
 
-	// 只读 memtable
+	// Read-only memtables awaiting flush.
 	rOnlyMemTable []*memTableCompactItem
 
-	// 预写日志写入口
+	// WAL writer.
 	walWriter *wal.WALWriter
 
-	// lsm树状数据结构
+	// lsm tree node topology (level -> nodes).
 	nodes [][]*Node
 
-	// memtable 达到阈值时，通过该 chan 传递信号，进行溢写工作
+	// Signals memtable flush when the memtable reaches the size threshold.
 	memCompactC chan *memTableCompactItem
 
-	// 某层 sst 文件大小达到阈值时，通过该 chan 传递信号，进行溢写工作
+	// Signals level compaction when a level reaches the size threshold.
 	levelCompactC chan int
 
-	// lsm tree 停止时通过该 chan 传递信号
+	// Signals tree shutdown.
 	stopc chan struct{}
 
-	// memtable index，需要与 wal 文件一一对应
+	// memtable index; maps 1:1 to the wal file name.
 	memTableIndex int
 
-	// 各层 sstable 文件 seq. sstable 文件命名为 level_seq.sst
+	// Per-level sstable seq counters. sst files are named level_seq.sst.
 	levelToSeq []atomic.Int32
 }
 
-// 构建出一棵 lsm tree
+// NewTree constructs an lsm tree.
 func NewTree(conf *Config) (*Tree, error) {
-	// 1 构造 lsm tree 实例
+	// 1. Build the tree instance.
 	t := Tree{
 		conf:          conf,
 		memCompactC:   make(chan *memTableCompactItem),
@@ -62,20 +61,20 @@ func NewTree(conf *Config) (*Tree, error) {
 		levelLocks:    make([]sync.RWMutex, conf.MaxLevel),
 	}
 
-	// 2 读取 sst 文件，还原出整棵树
+	// 2. Read sst files and reconstruct the tree.
 	if err := t.constructTree(); err != nil {
 		return nil, err
 	}
 
-	// 3 运行 lsm tree 压缩调整协程
+	// 3. Start the compaction goroutine.
 	go t.compact()
 
-	// 4 读取 wal 还原出 memtable
+	// 4. Read wal files and reconstruct the memtable.
 	if err := t.constructMemtable(); err != nil {
 		return nil, err
 	}
 
-	// 5 返回 lsm tree 实例
+	// 5. Return the tree.
 	return &t, nil
 }
 
@@ -88,42 +87,42 @@ func (t *Tree) Close() {
 	}
 }
 
-// 写入一组 kv 对到 lsm tree. 会直接写入到读写 memtable 中.
+// Put writes a key-value pair to the lsm tree. The pair goes directly into the active memtable.
 func (t *Tree) Put(key, value []byte) error {
-	// 1 加写锁
+	// 1. Acquire the write lock.
 	t.dataLock.Lock()
 	defer t.dataLock.Unlock()
 
-	// 2 数据预写入预写日志中，防止因宕机引起 memtable 数据丢失.
+	// 2. Write to the WAL first to avoid memtable data loss on crash.
 	if err := t.walWriter.Write(key, value); err != nil {
 		return err
 	}
 
-	// 3 数据写入读写跳表
+	// 3. Write to the active memtable.
 	t.memTable.Put(key, value)
 
-	// 4 倘若读写跳表的大小未达到 level0 层 sstable 的大小阈值，则直接返回.
-	// 考虑到溢写成 sstable 后，需要有一些辅助的元数据，预估容量放大为 5/4 倍
+	// 4. If the memtable has not reached the level-0 sstable threshold, return.
+	// Account for sst metadata overhead by using 5/4 of the raw size.
 	if uint64(t.memTable.Size()*5/4) <= t.conf.SSTSize {
 		return nil
 	}
 
-	// 5 倘若读写跳表数据量达到上限，则需要切换跳表
+	// 5. Rotate the memtable.
 	t.refreshMemTableLocked()
 	return nil
 }
 
-// 根据 key 读取数据
+// Get reads the value for a key.
 func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 	t.dataLock.RLock()
-	// 1 首先读 active memtable.
+	// 1. Check the active memtable first.
 	value, ok := t.memTable.Get(key)
 	if ok {
 		t.dataLock.RUnlock()
 		return value, true, nil
 	}
 
-	// 2 读 readOnly memtable.  按照 index 倒序遍历，因为 index 越大，数据越晚写入，实时性越强
+	// 2. Check read-only memtables in reverse index order (newest first).
 	for i := len(t.rOnlyMemTable) - 1; i >= 0; i-- {
 		value, ok = t.rOnlyMemTable[i].memTable.Get(key)
 		if ok {
@@ -133,7 +132,7 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 	}
 	t.dataLock.RUnlock()
 
-	// 3 读 sstable level0 层. 按照 index 倒序遍历，因为 index 越大，数据越晚写入，实时性越强
+	// 3. Check level-0 sstables in reverse index order (newest first).
 	var err error
 	t.levelLocks[0].RLock()
 	for i := len(t.nodes[0]) - 1; i >= 0; i-- {
@@ -148,7 +147,8 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 	}
 	t.levelLocks[0].RUnlock()
 
-	// 4 依次读 sstable level 1 ~ i 层，每层至多只需要和一个 sstable 交互. 因为这些 level 层中的 sstable 都是无重复数据且全局有序的
+	// 4. Check levels 1..N. Each level requires at most one sstable interaction because
+	// these levels are sorted and non-overlapping.
 	for level := 1; level < len(t.nodes); level++ {
 		t.levelLocks[level].RLock()
 		node, ok := t.levelBinarySearch(level, key, 0, len(t.nodes[level])-1)
@@ -167,14 +167,13 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 		t.levelLocks[level].RUnlock()
 	}
 
-	// 5 至此都没有读到数据，则返回 key 不存在.
+	// 5. Key not found.
 	return nil, false, nil
 }
 
-// 切换读写跳表为只读跳表，并构建新的读写跳表
+// refreshMemTableLocked rotates the active memtable to read-only and builds a new active memtable.
 func (t *Tree) refreshMemTableLocked() {
-	// 辞旧
-	// 将读写跳表切换为只读跳表，追加到 slice 中，并通过 chan 发送给 compact 协程，由其负责进行溢写成为 level0 层 sst 文件的操作.
+	// Rotate: move the active memtable to the read-only slice and send it to the compaction goroutine.
 	oldItem := memTableCompactItem{
 		walFile:  t.walFile(),
 		memTable: t.memTable,
@@ -185,8 +184,7 @@ func (t *Tree) refreshMemTableLocked() {
 		t.memCompactC <- &oldItem
 	}()
 
-	// 迎新
-	// 构造一个新的读写 memtable，并构造与之相应的 wal 文件.
+	// Build a new active memtable and its WAL.
 	t.memTableIndex++
 	t.newMemTable()
 }

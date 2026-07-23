@@ -8,32 +8,32 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/red_mq/redis"
 )
 
-// 接收到消息后执行的回调函数
+// MsgCallback is invoked for each received message.
 type MsgCallback func(ctx context.Context, msg *redis.MsgEntity) error
 
-// 消费者
+// Consumer reads messages from a redis stream consumer group.
 type Consumer struct {
-	// consumer 生命周期管理
+	// Lifecycle management.
 	ctx  context.Context
 	stop context.CancelFunc
 
-	// 接收到 msg 时执行的回调函数，由使用方定义
+	// callbackFunc is the user-supplied handler invoked for each message.
 	callbackFunc MsgCallback
 
-	// redis 客户端，基于 redis 实现 message queue
+	// client is the redis client backing the message queue.
 	client *redis.Client
 
-	// 消费的 topic
+	// topic is the stream to consume from.
 	topic string
-	// 所属的消费者组
+	// groupID is the consumer group.
 	groupID string
-	// 当前节点的消费者 id
+	// consumerID is the current node's consumer id.
 	consumerID string
 
-	// 各消息累计失败次数
+	// failureCnts tracks the cumulative failure count per message.
 	failureCnts map[redis.MsgEntity]int
 
-	// 一些用户自定义的配置
+	// opts holds user-supplied configuration.
 	opts *ConsumerOptions
 }
 
@@ -84,12 +84,12 @@ func (c *Consumer) checkParam() error {
 	return nil
 }
 
-// 停止 consumer
+// Stop signals the consumer to exit.
 func (c *Consumer) Stop() {
 	c.stop()
 }
 
-// 运行消费者
+// run is the consumer main loop.
 func (c *Consumer) run() {
 	for {
 		select {
@@ -98,29 +98,32 @@ func (c *Consumer) run() {
 		default:
 		}
 
-		// 新消息接收处理
+		// Receive new messages.
 		msgs, err := c.receive()
 		if err != nil {
 			log.ErrorContextf(c.ctx, "receive msg failed, err: %v", err)
 			continue
 		}
 
-		tctx, _ := context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
+		tctx, cancel := context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
 		c.handlerMsgs(tctx, msgs)
+		cancel()
 
-		// 死信队列投递
-		tctx, _ = context.WithTimeout(c.ctx, c.opts.deadLetterDeliverTimeout)
+		// Deliver dead letters.
+		tctx, cancel = context.WithTimeout(c.ctx, c.opts.deadLetterDeliverTimeout)
 		c.deliverDeadLetter(tctx)
+		cancel()
 
-		// pending 消息接收处理
+		// Receive and process pending messages.
 		pendingMsgs, err := c.receivePending()
 		if err != nil {
 			log.ErrorContextf(c.ctx, "pending msg received failed, err: %v", err)
 			continue
 		}
 
-		tctx, _ = context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
+		tctx, cancel = context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
 		c.handlerMsgs(tctx, pendingMsgs)
+		cancel()
 	}
 }
 
@@ -145,12 +148,12 @@ func (c *Consumer) receivePending() ([]*redis.MsgEntity, error) {
 func (c *Consumer) handlerMsgs(ctx context.Context, msgs []*redis.MsgEntity) {
 	for _, msg := range msgs {
 		if err := c.callbackFunc(ctx, msg); err != nil {
-			// 失败计数器累加
+			// Increment the failure counter.
 			c.failureCnts[*msg]++
 			continue
 		}
 
-		// callback 执行成功，进行 ack
+		// Callback succeeded: ack the message.
 		if err := c.client.XACK(ctx, c.topic, c.groupID, msg.MsgID); err != nil {
 			log.ErrorContextf(ctx, "msg ack failed, msg id: %s, err: %v", msg.MsgID, err)
 			continue
@@ -161,24 +164,24 @@ func (c *Consumer) handlerMsgs(ctx context.Context, msgs []*redis.MsgEntity) {
 }
 
 func (c *Consumer) deliverDeadLetter(ctx context.Context) {
-	// 对于失败达到指定次数的消息，投递到死信中，然后执行 ack
+	// Messages that have failed enough times are delivered to the dead-letter mailbox, then acked.
 	for msg, failureCnt := range c.failureCnts {
 		if failureCnt < c.opts.maxRetryLimit {
 			continue
 		}
 
-		// 投递死信队列
+		// Deliver to the dead-letter mailbox.
 		if err := c.opts.deadLetterMailbox.Deliver(ctx, &msg); err != nil {
 			log.ErrorContextf(c.ctx, "dead letter deliver failed, msg id: %s, err: %v", msg.MsgID, err)
 		}
 
-		// 执行 ack 响应
+		// Ack the message.
 		if err := c.client.XACK(ctx, c.topic, c.groupID, msg.MsgID); err != nil {
 			log.ErrorContextf(c.ctx, "msg ack failed, msg id: %s, err: %v", msg.MsgID, err)
 			continue
 		}
 
-		// 对于 ack 成功的消息，将其从 failure map 中删除
+		// Remove acked messages from the failure map.
 		delete(c.failureCnts, msg)
 	}
 }

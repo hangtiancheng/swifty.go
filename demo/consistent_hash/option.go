@@ -20,7 +20,7 @@ func WithReplicas(replicas int) ConsistentHashOption {
 }
 
 func repair(opts *ConsistentHashOptions) {
-	// 没指定，则代表无超时时限
+	// Unset means no timeout.
 	if opts.lockExpireSeconds <= 0 {
 		opts.lockExpireSeconds = 15
 	}

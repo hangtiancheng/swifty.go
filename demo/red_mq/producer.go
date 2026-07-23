@@ -26,7 +26,7 @@ func NewProducer(client *redis.Client, opts ...ProducerOption) *Producer {
 	return &p
 }
 
-// 生产一条消息
+// SendMsg produces a message to the given topic.
 func (p *Producer) SendMsg(ctx context.Context, topic, key, val string) (string, error) {
 	return p.client.XADD(ctx, topic, p.opts.msgQueueLen, key, val)
 }

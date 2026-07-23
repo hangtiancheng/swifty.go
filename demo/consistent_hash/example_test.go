@@ -11,18 +11,18 @@ import (
 
 func Test_local_consistent_hash(t *testing.T) {
 	localHashRing := local.NewSkiplistHashRing()
-	murmurHasher := NewMurmurHasher()
+	hasher := NewFnvHasher()
 	localMigrator := func(ctx context.Context, dataKeys map[string]struct{}, from, to string) error {
 		t.Logf("from: %s, to: %s, data keys: %v", from, to, dataKeys)
 		return nil
 	}
 	consistentHash := NewConsistentHash(
 		localHashRing,
-		murmurHasher,
+		hasher,
 		localMigrator,
-		// 每个 node 对应的虚拟节点个数为权重 * replicas
+		// Virtual nodes per node = weight * replicas.
 		WithReplicas(5),
-		// 加锁 5 s 后哈希环的锁自动释放
+		// The hash-ring lock auto-releases after 5 seconds.
 		WithLockExpireSeconds(5),
 	)
 	test(t, consistentHash)
@@ -30,16 +30,16 @@ func Test_local_consistent_hash(t *testing.T) {
 
 const (
 	network  = "tcp"
-	address  = "redis 地址"
-	password = "redis 密码"
+	address  = "redis address"
+	password = "redis password"
 
-	hashRingKey = "哈希环唯一 id"
+	hashRingKey = "hash ring unique id"
 )
 
 func Test_redis_consistent_hash(t *testing.T) {
 	redisClient := redis.NewClient(network, address, password)
 	hashRing := redis.NewRedisHashRing(hashRingKey, redisClient)
-	consistentHash := NewConsistentHash(hashRing, NewMurmurHasher(), nil)
+	consistentHash := NewConsistentHash(hashRing, NewFnvHasher(), nil)
 	test(t, consistentHash)
 }
 

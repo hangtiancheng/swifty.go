@@ -1,11 +1,11 @@
 package redis
 
 const (
-	// 默认连接池超过 10 s 释放连接
+	// DefaultIdleTimeoutSeconds is the default idle-connection timeout (10s).
 	DefaultIdleTimeoutSeconds = 10
-	// 默认最大激活连接数
+	// DefaultMaxActive is the default max active connections.
 	DefaultMaxActive = 100
-	// 默认最大空闲连接数
+	// DefaultMaxIdle is the default max idle connections.
 	DefaultMaxIdle = 20
 )
 
@@ -14,7 +14,7 @@ type ClientOptions struct {
 	idleTimeoutSeconds int
 	maxActive          int
 	wait               bool
-	// 必填参数
+	// Required fields.
 	network  string
 	address  string
 	password string

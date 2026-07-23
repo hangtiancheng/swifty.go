@@ -7,7 +7,7 @@ import (
 )
 
 func Test_SSTReader(t *testing.T) {
-	// 构造一个 sst writer 写入数据
+	// Build an sst writer and write data.
 	conf, err := NewConfig("./lsm", WithSSTDataBlockSize(16))
 	if err != nil {
 		t.Error(err)
@@ -50,7 +50,7 @@ func Test_SSTReader(t *testing.T) {
 
 	_, expectBlockToFilter, expectIndex := sstWriter.Finish()
 
-	// 构造一个 sst reader 读取数据
+	// Build an sst reader and read data.
 	sstReader, err := NewSSTReader("test_write_read.sst", conf)
 	if err != nil {
 		t.Error(err)

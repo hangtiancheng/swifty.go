@@ -6,54 +6,54 @@ import (
 	"math"
 )
 
-// 用户需要注册好闭包函数进来，核心是执行数据迁移操作的
+// Migrator is the user-supplied closure that performs data migration.
 type Migrator func(ctx context.Context, dataKeys map[string]struct{}, from, to string) error
 
 func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, nodeID string) (from, to string, datas map[string]struct{}, _err error) {
-	// 使用方没有注入迁移函数，则直接返回
+	// No migrator injected: nothing to do.
 	if c.migrator == nil {
 		return
 	}
 
-	// 首先根据 virtualScore，查看对应的节点列表，理论上可能存在多个节点共用一个 virtualScore 的情况
+	// Look up the nodes sharing this virtualScore. Multiple nodes can share one score.
 	nodes, err := c.hashRing.Node(ctx, virtualScore)
 	if err != nil {
 		_err = err
 		return
 	}
 
-	// 倘若节点数量大于 1，则说明当前节点不是 virtualScore 的第一个节点，则无需进行迁移
+	// If more than one node is at this score, the current node is not the first, so no migration is needed.
 	if len(nodes) > 1 {
 		return
 	}
 
-	// 寻找上一个 virtualScore
+	// Find the previous score on the ring.
 	lastScore, err := c.hashRing.Floor(ctx, c.decrScore(virtualScore))
 	if err != nil {
 		_err = err
 		return
 	}
 
-	// 如果没有其他的 virtualScore，说明整个 hash ring 只有当前节点这一个节点，则无需迁移
+	// No other score means the ring has only this node, so no migration is needed.
 	if lastScore == -1 || lastScore == virtualScore {
 		return
 	}
 
-	// 寻找下一个 virtualScore
+	// Find the next score on the ring.
 	nextScore, err := c.hashRing.Ceiling(ctx, c.incrScore(virtualScore))
 	if err != nil {
 		_err = err
 		return
 	}
 
-	// 如果没有其他的 virtualScore，说明整个 hash ring 只有当前节点这一个节点，则无需迁移
+	// No other score means the ring has only this node, so no migration is needed.
 	if nextScore == -1 || nextScore == virtualScore {
 		return
 	}
 
-	// patternOne: last-0-cur-next
+	// patternOne: last-0-cur-next (the ring wraps around between last and cur).
 	patternOne := lastScore > virtualScore
-	// patternTwo: last-cur-0-next
+	// patternTwo: last-cur-0-next (the ring wraps around between cur and next).
 	patternTwo := nextScore < virtualScore
 	if patternOne {
 		lastScore -= math.MaxInt32
@@ -64,14 +64,14 @@ func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, node
 		lastScore -= math.MaxInt32
 	}
 
-	// 获取到 nextScore 对应的节点，需要从中获取到所有数据对应的 key
+	// Fetch the node at nextScore and read its data keys.
 	nextNodes, err := c.hashRing.Node(ctx, nextScore)
 	if err != nil {
 		_err = err
 		return
 	}
 
-	// 找到其中的首个节点，获取到数据 key
+	// Take the first node at nextScore and read its data keys.
 	if len(nextNodes) == 0 {
 		return
 	}
@@ -83,7 +83,7 @@ func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, node
 	}
 
 	datas = make(map[string]struct{})
-	// 遍历数据 key
+	// Iterate data keys and find those that fall into the new node's range.
 	for dataKey := range dataKeys {
 		dataVirtualScore := c.encryptor.Encrypt(dataKey)
 		if patternOne && dataVirtualScore > (lastScore+math.MaxInt32) {
@@ -98,7 +98,7 @@ func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, node
 			continue
 		}
 
-		// 需要迁移的数据
+		// This data key must migrate.
 		datas[dataKey] = struct{}{}
 	}
 
@@ -110,12 +110,12 @@ func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, node
 		return "", "", nil, err
 	}
 
-	// from to datas
+	// from, to, datas
 	return c.getNodeID(nextNodes[0]), nodeID, datas, nil
 }
 
 func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nodeID string) (from, to string, datas map[string]struct{}, err error) {
-	// 使用方没有注入迁移函数，则直接返回
+	// No migrator injected: nothing to do.
 	if c.migrator == nil {
 		return
 	}
@@ -147,12 +147,12 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 		return
 	}
 
-	// 不是 virtualScore 下的首个节点，则无需迁移
+	// Not the first node at this score: no migration needed.
 	if c.getNodeID(nodes[0]) != nodeID {
 		return
 	}
 
-	// 如果没有数据，则直接返回
+	// No data: nothing to migrate.
 	var allDatas map[string]struct{}
 	if allDatas, err = c.hashRing.DataKeys(ctx, nodeID); err != nil {
 		return
@@ -162,7 +162,7 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 		return
 	}
 
-	// 遍历数据 key，找出其中属于 (lastScore, virtualScore] 范围的数据
+	// Iterate data keys and find those in the range (lastScore, virtualScore].
 	lastScore, _err := c.hashRing.Floor(ctx, c.decrScore(virtualScore))
 	if _err != nil {
 		err = _err
@@ -199,13 +199,13 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 		datas[data] = struct{}{}
 	}
 
-	// 如果同一个 virtualScore 下存在多个节点，则直接委托给下一个节点
+	// If multiple nodes share this score, delegate to the next node.
 	if len(nodes) > 1 {
 		to = c.getNodeID(nodes[1])
 		return
 	}
 
-	// 寻找后继节点
+	// Find the successor node.
 	if to, err = c.getValidNextNode(ctx, virtualScore, nodeID, nil); err != nil {
 		err = _err
 		return
@@ -219,7 +219,7 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 }
 
 func (c *ConsistentHash) getValidNextNode(ctx context.Context, score int32, nodeID string, ranged map[int32]struct{}) (string, error) {
-	// 寻找后继节点
+	// Find the successor score.
 	nextScore, err := c.hashRing.Ceiling(ctx, c.incrScore(score))
 	if err != nil {
 		return "", err
@@ -232,7 +232,7 @@ func (c *ConsistentHash) getValidNextNode(ctx context.Context, score int32, node
 		return "", nil
 	}
 
-	// 后继节点的 key 必须不与自己相同，否则继续往下寻找
+	// The successor must not be the same node; otherwise keep searching.
 	nextNodes, err := c.hashRing.Node(ctx, nextScore)
 	if err != nil {
 		return "", err
@@ -255,7 +255,7 @@ func (c *ConsistentHash) getValidNextNode(ctx context.Context, score int32, node
 	}
 	ranged[score] = struct{}{}
 
-	// 寻找下一个目标
+	// Continue searching.
 	return c.getValidNextNode(ctx, nextScore, nodeID, ranged)
 }
 

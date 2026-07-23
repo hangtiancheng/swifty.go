@@ -10,24 +10,24 @@ import (
 	"path"
 )
 
-// kv 对
+// KV is a key-value pair.
 type KV struct {
 	Key   []byte
 	Value []byte
 }
 
-// 对应于 lsm tree 中的一个 sstable. 这是读取流程的视角
+// SSTReader is the read-side view of an sstable.
 type SSTReader struct {
-	conf         *Config       // 配置文件
-	src          *os.File      // 对应的文件
-	reader       *bufio.Reader // 读取文件的 reader
-	filterOffset uint64        // 过滤器块起始位置在 sstable 的 offset
-	filterSize   uint64        // 过滤器块的大小，单位 byte
-	indexOffset  uint64        // 索引块起始位置在 sstable 的 offset
-	indexSize    uint64        // 索引块的大小，单位 byte
+	conf         *Config       // config
+	src          *os.File      // underlying file
+	reader       *bufio.Reader // buffered reader
+	filterOffset uint64        // filter-block offset within the sstable
+	filterSize   uint64        // filter-block size in bytes
+	indexOffset  uint64        // index-block offset within the sstable
+	indexSize    uint64        // index-block size in bytes
 }
 
-// sstReader 构造器
+// NewSSTReader opens an sstable for reading.
 func NewSSTReader(file string, conf *Config) (*SSTReader, error) {
 	src, err := os.OpenFile(path.Join(conf.Dir, file), os.O_RDONLY, 0644)
 	if err != nil {
@@ -41,7 +41,7 @@ func NewSSTReader(file string, conf *Config) (*SSTReader, error) {
 	}, nil
 }
 
-// sstable 数据大小，单位 byte
+// Size returns the sstable data size in bytes.
 func (s *SSTReader) Size() (uint64, error) {
 	if s.indexOffset == 0 {
 		if err := s.ReadFooter(); err != nil {
@@ -56,9 +56,9 @@ func (s *SSTReader) Close() {
 	_ = s.src.Close()
 }
 
-// 读取 sstable footer 信息，赋给 sstreader 的成员属性
+// ReadFooter reads the sstable footer and populates the reader fields.
 func (s *SSTReader) ReadFooter() error {
-	// 从尾部开始倒退 sst footer size 大小的偏移量
+	// Seek back from the end by the footer size.
 	if _, err := s.src.Seek(-int64(s.conf.SSTFooterSize), io.SeekEnd); err != nil {
 		return err
 	}
@@ -85,85 +85,85 @@ func (s *SSTReader) ReadFooter() error {
 	return nil
 }
 
-// 读取过滤器
+// ReadFilter reads the filter block.
 func (s *SSTReader) ReadFilter() (map[uint64][]byte, error) {
-	// 如果 footer 信息还没读取，则先完成 footer 信息加载
+	// Load the footer first if needed.
 	if s.filterOffset == 0 || s.filterSize == 0 {
 		if err := s.ReadFooter(); err != nil {
 			return nil, err
 		}
 	}
 
-	// 读取 filter block 块的内容
+	// Read the filter-block content.
 	filterBlock, err := s.ReadBlock(s.filterOffset, s.filterSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// 对 filter block 块的内容进行解析
+	// Parse the filter block.
 	return s.readFilter(filterBlock)
 }
 
-// 读取索引块
+// ReadIndex reads the index block.
 func (s *SSTReader) ReadIndex() ([]*Index, error) {
-	// 如果 footer 信息还没读取，则先完成 footer 信息加载
+	// Load the footer first if needed.
 	if s.indexOffset == 0 || s.indexSize == 0 {
 		if err := s.ReadFooter(); err != nil {
 			return nil, err
 		}
 	}
 
-	// 读取 index block 块的内容
+	// Read the index-block content.
 	indexBlock, err := s.ReadBlock(s.indexOffset, s.indexSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// 对 index block 块的内容进行解析
+	// Parse the index block.
 	return s.readIndex(indexBlock)
 }
 
-// 读取 sstable 下的全量 kv 数据
+// ReadData reads all key-value pairs from the sstable.
 func (s *SSTReader) ReadData() ([]*KV, error) {
-	// 如果 footer 信息还没读取，则先完成 footer 信息加载
+	// Load the footer first if needed.
 	if s.indexOffset == 0 || s.indexSize == 0 || s.filterOffset == 0 || s.filterSize == 0 {
 		if err := s.ReadFooter(); err != nil {
 			return nil, err
 		}
 	}
 
-	// 读取所有 data block 的内容
+	// Read all data blocks.
 	dataBlock, err := s.ReadBlock(0, s.filterOffset)
 	if err != nil {
 		return nil, err
 	}
 
-	// 解析所有 data block 的内容
+	// Parse all data blocks.
 	return s.ReadBlockData(dataBlock)
 }
 
-// 读取一个 block 块的内容
+// ReadBlock reads a block at the given offset and size.
 func (s *SSTReader) ReadBlock(offset, size uint64) ([]byte, error) {
-	// 根据起始偏移量，设置文件的 offset
+	// Seek to the start offset.
 	if _, err := s.src.Seek(int64(offset), io.SeekStart); err != nil {
 		return nil, err
 	}
 	s.reader.Reset(s.src)
 
-	// 读取指定 size 的内容
+	// Read exactly size bytes.
 	buf := make([]byte, size)
 	_, err := io.ReadFull(s.reader, buf)
 	return buf, err
 }
 
-// 解析 filter block 块的内容
+// readFilter parses the filter-block content.
 func (s *SSTReader) readFilter(block []byte) (map[uint64][]byte, error) {
 	blockToFilter := make(map[uint64][]byte)
-	// 将 filter block 块内容封装成一个 buffer
+	// Wrap the block in a buffer.
 	buf := bytes.NewBuffer(block)
 	var prevKey []byte
 	for {
-		// 每次读取一条 block filter 记录，key 为 block 的 offset，value 为过滤器 bitmap
+		// Each record: key = block offset, value = filter bitmap.
 		key, value, err := s.ReadRecord(prevKey, buf)
 		if errors.Is(err, io.EOF) {
 			break
@@ -180,17 +180,17 @@ func (s *SSTReader) readFilter(block []byte) (map[uint64][]byte, error) {
 	return blockToFilter, nil
 }
 
-// 解析 index block 块的内容
+// readIndex parses the index-block content.
 func (s *SSTReader) readIndex(block []byte) ([]*Index, error) {
 	var (
 		index   []*Index
 		prevKey []byte
 	)
 
-	// 将 index block 块内容封装成一个 buffer
+	// Wrap the block in a buffer.
 	buf := bytes.NewBuffer(block)
 	for {
-		// 每次读取一条 index 记录，key 为 block 之间的分隔键，value 为前一个 block 的 offset 和 size
+		// Each record: key = separator key, value = previous block's offset and size.
 		key, value, err := s.ReadRecord(prevKey, buf)
 		if errors.Is(err, io.EOF) {
 			break
@@ -212,16 +212,16 @@ func (s *SSTReader) readIndex(block []byte) ([]*Index, error) {
 	return index, nil
 }
 
-// 读取某个 block 的数据
+// ReadBlockData parses a data block into key-value pairs.
 func (s *SSTReader) ReadBlockData(block []byte) ([]*KV, error) {
-	// 需要临时记录前一个 key 的内容
+	// Track the previous key for prefix sharing.
 	var prevKey []byte
-	// block 数据封装成 buffer
+	// Wrap the block in a buffer.
 	buf := bytes.NewBuffer(block)
 	var data []*KV
 
 	for {
-		// 每次读取一条 kv 对
+		// Read one key-value pair.
 		key, value, err := s.ReadRecord(prevKey, buf)
 		if errors.Is(err, io.EOF) {
 			break
@@ -234,48 +234,47 @@ func (s *SSTReader) ReadBlockData(block []byte) ([]*KV, error) {
 			Key:   key,
 			Value: value,
 		})
-		// 对 prevKey 进行更新
+		// Update prevKey.
 		prevKey = key
 	}
 	return data, nil
 }
 
-// 读取一条 kv 对数据
+// ReadRecord reads a single key-value record from buf.
 func (s *SSTReader) ReadRecord(prevKey []byte, buf *bytes.Buffer) (key, value []byte, err error) {
-	// 获取当前 key 和 prevKey 的共享前缀长度
+	// Read the shared-prefix length with the previous key.
 	sharedPrexLen, err := binary.ReadUvarint(buf)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 获取当前 key 剩余部分长度
+	// Read the remaining key length.
 	keyLen, err := binary.ReadUvarint(buf)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 获取 val 长度
+	// Read the value length.
 	valLen, err := binary.ReadUvarint(buf)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 读取 key 剩余部分
+	// Read the remaining key.
 	key = make([]byte, keyLen)
 	if _, err = io.ReadFull(buf, key); err != nil {
 		return nil, nil, err
 	}
 
-	// 读取 val
+	// Read the value.
 	value = make([]byte, valLen)
 	if _, err = io.ReadFull(buf, value); err != nil {
 		return nil, nil, err
 	}
 
-	// 拼接 key 共享前缀 + 剩余部分
+	// Reconstruct the full key = shared prefix + remaining key.
 	sharedPrefix := make([]byte, sharedPrexLen)
 	copy(sharedPrefix, prevKey[:sharedPrexLen])
 	key = append(sharedPrefix, key...)
-	// 返回完整的 key、val
 	return
 }

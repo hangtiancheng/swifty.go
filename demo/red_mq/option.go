@@ -21,15 +21,15 @@ func repairProducer(opts *ProducerOptions) {
 }
 
 type ConsumerOptions struct {
-	// 每轮接收消息的超时时长
+	// receiveTimeout is the per-poll receive timeout.
 	receiveTimeout time.Duration
-	// 处理消息的最大重试次数，超过此次数时，消息会被投递到死信队列
+	// maxRetryLimit is the max retry count before a message is sent to the dead-letter mailbox.
 	maxRetryLimit int
-	// 死信队列，可以由使用方自定义实现
+	// deadLetterMailbox is the user-customizable dead-letter sink.
 	deadLetterMailbox DeadLetterMailbox
-	// 投递死信流程超时阈值
+	// deadLetterDeliverTimeout is the timeout for dead-letter delivery.
 	deadLetterDeliverTimeout time.Duration
-	// 处理消息流程超时阈值
+	// handleMsgsTimeout is the timeout for processing a batch of messages.
 	handleMsgsTimeout time.Duration
 }
 

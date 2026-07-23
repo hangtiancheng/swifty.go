@@ -6,46 +6,44 @@ import (
 	"path"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_LSM_UseCase(t *testing.T) {
-	// 1 构造配置文件
-	conf, _ := NewConfig("./lsm", // lsm sstable 文件的存放目录
-		WithMaxLevel(7),               // 7层 lsm tree
-		WithSSTSize(1024*1024),        // level 0 层，每个 sstable 的大小为 1M
-		WithSSTDataBlockSize(16*1024), // sstable 中，每个 block 大小为 16KB
-		WithSSTNumPerLevel(10),        // 每个 level 存放 10 个 sstable 文件
+	// 1. Build the config.
+	conf, _ := NewConfig("./lsm", // directory for sst files
+		WithMaxLevel(7),               // 7-level lsm tree
+		WithSSTSize(1024*1024),        // level-0 sstable size: 1MB
+		WithSSTDataBlockSize(16*1024), // sstable block size: 16KB
+		WithSSTNumPerLevel(10),        // 10 sstables per level
 	)
 
-	// 2 创建一个 lsm tree 实例
+	// 2. Create the lsm tree.
 	lsmTree, _ := NewTree(conf)
 	defer lsmTree.Close()
 
-	// 3 写入数据
+	// 3. Write data.
 	_ = lsmTree.Put([]byte{1}, []byte{2})
 
-	// 4 读取数据
+	// 4. Read data.
 	v, _, _ := lsmTree.Get([]byte{1})
 
 	t.Log(v)
 }
 
 func Test_LSM(t *testing.T) {
-	// 构造配置文件
-	conf, err := NewConfig("./lsm", // lsm sstable 文件的存放目录
-		WithMaxLevel(7),              // 7层 lsm tree
-		WithSSTSize(32*1024),         // level 0 层，每个 sstable 的大小为 32KB
-		WithSSTDataBlockSize(2*1024), // sstable 中，每个 block 大小为 2KB
-		WithSSTNumPerLevel(4),        // 每个 level 存放 4 个 sstable 文件
+	// Build the config.
+	conf, err := NewConfig("./lsm", // directory for sst files
+		WithMaxLevel(7),              // 7-level lsm tree
+		WithSSTSize(32*1024),         // level-0 sstable size: 32KB
+		WithSSTDataBlockSize(2*1024), // sstable block size: 2KB
+		WithSSTNumPerLevel(4),        // 4 sstables per level
 	)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	// 创建一个 lsm tree 实例
+	// Create the lsm tree.
 	lsmTree, err := NewTree(conf)
 	if err != nil {
 		t.Error(err)
@@ -154,8 +152,16 @@ func Test_Tree_getSortedSSTEntries(t *testing.T) {
 }
 
 func Test_pathJoin(t *testing.T) {
-	assert.Equal(t, path.Join("./", "wal", "1.sst"), "wal/1.sst")
-	assert.Equal(t, path.Join("/root/", "/wal", "1.sst"), "/root/wal/1.sst")
-	assert.Equal(t, path.Join("/root", "/wal", "1.sst"), "/root/wal/1.sst")
-	assert.Equal(t, path.Join("/root", "wal", "1.sst"), "/root/wal/1.sst")
+	if got := path.Join("./", "wal", "1.sst"); got != "wal/1.sst" {
+		t.Errorf("path.Join(./, wal, 1.sst), expect: wal/1.sst, got: %s", got)
+	}
+	if got := path.Join("/root/", "/wal", "1.sst"); got != "/root/wal/1.sst" {
+		t.Errorf("path.Join(/root/, /wal, 1.sst), expect: /root/wal/1.sst, got: %s", got)
+	}
+	if got := path.Join("/root", "/wal", "1.sst"); got != "/root/wal/1.sst" {
+		t.Errorf("path.Join(/root, /wal, 1.sst), expect: /root/wal/1.sst, got: %s", got)
+	}
+	if got := path.Join("/root", "wal", "1.sst"); got != "/root/wal/1.sst" {
+		t.Errorf("path.Join(/root, wal, 1.sst), expect: /root/wal/1.sst, got: %s", got)
+	}
 }

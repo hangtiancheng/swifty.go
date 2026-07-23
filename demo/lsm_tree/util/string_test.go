@@ -1,19 +1,30 @@
 package util
 
 import (
+	"bytes"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_SharedPrefixLen(t *testing.T) {
-	assert.Equal(t, SharedPrefixLen([]byte("a"), nil), 0)
-	assert.Equal(t, SharedPrefixLen([]byte("ab"), []byte("abc")), 2)
-	assert.Equal(t, SharedPrefixLen([]byte("ab"), []byte("c")), 0)
+	if got := SharedPrefixLen([]byte("a"), nil); got != 0 {
+		t.Errorf("SharedPrefixLen(a, nil), expect: 0, got: %d", got)
+	}
+	if got := SharedPrefixLen([]byte("ab"), []byte("abc")); got != 2 {
+		t.Errorf("SharedPrefixLen(ab, abc), expect: 2, got: %d", got)
+	}
+	if got := SharedPrefixLen([]byte("ab"), []byte("c")); got != 0 {
+		t.Errorf("SharedPrefixLen(ab, c), expect: 0, got: %d", got)
+	}
 }
 
 func Test_GetSeparatorBetween(t *testing.T) {
-	assert.Equal(t, GetSeparatorBetween(nil, []byte("b")), []byte("a"))
-	assert.Equal(t, GetSeparatorBetween([]byte("abcd"), []byte("abcde")), []byte("abcd"))
-	assert.Equal(t, GetSeparatorBetween([]byte("abcd"), []byte("abce")), []byte("abcd"))
+	if got := GetSeparatorBetween(nil, []byte("b")); !bytes.Equal(got, []byte("a")) {
+		t.Errorf("GetSeparatorBetween(nil, b), expect: a, got: %s", got)
+	}
+	if got := GetSeparatorBetween([]byte("abcd"), []byte("abcde")); !bytes.Equal(got, []byte("abcd")) {
+		t.Errorf("GetSeparatorBetween(abcd, abcde), expect: abcd, got: %s", got)
+	}
+	if got := GetSeparatorBetween([]byte("abcd"), []byte("abce")); !bytes.Equal(got, []byte("abcd")) {
+		t.Errorf("GetSeparatorBetween(abcd, abce), expect: abcd, got: %s", got)
+	}
 }

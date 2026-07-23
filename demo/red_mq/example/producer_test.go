@@ -10,7 +10,7 @@ import (
 
 func Test_Producer(t *testing.T) {
 	client := redis.NewClient(network, address, password)
-	// 最多保留十条消息
+	// Keep at most 10 messages in the stream.
 	producer := red_mq.NewProducer(client, red_mq.WithMsgQueueLen(10))
 	ctx := context.Background()
 	msgID, err := producer.SendMsg(ctx, topic, "test_kk", "test_vv")

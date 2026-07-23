@@ -9,34 +9,34 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/lsm_tree/util"
 )
 
-// sstable 中用于快速检索 block 的索引
+// Index is a block-level index entry used for fast block lookup in an sstable.
 type Index struct {
-	Key             []byte // 索引的 key. 保证其 >= 前一个 block 最大 key； < 后一个 block 的最小 key
-	PrevBlockOffset uint64 // 索引前一个 block 起始位置在 sstable 中对应的 offset
-	PrevBlockSize   uint64 // 索引前一个 block 的大小，单位 byte
+	Key             []byte // separator key; guaranteed >= max key of previous block and < min key of next block
+	PrevBlockOffset uint64 // offset of the previous block in the sstable
+	PrevBlockSize   uint64 // size of the previous block in bytes
 }
 
-// 对应于 lsm tree 中的一个 sstable. 这是写入流程的视角
+// SSTWriter is the write-side view of an sstable.
 type SSTWriter struct {
-	conf          *Config           // 配置文件
-	dest          *os.File          // sstable 对应的磁盘文件
-	dataBuf       *bytes.Buffer     // 数据块缓冲区 key -> val
-	filterBuf     *bytes.Buffer     // 过滤器块缓冲区 prev block offset -> filter bit map
-	indexBuf      *bytes.Buffer     // 索引块缓冲区 index key -> prev block offset, prev block size
-	blockToFilter map[uint64][]byte // prev block offset -> filter bit map
+	conf          *Config           // config
+	dest          *os.File          // sstable file on disk
+	dataBuf       *bytes.Buffer     // data-block buffer: key -> value
+	filterBuf     *bytes.Buffer     // filter-block buffer: prev block offset -> filter bitmap
+	indexBuf      *bytes.Buffer     // index-block buffer: index key -> prev block offset, prev block size
+	blockToFilter map[uint64][]byte // prev block offset -> filter bitmap
 	index         []*Index          // index key -> prev block offset, prev block size
 
-	dataBlock     *Block   // 数据块
-	filterBlock   *Block   // 过滤器块
-	indexBlock    *Block   // 索引块
-	assistScratch [20]byte // 用于在写索引块时临时使用的辅助缓冲区
+	dataBlock     *Block   // data block
+	filterBlock   *Block   // filter block
+	indexBlock    *Block   // index block
+	assistScratch [20]byte // scratch buffer for index-block writes
 
-	prevKey         []byte // 前一笔数据的 key
-	prevBlockOffset uint64 // 前一个数据块的起始偏移位置
-	prevBlockSize   uint64 // 前一个数据块的大小
+	prevKey         []byte // key of the most recently appended entry
+	prevBlockOffset uint64 // start offset of the previous data block
+	prevBlockSize   uint64 // size of the previous data block
 }
 
-// sstWriter 构造器
+// NewSSTWriter opens an sstable for writing.
 func NewSSTWriter(file string, conf *Config) (*SSTWriter, error) {
 	dest, err := os.OpenFile(path.Join(conf.Dir, file), os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -57,19 +57,19 @@ func NewSSTWriter(file string, conf *Config) (*SSTWriter, error) {
 	}, nil
 }
 
-// 完成 sstable 的全部处理流程，包括将其中的数据溢写到磁盘，并返回信息供上层的 lsm 获取缓存
+// Finish flushes all remaining data to disk and returns metadata for the lsm tree to cache.
 func (s *SSTWriter) Finish() (size uint64, blockToFilter map[uint64][]byte, index []*Index) {
-	// 完成最后一个块的处理
+	// Flush the last block.
 	s.refreshBlock()
-	// 补齐最后一个 index
+	// Append the final index entry.
 	s.insertIndex(s.prevKey)
 
-	// 将布隆过滤器块写入缓冲区
+	// Write the filter block to its buffer.
 	_, _ = s.filterBlock.FlushTo(s.filterBuf)
-	// 将索引块写入缓冲区
+	// Write the index block to its buffer.
 	_, _ = s.indexBlock.FlushTo(s.indexBuf)
 
-	// 处理 footer，记录布隆过滤器块起始、大小、索引块起始、大小
+	// Build the footer: filter-block offset, filter-block size, index-block offset, index-block size.
 	footer := make([]byte, s.conf.SSTFooterSize)
 	size = uint64(s.dataBuf.Len())
 	n := binary.PutUvarint(footer[0:], size)
@@ -81,7 +81,7 @@ func (s *SSTWriter) Finish() (size uint64, blockToFilter map[uint64][]byte, inde
 	n += binary.PutUvarint(footer[n:], indexBufLen)
 	size += indexBufLen
 
-	// 依次写入文件
+	// Write everything to the file: data | filter | index | footer.
 	_, _ = s.dest.Write(s.dataBuf.Bytes())
 	_, _ = s.dest.Write(s.filterBuf.Bytes())
 	_, _ = s.dest.Write(s.indexBuf.Bytes())
@@ -92,21 +92,21 @@ func (s *SSTWriter) Finish() (size uint64, blockToFilter map[uint64][]byte, inde
 	return
 }
 
-// 追加一笔数据到 sstable 中
+// Append adds a key-value pair to the sstable.
 func (s *SSTWriter) Append(key, value []byte) {
-	// 倘若开启一个新的数据块，需要添加索引
+	// When starting a new data block, add an index entry.
 	if s.dataBlock.entriesCnt == 0 {
 		s.insertIndex(key)
 	}
 
-	// 将数据写入到数据块中
+	// Append the key-value pair to the data block.
 	s.dataBlock.Append(key, value)
-	// 将 key 添加到块的布隆过滤器中
+	// Add the key to the block's bloom filter.
 	s.conf.Filter.Add(key)
-	// 记录一下最新的 key
+	// Track the latest key.
 	s.prevKey = key
 
-	// 倘若数据块大小超限，则需要将其添加到 dataBuffer，并重置块
+	// If the data block exceeds the size limit, flush it and start a new block.
 	if s.dataBlock.Size() >= s.conf.SSTDataBlockSize {
 		s.refreshBlock()
 	}
@@ -124,7 +124,7 @@ func (s *SSTWriter) Close() {
 }
 
 func (s *SSTWriter) insertIndex(key []byte) {
-	// 获取索引的 key
+	// Compute the separator key.
 	indexKey := util.GetSeparatorBetween(s.prevKey, key)
 	n := binary.PutUvarint(s.assistScratch[0:], s.prevBlockOffset)
 	n += binary.PutUvarint(s.assistScratch[n:], s.prevBlockSize)
@@ -143,14 +143,14 @@ func (s *SSTWriter) refreshBlock() {
 	}
 
 	s.prevBlockOffset = uint64(s.dataBuf.Len())
-	// 添加布隆过滤器 bitmap
+	// Build the bloom-filter bitmap.
 	filterBitmap := s.conf.Filter.Hash()
 	s.blockToFilter[s.prevBlockOffset] = filterBitmap
 	n := binary.PutUvarint(s.assistScratch[0:], s.prevBlockOffset)
 	s.filterBlock.Append(s.assistScratch[:n], filterBitmap)
-	// 重置布隆过滤器
+	// Reset the bloom filter for the next block.
 	s.conf.Filter.Reset()
 
-	// 将 block 的数据添加到缓冲区
+	// Flush the data block to the data buffer.
 	s.prevBlockSize, _ = s.dataBlock.FlushTo(s.dataBuf)
 }

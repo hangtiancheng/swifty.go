@@ -2,19 +2,19 @@ package os
 
 import (
 	"fmt"
-	"os"
+	osys "os"
 	"runtime"
 	"strings"
 )
 
-// 获取由进程id+协程id组成的二位标识字符串
+// GetCurrentProcessAndGogroutineIDStr returns a "pid_goroutineID" identifier for the current goroutine.
 func GetCurrentProcessAndGogroutineIDStr() string {
 	pid := GetCurrentProcessID()
 	goroutineID := GetCurrentGoroutineID()
 	return fmt.Sprintf("%d_%s", pid, goroutineID)
 }
 
-// 获取当前的协程id
+// GetCurrentGoroutineID returns the current goroutine ID extracted from the runtime stack.
 func GetCurrentGoroutineID() string {
 	buf := make([]byte, 128)
 	buf = buf[:runtime.Stack(buf, false)]
@@ -22,7 +22,7 @@ func GetCurrentGoroutineID() string {
 	return strings.TrimSpace(strings.Split(strings.Split(stackInfo, "[running]")[0], "goroutine")[1])
 }
 
-// 获取当前的进程id
+// GetCurrentProcessID returns the current OS process ID.
 func GetCurrentProcessID() int {
-	return os.Getpid()
+	return osys.Getpid()
 }

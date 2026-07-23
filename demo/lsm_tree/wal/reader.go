@@ -11,16 +11,15 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/lsm_tree/memtable"
 )
 
-// wal 文件读取器
+// WALReader reads a write-ahead log file.
 type WALReader struct {
-	file   string        // 预写日志文件名，是包含了目录在内的绝对路径
-	src    *os.File      // 预写日志文件
-	reader *bufio.Reader // 基于 bufio reader 对日志文件的封装
+	file   string        // absolute path to the WAL file
+	src    *os.File      // underlying file handle
+	reader *bufio.Reader // buffered reader wrapping the file
 }
 
-// 构造器函数.
+// NewWALReader opens the WAL file for reading. The file must already exist.
 func NewWALReader(file string) (*WALReader, error) {
-	// 以只读模式打开 wal 文件，要求目标文件必须存在
 	src, err := os.OpenFile(file, os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, err
@@ -33,26 +32,26 @@ func NewWALReader(file string) (*WALReader, error) {
 	}, nil
 }
 
-// 读取 wal 文件，将所有内容注入到 memtable 中，以实现内存数据的复原
+// RestoreToMemtable reads the entire WAL and replays all entries into the given memtable.
 func (w *WALReader) RestoreToMemtable(memTable memtable.MemTable) error {
-	// 读取 wal 文件全量内容
+	// Read the full WAL content.
 	body, err := io.ReadAll(w.reader)
 	if err != nil {
 		return err
 	}
 
-	// 兜底保证文件偏移量被重置到起始位置
+	// Reset the file offset to the start as a safety net.
 	defer func() {
 		_, _ = w.src.Seek(0, io.SeekStart)
 	}()
 
-	// 将文件中读取到的内容解析成一系列 kv 对
+	// Parse the raw content into a list of key-value pairs.
 	kvs, err := w.readAll(bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 
-	// 将所有 kv 数据注入到 memtable 中
+	// Replay each pair into the memtable.
 	for _, kv := range kvs {
 		memTable.Put(kv.Key, kv.Value)
 	}
@@ -60,14 +59,14 @@ func (w *WALReader) RestoreToMemtable(memTable memtable.MemTable) error {
 	return nil
 }
 
-// 将文件中读到的原始内容解析成一系列 kv 对数据
+// readAll parses the raw WAL content into a list of key-value pairs.
 func (w *WALReader) readAll(reader *bytes.Reader) ([]*memtable.KV, error) {
 	var kvs []*memtable.KV
-	// 循环读取每组 kv 对，直到遇到 eof 错误才终止流程
+	// Loop reading key-value pairs until EOF.
 	for {
-		// 从 reader 中读取首个 uint64 作为 key 长度
+		// Read the first uvarint as the key length.
 		keyLen, err := binary.ReadUvarint(reader)
-		// 如果遇到 eof 错误说明文件内容已经读取完毕，终止流程
+		// EOF means the file has been fully consumed.
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -75,19 +74,19 @@ func (w *WALReader) readAll(reader *bytes.Reader) ([]*memtable.KV, error) {
 			return nil, err
 		}
 
-		// 从 reader 中读取下一个 uint64 作为 val 长度
+		// Read the next uvarint as the value length.
 		valLen, err := binary.ReadUvarint(reader)
 		if err != nil {
 			return nil, err
 		}
 
-		// 从 reader 中读取对应于 key 长度的字节数作为 key
+		// Read keyLen bytes as the key.
 		keyBuf := make([]byte, keyLen)
 		if _, err = io.ReadFull(reader, keyBuf); err != nil {
 			return nil, err
 		}
 
-		// 从 reader 中读取对应于 val 长度的字节数作为 val
+		// Read valLen bytes as the value.
 		valBuf := make([]byte, valLen)
 		if _, err = io.ReadFull(reader, valBuf); err != nil {
 			return nil, err

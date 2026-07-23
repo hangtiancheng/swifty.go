@@ -1,24 +1,24 @@
 package consistent_hash
 
 import (
+	"hash/fnv"
 	"math"
-
-	"github.com/spaolacci/murmur3"
 )
 
 type Encryptor interface {
 	Encrypt(origin string) int32
 }
 
-type MurmurHasher struct {
+// FnvHasher implements Encryptor using the standard library's FNV-1a 32-bit hash.
+type FnvHasher struct {
 }
 
-func NewMurmurHasher() *MurmurHasher {
-	return &MurmurHasher{}
+func NewFnvHasher() *FnvHasher {
+	return &FnvHasher{}
 }
 
-func (m *MurmurHasher) Encrypt(origin string) int32 {
-	hasher := murmur3.New32()
+func (m *FnvHasher) Encrypt(origin string) int32 {
+	hasher := fnv.New32a()
 	_, _ = hasher.Write([]byte(origin))
 	return int32(hasher.Sum32() % math.MaxInt32)
 }

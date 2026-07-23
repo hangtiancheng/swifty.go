@@ -11,15 +11,15 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/lsm_tree/wal"
 )
 
-// 读取 sst 文件，还原出整棵树
+// constructTree reads sst files and reconstructs the tree topology.
 func (t *Tree) constructTree() error {
-	// 读取 sst 文件目录下的 sst 文件列表
+	// List sst files in the directory, sorted by level and seq.
 	sstEntries, err := t.getSortedSSTEntries()
 	if err != nil {
 		return err
 	}
 
-	// 遍历每个 sst 文件，将其加载为 node 添加 lsm tree 的 nodes 内存切片中
+	// Load each sst file as a node into the tree.
 	for _, sstEntry := range sstEntries {
 		if err = t.loadNode(sstEntry); err != nil {
 			return err
@@ -59,35 +59,35 @@ func (t *Tree) getSortedSSTEntries() ([]fs.DirEntry, error) {
 	return sstEntries, nil
 }
 
-// 将一个 sst 文件作为一个 node 加载进入 lsm tree 的拓扑结构中
+// loadNode loads one sst file as a node into the tree.
 func (t *Tree) loadNode(sstEntry fs.DirEntry) error {
-	// 创建 sst 文件对应的 reader
+	// Create the sst reader.
 	sstReader, err := NewSSTReader(sstEntry.Name(), t.conf)
 	if err != nil {
 		return err
 	}
 
-	// 读取各 block 块对应的 filter 信息
+	// Read the per-block filter data.
 	blockToFilter, err := sstReader.ReadFilter()
 	if err != nil {
 		return err
 	}
 
-	// 读取 index 信息
+	// Read the index data.
 	index, err := sstReader.ReadIndex()
 	if err != nil {
 		return err
 	}
 
-	// 获取 sst 文件的大小，单位 byte
+	// Get the sst file size in bytes.
 	size, err := sstReader.Size()
 	if err != nil {
 		return err
 	}
 
-	// 解析 sst 文件名，得知 sst 文件对应的 level 以及 seq 号
+	// Parse the level and seq from the file name.
 	level, seq := getLevelSeqFromSSTFile(sstEntry.Name())
-	// 将 sst 文件作为一个 node 插入到 lsm tree 中
+	// Insert the node into the tree.
 	t.insertNodeWithReader(sstReader, level, seq, size, blockToFilter, index)
 	return nil
 }
@@ -100,19 +100,18 @@ func getLevelSeqFromSSTFile(file string) (level int, seq int32) {
 	return level, int32(_seq)
 }
 
-// 读取 wal 还原出 memtable
+// constructMemtable reads wal files and reconstructs the memtable.
 func (t *Tree) constructMemtable() error {
-	// 1 读 wal 目录，获取所有的 wal 文件
+	// 1. Read the wal directory.
 	raw, _ := os.ReadDir(path.Join(t.conf.Dir, "walfile"))
 
-	// 2 wal 文件除杂
+	// 2. Filter to .wal files.
 	var wals []fs.DirEntry
 	for _, entry := range raw {
 		if entry.IsDir() {
 			continue
 		}
 
-		// 要求文件必须为 .wal 类型
 		if !strings.HasSuffix(entry.Name(), ".wal") {
 			continue
 		}
@@ -120,49 +119,49 @@ func (t *Tree) constructMemtable() error {
 		wals = append(wals, entry)
 	}
 
-	// 3 倘若 wal 目录不存在或者 wal 文件不存在，则构造一个新的 memtable
+	// 3. If no wal files exist, create a fresh memtable.
 	if len(wals) == 0 {
 		t.newMemTable()
 		return nil
 	}
 
-	// 4 依次还原 memtable. 最晚一个 memtable 作为读写 memtable
-	// 前置 memtable 作为只读 memtable，分别添加到内存 slice 和 channel 中.
+	// 4. Restore memtables. The last one becomes the active memtable;
+	// earlier ones become read-only memtables sent to the compaction channel.
 	return t.restoreMemTable(wals)
 }
 
-// 基于 wal 文件还原出一系列只读 memtable 和唯一一个读写 memtable
+// restoreMemTable restores read-only memtables and one active memtable from wal files.
 func (t *Tree) restoreMemTable(wals []fs.DirEntry) error {
-	// 1 wal 排序，index 单调递增，数据实时性也随之单调递增
+	// 1. Sort wal files by index (monotonically increasing = newer data).
 	sort.Slice(wals, func(i, j int) bool {
 		indexI := walFileToMemTableIndex(wals[i].Name())
 		indexJ := walFileToMemTableIndex(wals[j].Name())
 		return indexI < indexJ
 	})
 
-	// 2 依次还原 memtable，添加到内存和 channel
+	// 2. Restore each memtable.
 	for i := 0; i < len(wals); i++ {
 		name := wals[i].Name()
 		file := path.Join(t.conf.Dir, "walfile", name)
 
-		// 构建与 wal 文件对应的 walReader
+		// Build a wal reader for this file.
 		walReader, err := wal.NewWALReader(file)
 		if err != nil {
 			return err
 		}
 		defer walReader.Close()
 
-		// 通过 reader 读取 wal 文件内容，将数据注入到 memtable 中
+		// Read the wal content into a memtable.
 		memtable := t.conf.MemTableConstructor()
 		if err = walReader.RestoreToMemtable(memtable); err != nil {
 			return err
 		}
 
-		if i == len(wals)-1 { // 倘若是最后一个 wal 文件，则 memtable 作为读写 memtable
+		if i == len(wals)-1 { // Last wal: the memtable becomes the active read-write memtable.
 			t.memTable = memtable
 			t.memTableIndex = walFileToMemTableIndex(name)
 			t.walWriter, _ = wal.NewWALWriter(file)
-		} else { // memtable 作为只读 memtable，需要追加到只读 slice 以及 channel 中，继续推进完成溢写落盘流程
+		} else { // Earlier wals: read-only memtables sent to the compaction channel.
 			memTableCompactItem := memTableCompactItem{
 				walFile:  file,
 				memTable: memtable,

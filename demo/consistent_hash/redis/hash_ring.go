@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
-	"github.com/demdxx/gocast"
-	"github.com/gomodule/redigo/redis"
 	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 type RedisHashRing struct {
@@ -39,9 +39,8 @@ func (r *RedisHashRing) getNodeDataKey(nodeID string) string {
 	return fmt.Sprintf("redis:consistent_hash:ring:node:data:%s", nodeID)
 }
 
-// 锁住哈希环，支持配置过期时间. 达到过期时间后，会自动释放锁
+// Lock acquires the hash-ring lock with the given TTL. The lock auto-releases on expiry.
 func (r *RedisHashRing) Lock(ctx context.Context, expireSeconds int) error {
-
 	lock := redis_lock.NewRedisLock(r.getLockKey(), r.redisClient, redis_lock.WithExpireSeconds(int64(expireSeconds)))
 	return lock.Lock(ctx)
 }
@@ -52,7 +51,7 @@ func (r *RedisHashRing) Unlock(ctx context.Context) error {
 }
 
 func (r *RedisHashRing) Add(ctx context.Context, score int32, nodeID string) error {
-	// add 操作本质上是要在 score 中追加一个 nodeID
+	// Add appends nodeID to the node list at the given score.
 	scoreEntities, err := r.redisClient.ZRangeByScore(ctx, r.getTableKey(), int64(score), int64(score))
 	if err != nil {
 		return fmt.Errorf("redis ring add failed, err: %w", err)
@@ -62,7 +61,7 @@ func (r *RedisHashRing) Add(ctx context.Context, score int32, nodeID string) err
 		return fmt.Errorf("invalid score entity len: %d", len(scoreEntities))
 	}
 
-	// 所以需要先查出来 score 对应的 val，append nodeID，再设置回去
+	// Read the existing node list at this score, append the new nodeID, and write it back.
 	var nodeIDs []string
 	if len(scoreEntities) == 1 {
 		if err = json.Unmarshal([]byte(scoreEntities[0].Val), &nodeIDs); err != nil {
@@ -130,7 +129,7 @@ func (r *RedisHashRing) Floor(ctx context.Context, score int32) (int32, error) {
 }
 
 func (r *RedisHashRing) Rem(ctx context.Context, score int32, nodeID string) error {
-	// rem 操作本质上是要在 score 中删去一个 nodeID
+	// Rem removes nodeID from the node list at the given score.
 	scoreEntities, err := r.redisClient.ZRangeByScore(ctx, r.getTableKey(), int64(score), int64(score))
 	if err != nil {
 		return fmt.Errorf("redis ring rem zrange by score failed, err: %w", err)
@@ -180,13 +179,14 @@ func (r *RedisHashRing) Nodes(ctx context.Context) (map[string]int, error) {
 	}
 	data := make(map[string]int, len(rawData))
 	for rawKey, rawVal := range rawData {
-		data[rawKey] = gocast.ToInt(rawVal)
+		replicas, _ := strconv.Atoi(rawVal)
+		data[rawKey] = replicas
 	}
 	return data, nil
 }
 
 func (r *RedisHashRing) AddNodeToReplica(ctx context.Context, nodeID string, replicas int) error {
-	if err := r.redisClient.HSet(ctx, r.getNodeReplicaKey(), nodeID, gocast.ToString(replicas)); err != nil {
+	if err := r.redisClient.HSet(ctx, r.getNodeReplicaKey(), nodeID, strconv.Itoa(replicas)); err != nil {
 		return fmt.Errorf("redis ring add node to replica failed, err: %w", err)
 	}
 	return nil
@@ -219,7 +219,7 @@ func (r *RedisHashRing) Node(ctx context.Context, score int32) ([]string, error)
 
 func (r *RedisHashRing) DataKeys(ctx context.Context, nodeID string) (map[string]struct{}, error) {
 	resStr, err := r.redisClient.Get(ctx, r.getNodeDataKey(nodeID))
-	if err != nil && !errors.Is(err, redis.ErrNil) {
+	if err != nil && !errors.Is(err, goredis.Nil) {
 		return nil, fmt.Errorf("redis ring dataKeys get failed, err: %w", err)
 	}
 
@@ -235,7 +235,7 @@ func (r *RedisHashRing) DataKeys(ctx context.Context, nodeID string) (map[string
 
 func (r *RedisHashRing) AddNodeToDataKeys(ctx context.Context, nodeID string, dataKeys map[string]struct{}) error {
 	resStr, err := r.redisClient.Get(ctx, r.getNodeDataKey(nodeID))
-	if err != nil && !errors.Is(err, redis.ErrNil) {
+	if err != nil && !errors.Is(err, goredis.Nil) {
 		return fmt.Errorf("redis ring addNodeToDataKey get failed, err: %w", err)
 	}
 

@@ -7,8 +7,8 @@ import (
 
 const (
 	network  = "tcp"
-	address  = "请输入 redis 地址"
-	password = "请输入 redis 密码"
+	address  = "please fill in redis address"
+	password = "please fill in redis password"
 )
 
 func Test_redis_xadd(t *testing.T) {

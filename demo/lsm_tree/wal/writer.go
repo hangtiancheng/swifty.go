@@ -5,16 +5,15 @@ import (
 	"os"
 )
 
-// 预写日志写入口
+// WALWriter appends key-value pairs to a write-ahead log file.
 type WALWriter struct {
-	file         string   // 预写日志文件名，是包含了目录在内的绝对路径
-	dest         *os.File // 预写日志文件
-	assistBuffer [30]byte // 辅助转移数据使用的临时缓冲区
+	file         string   // absolute path to the WAL file
+	dest         *os.File // underlying file handle
+	assistBuffer [30]byte // scratch buffer for length prefixes
 }
 
-// 构造器
+// NewWALWriter opens the WAL file for writing, creating it if it does not exist.
 func NewWALWriter(file string) (*WALWriter, error) {
-	// 打开 wal 文件，如果文件不存在则进行创建
 	dest, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
@@ -26,18 +25,18 @@ func NewWALWriter(file string) (*WALWriter, error) {
 	}, nil
 }
 
-// 写入一笔 kv 对到 wal 文件中
+// Write appends a key-value pair to the WAL file.
 func (w *WALWriter) Write(key, value []byte) error {
-	// 首先将key 和 value 长度填充到临时缓冲区 assistBuffer 中
+	// Encode the key and value lengths into the scratch buffer.
 	n := binary.PutUvarint(w.assistBuffer[0:], uint64(len(key)))
 	n += binary.PutUvarint(w.assistBuffer[n:], uint64(len(value)))
 
-	// 依次将 key 长度、val 长度、key、val 填充到 buf 中
+	// Concatenate: key length | value length | key | value.
 	var buf []byte
 	buf = append(buf, w.assistBuffer[:n]...)
 	buf = append(buf, key...)
 	buf = append(buf, value...)
-	// 将以上内容写入到 wal 文件中
+	// Write everything to the WAL file.
 	_, err := w.dest.Write(buf)
 	return err
 }

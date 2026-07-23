@@ -11,14 +11,14 @@ import (
 
 // Config holds redis client configuration.
 type Config struct {
-	Address            string
-	Password           string
-	DB                 int
-	PoolSize           int
-	MinIdleConns       int
-	ConnMaxIdleSeconds int
-	DialTimeoutSeconds int
-	ReadTimeoutSeconds int
+	Address             string
+	Password            string
+	DB                  int
+	PoolSize            int
+	MinIdleConns        int
+	ConnMaxIdleSeconds  int
+	DialTimeoutSeconds  int
+	ReadTimeoutSeconds  int
 	WriteTimeoutSeconds int
 }
 

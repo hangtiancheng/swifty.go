@@ -54,18 +54,18 @@ func (l *LockEntityV2) Unlock(ctx context.Context) error {
 	return nil
 }
 
-// 基于本地跳表实现一个 hash_ring
+// SkiplistHashRing is a local in-memory hash ring backed by a skip list.
 type SkiplistHashRing struct {
 	LockEntity
 	root *virtualNode
-	// 每个节点对应的虚拟节点个数
+	// nodeToReplicas maps each node to its virtual-node count.
 	nodeToReplicas map[string]int
 	nodeToDataKey  map[string]map[string]struct{}
 }
 
 type LockEntity struct {
 	lock sync.Mutex
-	// 另一把锁，为了支持解锁的幂等操作
+	// doubleLock supports idempotent unlock.
 	doubleLock sync.Mutex
 	cancel     context.CancelFunc
 	owner      atomic.Value
@@ -81,14 +81,14 @@ func NewSkiplistHashRing() *SkiplistHashRing {
 
 type virtualNode struct {
 	score int32
-	// 存储的 nodeID 列表
+	// nodeIDs stores the node ids at this score.
 	nodeIDs []string
 	nexts   []*virtualNode
 }
 
-// 锁住哈希环，支持配置过期时间. 达到过期时间后，会自动释放锁
+// Lock acquires the hash-ring lock with the given TTL. The lock auto-releases on expiry.
 func (s *SkiplistHashRing) Lock(ctx context.Context, expireSeconds int) error {
-	// 只锁定指定的时长
+	// Hold the lock for the specified duration only.
 	s.doubleLock.Lock()
 	defer s.doubleLock.Unlock()
 
@@ -99,11 +99,11 @@ func (s *SkiplistHashRing) Lock(ctx context.Context, expireSeconds int) error {
 		return nil
 	}
 
-	// 先加锁，指定时长后进行解锁. 需要保证指定时长后锁的使用方还是自己, 不能解了别人的锁
+	// Lock now, schedule unlock after the TTL. The unlock must verify ownership to avoid unlocking someone else's lock.
 	cctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	go func() {
-		// 发生一次解锁操作后，该 goroutine 会被终止
+		// This goroutine exits once an unlock is performed.
 		select {
 		case <-cctx.Done():
 			return
@@ -115,17 +115,17 @@ func (s *SkiplistHashRing) Lock(ctx context.Context, expireSeconds int) error {
 }
 
 func (s *SkiplistHashRing) unlock(ctx context.Context, token string) error {
-	// 解锁. 倘若已经解锁，则直接返回，避免 fatal
+	// Unlock. If already unlocked, return immediately to avoid a fatal error.
 	s.doubleLock.Lock()
 	defer s.doubleLock.Unlock()
-	// 锁如果不属于自己，直接终止
+	// If the lock is not ours, bail out.
 	owner, _ := s.owner.Load().(string)
 	if owner != token {
 		return errors.New("not your lock")
 	}
 	s.owner.Store("")
 
-	// 是属于自己的锁，则先终止对应的守护 goroutine
+	// Our lock: cancel the watchdog goroutine.
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -163,7 +163,7 @@ func (s *SkiplistHashRing) Add(ctx context.Context, score int32, nodeID string) 
 		nodeIDs: []string{nodeID},
 	}
 
-	// 层数从高到低
+	// Top-down level traversal.
 	move := s.root
 	for level := rLevel; level >= 0; level-- {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
@@ -221,7 +221,7 @@ func (s *SkiplistHashRing) Rem(ctx context.Context, score int32, nodeID string) 
 		return nil
 	}
 
-	// 层数从高到低
+	// Top-down level traversal to unlink the node.
 	move := s.root
 	for level := len(s.root.nexts) - 1; level >= 0; level-- {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
@@ -305,7 +305,7 @@ func (s *SkiplistHashRing) roll() int {
 	return level
 }
 
-// 获得 >= score 且最接近 score 的目标
+// ceiling returns the smallest score >= the given score.
 func (s *SkiplistHashRing) ceiling(score int32) (int32, bool) {
 	if len(s.root.nexts) == 0 {
 		return -1, false
@@ -356,9 +356,9 @@ func (s *SkiplistHashRing) floor(score int32) (int32, bool) {
 	return move.score, true
 }
 
-// 返回最大的节点
+// last returns the largest score in the ring.
 func (s *SkiplistHashRing) last() (int32, bool) {
-	// 层数从高到低
+	// Top-down level traversal.
 	move := s.root
 	for level := len(s.root.nexts) - 1; level >= 0; level-- {
 		for move.nexts[level] != nil {

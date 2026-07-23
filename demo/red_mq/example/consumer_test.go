@@ -11,14 +11,14 @@ import (
 
 const (
 	network       = "tcp"
-	address       = "请输入 redis 地址"
-	password      = "请输入 redis 密码"
-	topic         = "请输入 topic 名称"
-	consumerGroup = "请输入消费者组名称"
-	consumerID    = "请输入消费者名称"
+	address       = "please fill in redis address"
+	password      = "please fill in redis password"
+	topic         = "please fill in topic name"
+	consumerGroup = "please fill in consumer group name"
+	consumerID    = "please fill in consumer name"
 )
 
-// 自定义实现的死信队列
+// DemoDeadLetterMailbox is a custom dead-letter mailbox.
 type DemoDeadLetterMailbox struct {
 	do func(msg *redis.MsgEntity)
 }
@@ -29,7 +29,7 @@ func NewDemoDeadLetterMailbox(do func(msg *redis.MsgEntity)) *DemoDeadLetterMail
 	}
 }
 
-// 死信队列接收消息的处理方法
+// Deliver handles a dead-letter message.
 func (d *DemoDeadLetterMailbox) Deliver(ctx context.Context, msg *redis.MsgEntity) error {
 	d.do(msg)
 	return nil
@@ -38,24 +38,24 @@ func (d *DemoDeadLetterMailbox) Deliver(ctx context.Context, msg *redis.MsgEntit
 func Test_Consumer(t *testing.T) {
 	client := redis.NewClient(network, address, password)
 
-	// 接收到消息后的处理函数
+	// Message handler.
 	callbackFunc := func(ctx context.Context, msg *redis.MsgEntity) error {
 		t.Logf("receive msg, msg id: %s, msg key: %s, msg val: %s", msg.MsgID, msg.Key, msg.Val)
 		return nil
 	}
 
-	// 自定义实现的死信队列
+	// Custom dead-letter mailbox.
 	demoDeadLetterMailbox := NewDemoDeadLetterMailbox(func(msg *redis.MsgEntity) {
 		t.Logf("receive dead letter, msg id: %s, msg key: %s, msg val: %s", msg.MsgID, msg.Key, msg.Val)
 	})
 
-	// 构造并启动消费者
+	// Build and start the consumer.
 	consumer, err := red_mq.NewConsumer(client, topic, consumerGroup, consumerID, callbackFunc,
-		// 每条消息最多重试 2 次
+		// Max 2 retries per message.
 		red_mq.WithMaxRetryLimit(2),
-		// 每轮接收消息的超时时间为 2 s
+		// 2s receive timeout per poll.
 		red_mq.WithReceiveTimeout(2*time.Second),
-		// 注入自定义实现的死信队列
+		// Inject the custom dead-letter mailbox.
 		red_mq.WithDeadLetterMailbox(demoDeadLetterMailbox))
 	if err != nil {
 		t.Error(err)
@@ -63,6 +63,6 @@ func Test_Consumer(t *testing.T) {
 	}
 	defer consumer.Stop()
 
-	// 十秒后退出单测程序
+	// Exit the test after 10 seconds.
 	<-time.After(10 * time.Second)
 }

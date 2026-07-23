@@ -7,8 +7,8 @@ import (
 
 const (
 	network  = "tcp"
-	address  = "请输入 redis 地址——{ip}:{port}"
-	password = "请输入 redis 密码，若未设置密码则传空串"
+	address  = "please fill in redis address {ip}:{port}"
+	password = "please fill in redis password, empty string if none"
 )
 
 func Test_ZRangeByScore(t *testing.T) {
