@@ -429,7 +429,7 @@ It is recommended that callers build centralized error-wrapping for common cases
 | `engine.go`          | Engine type, connection lifecycle, Collection, Model, Transaction, NextSequence                     |
 | `query.go`           | Query type and all chainable condition / sort / pagination / projection methods                     |
 | `query_exec.go`      | Terminal methods: Insert, First, Find, Update, Delete, Count, Exists, EnsureIndexes, DropCollection |
-| `query_aggregate.go` | Aggregation methods: Sum, Avg, Min, Max, Distinct, CountDistinct, Pluck                            |
+| `query_aggregate.go` | Aggregation methods: Sum, Avg, Min, Max, Distinct, CountDistinct, Pluck                             |
 | `query_group.go`     | Grouped aggregation: GroupBy, Having, CountAs/SumAs/AvgAs/MinAs/MaxAs, Aggregate                    |
 | `query_stream.go`    | Streaming: Cursor, Each                                                                             |
 | `filter.go`          | Translation of the condition chain into a `bson.M` filter document                                  |
