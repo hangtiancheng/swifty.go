@@ -75,7 +75,7 @@ type WrongTypeErrReply struct{}
 
 var theWrongTypeErrReply = &WrongTypeErrReply{}
 
-var wrongTypeErrBytes = []byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n")
+var wrongTypeErrBytes = []byte("WRONG TYPE Operation against a key holding the wrong kind of value\r\n")
 
 func NewWrongTypeErrReply() *WrongTypeErrReply {
 	return theWrongTypeErrReply
@@ -86,7 +86,7 @@ func (r *WrongTypeErrReply) ToBytes() []byte {
 }
 
 func (r *WrongTypeErrReply) Error() string {
-	return "WRONGTYPE Operation against a key holding the wrong kind of value"
+	return "WRONG TYPE Operation against a key holding the wrong kind of value"
 }
 
 // ErrReply. Protocol: [-][err][CRLF]

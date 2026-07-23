@@ -10,12 +10,11 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
-func Test_GetTXRecod(t *testing.T) {
+func Test_GetTXRecord(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Error(err)
@@ -60,9 +59,15 @@ func Test_GetTXRecod(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				assert.Equal(t, 1, len(txRecords))
-				assert.Equal(t, uint(1), txRecords[0].ID)
-				assert.Equal(t, tcc_demo.TXHanging.String(), txRecords[0].Status)
+				if len(txRecords) != 1 {
+					t.Errorf("expected 1, got %d", len(txRecords))
+				}
+				if txRecords[0].ID != uint(1) {
+					t.Errorf("expected 1, got %d", txRecords[0].ID)
+				}
+				if txRecords[0].Status != tcc_demo.TXHanging.String() {
+					t.Errorf("expected %s, got %s", tcc_demo.TXHanging.String(), txRecords[0].Status)
+				}
 			},
 		},
 	}
@@ -74,7 +79,7 @@ func Test_GetTXRecod(t *testing.T) {
 	}
 }
 
-func Test_CreateTXRecod(t *testing.T) {
+func Test_CreateTXRecord(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Error(err)
@@ -123,7 +128,9 @@ func Test_CreateTXRecod(t *testing.T) {
 						UpdatedAt: now,
 					},
 				})
-				assert.Equal(t, nil, err)
+				if err != nil {
+					t.Errorf("expected nil, got %v", err)
+				}
 			},
 		},
 	}
@@ -180,19 +187,21 @@ func Test_UpdateComponentStatus(t *testing.T) {
 				mock.ExpectBegin()
 
 				rows := sqlmock.NewRows([]string{"id", "create_at", "deleted_at", "updated_at", "status", "component_try_statuses"}).AddRow(1, now, nil, now, tcc_demo.TXHanging.String(), string(body))
-				mock.ExpectQuery("SELECT \\* FROM `tx_record` WHERE `tx_record`.`id` = \\? AND `tx_record`.`deleted_at` IS NULL ORDER BY `tx_record`.`id` LIMIT 1 FOR UPDATE").WithArgs(1).WillReturnRows(rows)
+				mock.ExpectQuery("SELECT \\* FROM `tx_record` WHERE `tx_record`.`id` = \\? AND `tx_record`.`deleted_at` IS NULL ORDER BY `tx_record`.`id` LIMIT \\? FOR UPDATE").WithArgs(1, 1).WillReturnRows(rows)
 
 				newComponentStatus := map[string]*ComponentTryStatus{
 					"component_a": {
 						ComponentID: "component_a",
-						TryStatus:   tcc_demo.TrySucceesful.String(),
+						TryStatus:   tcc_demo.TrySuccessful.String(),
 					},
 				}
 				newBody, _ := json.Marshal(newComponentStatus)
 				mock.ExpectExec("UPDATE `tx_record` SET `updated_at`=\\?,`status`=\\?,`component_try_statuses`=\\? WHERE `tx_record`.`deleted_at` IS NULL AND `id` = \\?").WithArgs(now, tcc_demo.TXHanging.String(), string(newBody), 1).WillReturnResult(driver.ResultNoRows)
 				mock.ExpectCommit()
-				err := txRecordDAO.UpdateComponentStatus(ctx, 1, "component_a", tcc_demo.TrySucceesful.String())
-				assert.Equal(t, nil, err)
+				err := txRecordDAO.UpdateComponentStatus(ctx, 1, "component_a", tcc_demo.TrySuccessful.String())
+				if err != nil {
+					t.Errorf("expected nil, got %v", err)
+				}
 			},
 		},
 
@@ -210,11 +219,13 @@ func Test_UpdateComponentStatus(t *testing.T) {
 				mock.ExpectBegin()
 
 				rows := sqlmock.NewRows([]string{"id", "create_at", "deleted_at", "updated_at", "status", "component_try_statuses"}).AddRow(1, now, nil, now, tcc_demo.TXHanging.String(), string(body))
-				mock.ExpectQuery("SELECT \\* FROM `tx_record` WHERE `tx_record`.`id` = \\? AND `tx_record`.`deleted_at` IS NULL ORDER BY `tx_record`.`id` LIMIT 1 FOR UPDATE").WithArgs(1).WillReturnRows(rows)
+				mock.ExpectQuery("SELECT \\* FROM `tx_record` WHERE `tx_record`.`id` = \\? AND `tx_record`.`deleted_at` IS NULL ORDER BY `tx_record`.`id` LIMIT \\? FOR UPDATE").WithArgs(1, 1).WillReturnRows(rows)
 
 				mock.ExpectRollback()
-				err := txRecordDAO.UpdateComponentStatus(ctx, 1, "component_b", tcc_demo.TrySucceesful.String())
-				assert.Equal(t, true, err != nil)
+				err := txRecordDAO.UpdateComponentStatus(ctx, 1, "component_b", tcc_demo.TrySuccessful.String())
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
 			},
 		},
 		{
@@ -231,11 +242,13 @@ func Test_UpdateComponentStatus(t *testing.T) {
 				mock.ExpectBegin()
 
 				rows := sqlmock.NewRows([]string{"id", "create_at", "deleted_at", "updated_at", "status", "component_try_statuses"}).AddRow(1, now, nil, now, tcc_demo.TXHanging.String(), string(body))
-				mock.ExpectQuery("SELECT \\* FROM `tx_record` WHERE `tx_record`.`id` = \\? AND `tx_record`.`deleted_at` IS NULL ORDER BY `tx_record`.`id` LIMIT 1 FOR UPDATE").WithArgs(1).WillReturnRows(rows)
+				mock.ExpectQuery("SELECT \\* FROM `tx_record` WHERE `tx_record`.`id` = \\? AND `tx_record`.`deleted_at` IS NULL ORDER BY `tx_record`.`id` LIMIT \\? FOR UPDATE").WithArgs(1, 1).WillReturnRows(rows)
 
 				mock.ExpectCommit()
-				err := txRecordDAO.UpdateComponentStatus(ctx, 1, "component_a", tcc_demo.TrySucceesful.String())
-				assert.Equal(t, true, err != nil)
+				err := txRecordDAO.UpdateComponentStatus(ctx, 1, "component_a", tcc_demo.TrySuccessful.String())
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
 			},
 		},
 	}
@@ -291,7 +304,9 @@ func Test_UpdateTXRecord(t *testing.T) {
 					Status:               tcc_demo.TXHanging.String(),
 					ComponentTryStatuses: "{}",
 				})
-				assert.Equal(t, nil, err)
+				if err != nil {
+					t.Errorf("expected nil, got %v", err)
+				}
 			},
 		},
 	}

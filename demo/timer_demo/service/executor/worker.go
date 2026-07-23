@@ -108,7 +108,7 @@ func (w *Worker) postProcess(ctx context.Context, resp map[string]interface{}, e
 
 	task, err := w.taskDAO.GetTask(ctx, taskdao.WithTimerID(timerID), taskdao.WithRunTimer(time.UnixMilli(unix)))
 	if err != nil {
-		return fmt.Errorf("get task failed, timerID: %d, runTimer: %d, err: %w", timerID, time.UnixMilli(unix), err)
+		return fmt.Errorf("get task failed, timerID: %d, runTimer: %v, err: %w", timerID, time.UnixMilli(unix), err)
 	}
 
 	respBody, _ := json.Marshal(resp)

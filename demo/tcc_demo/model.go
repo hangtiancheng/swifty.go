@@ -51,7 +51,7 @@ func (c ComponentTryStatus) String() string {
 const (
 	TryHanging ComponentTryStatus = "hanging"
 	// 事务成功
-	TrySucceesful ComponentTryStatus = "successful"
+	TrySuccessful ComponentTryStatus = "successful"
 	// 事务失败
 	TryFailure ComponentTryStatus = "failure"
 )
@@ -76,7 +76,7 @@ func (t *Transaction) getStatus(createdBefore time.Time) TXStatus {
 		if component.TryStatus == TryFailure {
 			return TXFailure
 		}
-		hangingExist = hangingExist || (component.TryStatus != TrySucceesful)
+		hangingExist = hangingExist || (component.TryStatus != TrySuccessful)
 	}
 
 	// 2 如果存在 hanging 状态，并且已经超时，也直接置为失败

@@ -53,12 +53,12 @@ func (w *Worker) Start(ctx context.Context) error {
 
 		locker := w.lockService.GetDistributionLock(utils.GetMigratorLockKey(utils.GetStartHour(time.Now())))
 		if err := locker.Lock(ctx, int64(conf.MigrateTryLockMinutes)*int64(time.Minute/time.Second)); err != nil {
-			log.ErrorContext(ctx, "migrator get lock failed, key: %s, err: %v", utils.GetMigratorLockKey(utils.GetStartHour(time.Now())), err)
+			log.ErrorContextf(ctx, "migrator get lock failed, key: %s, err: %v", utils.GetMigratorLockKey(utils.GetStartHour(time.Now())), err)
 			continue
 		}
 
 		if err := w.migrate(ctx); err != nil {
-			log.ErrorContext(ctx, "migrate failed, err: %v", err)
+			log.ErrorContextf(ctx, "migrate failed, err: %v", err)
 			continue
 		}
 

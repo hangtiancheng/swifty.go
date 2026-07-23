@@ -51,17 +51,17 @@ func (t *TXManager) Register(component TCCComponent) error {
 
 // 事务
 func (t *TXManager) Transaction(ctx context.Context, reqs ...*RequestEntity) (string, bool, error) {
-	tctx, cancel := context.WithTimeout(ctx, t.opts.Timeout)
+	ctx2, cancel := context.WithTimeout(ctx, t.opts.Timeout)
 	defer cancel()
 
 	// 获得所有的组件
-	componentEntities, err := t.getComponents(tctx, reqs...)
+	componentEntities, err := t.getComponents(ctx2, reqs...)
 	if err != nil {
 		return "", false, err
 	}
 
 	// 1 先创建事务明细记录，并取得全局唯一的事务 id
-	txID, err := t.txStore.CreateTX(tctx, componentEntities.ToComponents()...)
+	txID, err := t.txStore.CreateTX(ctx2, componentEntities.ToComponents()...)
 	if err != nil {
 		return "", false, err
 	}
@@ -215,7 +215,7 @@ func (t *TXManager) advanceProgress(tx *Transaction) error {
 }
 
 func (t *TXManager) twoPhaseCommit(ctx context.Context, txID string, componentEntities ComponentEntities) bool {
-	cctx, cancel := context.WithCancel(ctx)
+	ctx2, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// 并发执行，只要中间某次出现了失败，直接终止流程进行 cancel
@@ -230,24 +230,24 @@ func (t *TXManager) twoPhaseCommit(ctx context.Context, txID string, componentEn
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				resp, err := componentEntity.Component.Try(cctx, &TCCReq{
+				resp, err := componentEntity.Component.Try(ctx2, &TCCReq{
 					ComponentID: componentEntity.Component.ID(),
 					TXID:        txID,
 					Data:        componentEntity.Request,
 				})
 				// 但凡有一个 component try 报错或者拒绝，都是需要进行 cancel 的，但会放在 advanceProgressByTXID 流程处理
 				if err != nil || !resp.ACK {
-					log.ErrorContextf(cctx, "tx try failed, tx id: %s, comonent id: %s, err: %v", txID, componentEntity.Component.ID(), err)
+					log.ErrorContextf(ctx2, "tx try failed, tx id: %s, component id: %s, err: %v", txID, componentEntity.Component.ID(), err)
 					// 对对应的事务进行更新
-					if _err := t.txStore.TXUpdate(cctx, txID, componentEntity.Component.ID(), false); _err != nil {
-						log.ErrorContextf(cctx, "tx updated failed, tx id: %s, component id: %s, err: %v", txID, componentEntity.Component.ID(), _err)
+					if _err := t.txStore.TXUpdate(ctx2, txID, componentEntity.Component.ID(), false); _err != nil {
+						log.ErrorContextf(ctx2, "tx updated failed, tx id: %s, component id: %s, err: %v", txID, componentEntity.Component.ID(), _err)
 					}
 					errCh <- fmt.Errorf("component: %s try failed", componentEntity.Component.ID())
 					return
 				}
 				// try 请求成功，但是请求结果更新到事务日志失败时，也需要视为处理失败
-				if err = t.txStore.TXUpdate(cctx, txID, componentEntity.Component.ID(), true); err != nil {
-					log.ErrorContextf(cctx, "tx updated failed, tx id: %s, component id: %s, err: %v", txID, componentEntity.Component.ID(), err)
+				if err = t.txStore.TXUpdate(ctx2, txID, componentEntity.Component.ID(), true); err != nil {
+					log.ErrorContextf(ctx2, "tx updated failed, tx id: %s, component id: %s, err: %v", txID, componentEntity.Component.ID(), err)
 					errCh <- err
 				}
 			}()
@@ -273,7 +273,7 @@ func (t *TXManager) twoPhaseCommit(ctx context.Context, txID string, componentEn
 
 func (t *TXManager) getComponents(ctx context.Context, reqs ...*RequestEntity) (ComponentEntities, error) {
 	if len(reqs) == 0 {
-		return nil, errors.New("emtpy task")
+		return nil, errors.New("empty task")
 	}
 
 	// 调一下接口，确认这些都是合法的

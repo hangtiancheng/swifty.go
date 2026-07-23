@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/spf13/cast"
-	"github.com/stretchr/testify/assert"
 )
 
 type mockTXStore struct {
@@ -65,10 +64,10 @@ func (m *mockTXStore) TXUpdate(ctx context.Context, txID string, componentID str
 			continue
 		}
 		if component.TryStatus != TryHanging {
-			return fmt.Errorf("invalid component status: %s, componentid: %s, txid: %s", component.TryStatus, componentID, txID)
+			return fmt.Errorf("invalid component status: %s, componentId: %s, txId: %s", component.TryStatus, componentID, txID)
 		}
 		if accept {
-			component.TryStatus = TrySucceesful
+			component.TryStatus = TrySuccessful
 		} else {
 			component.TryStatus = TryFailure
 		}
@@ -234,7 +233,7 @@ func Test_txmanager_transaction_success(t *testing.T) {
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
 	for i := 0; i < componentsCnt; i++ {
-		componentID := cast.ToString(i)
+		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)
 			return
@@ -250,13 +249,17 @@ func Test_txmanager_transaction_success(t *testing.T) {
 		return
 	}
 
-	assert.Equal(t, true, ok)
+	if !ok {
+		t.Error("expected true, got false")
+	}
 	tx, err := txmanager.txStore.GetTX(ctx, txid)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	assert.Equal(t, TXSuccessful, tx.Status)
+	if tx.Status != TXSuccessful {
+		t.Errorf("expected %s, got %s", TXSuccessful, tx.Status)
+	}
 }
 
 // 验证分布式事务失败场景
@@ -269,7 +272,7 @@ func Test_txmanager_transaction_fail(t *testing.T) {
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
 	for i := 0; i < componentsCnt; i++ {
-		componentID := cast.ToString(i)
+		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)
 			return
@@ -288,13 +291,17 @@ func Test_txmanager_transaction_fail(t *testing.T) {
 		return
 	}
 
-	assert.Equal(t, false, ok)
+	if ok {
+		t.Error("expected false, got true")
+	}
 	tx, err := txmanager.txStore.GetTX(ctx, txid)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	assert.Equal(t, TXFailure, tx.Status)
+	if tx.Status != TXFailure {
+		t.Errorf("expected %s, got %s", TXFailure, tx.Status)
+	}
 }
 
 func Test_txmanager_transaction_concurrent(t *testing.T) {
@@ -304,7 +311,7 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 	// 注册 10 个 component
 	componentsCnt := 10
 	for i := 0; i < componentsCnt; i++ {
-		componentID := cast.ToString(i)
+		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)
 			return
@@ -320,10 +327,10 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rander := rand.New(rand.NewSource(time.Now().UnixNano()))
+			randInst := rand.New(rand.NewSource(time.Now().UnixNano()))
 			componentSet := make(map[string]struct{}, componentReqCnt)
 			for len(componentSet) < componentReqCnt {
-				componentID := cast.ToString(rander.Intn(componentsCnt))
+				componentID := strconv.Itoa(randInst.Intn(componentsCnt))
 				componentSet[componentID] = struct{}{}
 			}
 
@@ -339,13 +346,17 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			assert.Equal(t, true, ok)
+			if !ok {
+				t.Error("expected true, got false")
+			}
 			tx, err := txmanager.txStore.GetTX(ctx, txid)
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			assert.Equal(t, TXSuccessful, tx.Status)
+			if tx.Status != TXSuccessful {
+				t.Errorf("expected %s, got %s", TXSuccessful, tx.Status)
+			}
 		}()
 	}
 
@@ -361,7 +372,7 @@ func Test_txmanager_transaction_advance_progress(t *testing.T) {
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
 	for i := 0; i < componentsCnt; i++ {
-		componentID := cast.ToString(i)
+		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)
 			return
@@ -380,24 +391,36 @@ func Test_txmanager_transaction_advance_progress(t *testing.T) {
 		return
 	}
 
-	assert.Equal(t, false, ok)
+	if ok {
+		t.Error("expected false, got true")
+	}
 	tx, err := txmanager.txStore.GetTX(ctx, txid)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	assert.Equal(t, TXFailure, tx.Status)
+	if tx.Status != TXFailure {
+		t.Errorf("expected %s, got %s", TXFailure, tx.Status)
+	}
 }
 
 func Test_txManager_backOffTick(t *testing.T) {
 	txManager := NewTXManager(newMockTXStore(), WithMonitorTick(time.Second))
 	defer txManager.stop()
 	got := txManager.backOffTick(time.Second)
-	assert.Equal(t, 2*time.Second, got)
+	if got != 2*time.Second {
+		t.Errorf("expected %v, got %v", 2*time.Second, got)
+	}
 	got = txManager.backOffTick(got)
-	assert.Equal(t, 4*time.Second, got)
+	if got != 4*time.Second {
+		t.Errorf("expected %v, got %v", 4*time.Second, got)
+	}
 	got = txManager.backOffTick(got)
-	assert.Equal(t, 8*time.Second, got)
+	if got != 8*time.Second {
+		t.Errorf("expected %v, got %v", 8*time.Second, got)
+	}
 	got = txManager.backOffTick(got)
-	assert.Equal(t, 8*time.Second, got)
+	if got != 8*time.Second {
+		t.Errorf("expected %v, got %v", 8*time.Second, got)
+	}
 }

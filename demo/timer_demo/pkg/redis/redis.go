@@ -21,11 +21,11 @@ type Client struct {
 func GetClient(confProvider *conf.RedisConfigProvider) *Client {
 	config := confProvider.Get()
 	client := gredis.NewClient(&gredis.Options{
-		Addr:         config.Address,
-		Password:     config.Password,
-		PoolSize:     config.MaxActive,
-		MinIdleConns: config.MaxIdle,
-		IdleTimeout:  time.Duration(config.IdleTimeoutSeconds) * time.Second,
+		Addr:            config.Address,
+		Password:        config.Password,
+		PoolSize:        config.MaxActive,
+		MinIdleConns:    config.MaxIdle,
+		ConnMaxIdleTime: time.Duration(config.IdleTimeoutSeconds) * time.Second,
 	})
 	return &Client{client: client}
 }

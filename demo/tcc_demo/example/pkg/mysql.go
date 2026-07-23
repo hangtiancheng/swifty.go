@@ -24,7 +24,7 @@ func (defaultDBFactory) Open(dsn string, opts ...gorm.Option) (*gorm.DB, error) 
 var (
 	dbFactory DBFactory = defaultDBFactory{}
 	db        *gorm.DB
-	dbonce    sync.Once
+	debounce  sync.Once
 )
 
 func NewDB(dsn string, opts ...gorm.Option) (*gorm.DB, error) {
@@ -32,7 +32,7 @@ func NewDB(dsn string, opts ...gorm.Option) (*gorm.DB, error) {
 }
 
 func GetDB() *gorm.DB {
-	dbonce.Do(func() {
+	debounce.Do(func() {
 		var err error
 		if db, err = dbFactory.Open(dsn, &gorm.Config{}); err != nil {
 			panic(fmt.Errorf("failed to connect database, err: %w", err))

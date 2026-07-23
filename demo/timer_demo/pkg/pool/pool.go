@@ -11,7 +11,7 @@ type WorkerPool interface {
 
 // GoWorkerPool is a goroutine worker pool backed by gopool.
 type GoWorkerPool struct {
-	pool *gopool.Pool
+	pool gopool.Pool
 }
 
 // Submit submits a task to the pool.

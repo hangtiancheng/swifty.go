@@ -3,18 +3,28 @@ package pkg
 import (
 	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_GetRedisClient(t *testing.T) {
-	assert.Equal(t, reflect.TypeOf(NewRedisClient("", "", "")), reflect.TypeOf(GetRedisClient()))
+	if reflect.TypeOf(NewRedisClient("", "", "")) != reflect.TypeOf(GetRedisClient()) {
+		t.Error("type mismatch")
+	}
 }
 
 func Test_BuildKey(t *testing.T) {
-	assert.Equal(t, "txKey:component:tx", BuildTXKey("component", "tx"))
-	assert.Equal(t, "txDetailKey:component:tx", BuildTXDetailKey("component", "tx"))
-	assert.Equal(t, "txKey:component:tx:biz", BuildDataKey("component", "tx", "biz"))
-	assert.Equal(t, "txLockKey:component:tx", BuildTXLockKey("component", "tx"))
-	assert.Equal(t, "tcc_demo:txRecord:lock", BuildTXRecordLockKey())
+	if got := BuildTXKey("component", "tx"); got != "txKey:component:tx" {
+		t.Errorf("expected txKey:component:tx, got %s", got)
+	}
+	if got := BuildTXDetailKey("component", "tx"); got != "txDetailKey:component:tx" {
+		t.Errorf("expected txDetailKey:component:tx, got %s", got)
+	}
+	if got := BuildDataKey("component", "tx", "biz"); got != "txKey:component:tx:biz" {
+		t.Errorf("expected txKey:component:tx:biz, got %s", got)
+	}
+	if got := BuildTXLockKey("component", "tx"); got != "txLockKey:component:tx" {
+		t.Errorf("expected txLockKey:component:tx, got %s", got)
+	}
+	if got := BuildTXRecordLockKey(); got != "tcc_demo:txRecord:lock" {
+		t.Errorf("expected tcc_demo:txRecord:lock, got %s", got)
+	}
 }

@@ -3,31 +3,34 @@ package example
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo"
+	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/mocks"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/pkg"
-	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_MockComponent_Try(t *testing.T) {
 	lockErr := "lockErr"
 	lockErrCtxKey := &lockErr
 
-	patch := gomonkey.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Lock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		lockErr, _ := ctx.Value(lockErrCtxKey).(bool)
-		if lockErr {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := mocks.NewMockRedisClient(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+
+	mockLock.EXPECT().Lock(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+		if v, _ := ctx.Value(lockErrCtxKey).(bool); v {
 			return errors.New("lock err")
 		}
 		return nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Unlock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		return nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "Get", func(_ *redis_lock.Client, ctx context.Context, key string) (string, error) {
+	}).AnyTimes()
+	mockLock.EXPECT().Unlock(gomock.Any()).Return(nil).AnyTimes()
+
+	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (string, error) {
 		switch key {
 		case pkg.BuildTXKey("id", "err"):
 			return "", errors.New("getErr")
@@ -38,18 +41,19 @@ func Test_MockComponent_Try(t *testing.T) {
 		default:
 			return "", nil
 		}
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "Set", func(_ *redis_lock.Client, ctx context.Context, key string, value string) (int64, error) {
+	}).AnyTimes()
+
+	mockClient.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string, value string) (int64, error) {
 		if value == "setTXToBizErr" {
 			return -1, errors.New("setTXToBizErr")
 		}
 		if key == pkg.BuildTXKey("id", "setTxStatusErr") {
 			return -1, errors.New("setTxStatusErr")
 		}
-
 		return 1, nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "SetNX", func(_ *redis_lock.Client, ctx context.Context, key string, value string) (int64, error) {
+	}).AnyTimes()
+
+	mockClient.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string, value string) (int64, error) {
 		switch key {
 		case pkg.BuildDataKey("id", "tx", "frozeBizErr"):
 			return -1, errors.New("frozeBizErr")
@@ -58,12 +62,21 @@ func Test_MockComponent_Try(t *testing.T) {
 		default:
 			return 1, nil
 		}
-	})
-	defer patch.Reset()
+	}).AnyTimes()
+
+	mockComponent := &MockComponent{
+		id:     "id",
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
+	if mockComponent.ID() != "id" {
+		t.Errorf("expected id, got %s", mockComponent.ID())
+	}
 
 	ctx := context.Background()
-	mockComponent := NewMockComponent("id", &redis_lock.Client{})
-	assert.Equal(t, "id", mockComponent.ID())
 
 	tests := []struct {
 		name      string
@@ -154,11 +167,16 @@ func Test_MockComponent_Try(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := mockComponent.Try(tt.ctx, tt.req)
-			assert.Equal(t, tt.expectErr, err != nil)
+			if tt.expectErr != (err != nil) {
+				t.Errorf("expected err=%v, got %v", tt.expectErr, err)
+				return
+			}
 			if err != nil {
 				return
 			}
-			assert.Equal(t, tt.ack, resp.ACK)
+			if tt.ack != resp.ACK {
+				t.Errorf("expected ack=%v, got %v", tt.ack, resp.ACK)
+			}
 		})
 	}
 }
@@ -167,17 +185,21 @@ func Test_MockComponent_Confirm(t *testing.T) {
 	lockErr := "lockErr"
 	lockErrCtxKey := &lockErr
 
-	patch := gomonkey.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Lock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		lockErr, _ := ctx.Value(lockErrCtxKey).(bool)
-		if lockErr {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := mocks.NewMockRedisClient(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+
+	mockLock.EXPECT().Lock(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+		if v, _ := ctx.Value(lockErrCtxKey).(bool); v {
 			return errors.New("lock err")
 		}
 		return nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Unlock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		return nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "Get", func(_ *redis_lock.Client, ctx context.Context, key string) (string, error) {
+	}).AnyTimes()
+	mockLock.EXPECT().Unlock(gomock.Any()).Return(nil).AnyTimes()
+
+	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (string, error) {
 		switch key {
 		case pkg.BuildTXKey("id", "err"):
 			return "", errors.New("getErr")
@@ -198,19 +220,28 @@ func Test_MockComponent_Confirm(t *testing.T) {
 		default:
 			return TXTried.String(), nil
 		}
-	})
+	}).AnyTimes()
 
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "Set", func(_ *redis_lock.Client, ctx context.Context, key string, value string) (int64, error) {
+	mockClient.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string, value string) (int64, error) {
 		if key == pkg.BuildDataKey("id", "setBizResErr", "tried") {
 			return -1, errors.New("setBizResErr")
 		}
 		return 1, nil
-	})
-	defer patch.Reset()
+	}).AnyTimes()
+
+	mockComponent := &MockComponent{
+		id:     "id",
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
+	if mockComponent.ID() != "id" {
+		t.Errorf("expected id, got %s", mockComponent.ID())
+	}
 
 	ctx := context.Background()
-	mockComponent := NewMockComponent("id", &redis_lock.Client{})
-	assert.Equal(t, "id", mockComponent.ID())
 
 	tests := []struct {
 		name      string
@@ -275,11 +306,16 @@ func Test_MockComponent_Confirm(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := mockComponent.Confirm(tt.ctx, tt.txid)
-			assert.Equal(t, tt.expectErr, err != nil)
+			if tt.expectErr != (err != nil) {
+				t.Errorf("expected err=%v, got %v", tt.expectErr, err)
+				return
+			}
 			if err != nil {
 				return
 			}
-			assert.Equal(t, tt.ack, resp.ACK)
+			if tt.ack != resp.ACK {
+				t.Errorf("expected ack=%v, got %v", tt.ack, resp.ACK)
+			}
 		})
 	}
 }
@@ -288,17 +324,21 @@ func Test_MockComponent_Cancel(t *testing.T) {
 	lockErr := "lockErr"
 	lockErrCtxKey := &lockErr
 
-	patch := gomonkey.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Lock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		lockErr, _ := ctx.Value(lockErrCtxKey).(bool)
-		if lockErr {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := mocks.NewMockRedisClient(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+
+	mockLock.EXPECT().Lock(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+		if v, _ := ctx.Value(lockErrCtxKey).(bool); v {
 			return errors.New("lock err")
 		}
 		return nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Unlock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		return nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "Get", func(_ *redis_lock.Client, ctx context.Context, key string) (string, error) {
+	}).AnyTimes()
+	mockLock.EXPECT().Unlock(gomock.Any()).Return(nil).AnyTimes()
+
+	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (string, error) {
 		switch key {
 		case pkg.BuildTXKey("id", "err"):
 			return "", errors.New("getErr")
@@ -311,22 +351,30 @@ func Test_MockComponent_Cancel(t *testing.T) {
 		default:
 			return TXTried.String(), nil
 		}
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "Del", func(_ *redis_lock.Client, ctx context.Context, key string) error {
+	}).AnyTimes()
+
+	mockClient.EXPECT().Del(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) error {
 		if key == pkg.BuildDataKey("id", "deleteBizFrozeErr", "deleteBizFrozeErr") {
 			return errors.New("deleteBizFrozeErr")
 		}
 		return nil
-	})
+	}).AnyTimes()
 
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.Client{}), "Set", func(_ *redis_lock.Client, ctx context.Context, key string, value string) (int64, error) {
-		return 1, nil
-	})
-	defer patch.Reset()
+	mockClient.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).AnyTimes()
+
+	mockComponent := &MockComponent{
+		id:     "id",
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
+	if mockComponent.ID() != "id" {
+		t.Errorf("expected id, got %s", mockComponent.ID())
+	}
 
 	ctx := context.Background()
-	mockComponent := NewMockComponent("id", &redis_lock.Client{})
-	assert.Equal(t, "id", mockComponent.ID())
 
 	tests := []struct {
 		name      string
@@ -375,11 +423,16 @@ func Test_MockComponent_Cancel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := mockComponent.Cancel(tt.ctx, tt.txid)
-			assert.Equal(t, tt.expectErr, err != nil)
+			if tt.expectErr != (err != nil) {
+				t.Errorf("expected err=%v, got %v", tt.expectErr, err)
+				return
+			}
 			if err != nil {
 				return
 			}
-			assert.Equal(t, tt.ack, resp.ACK)
+			if tt.ack != resp.ACK {
+				t.Errorf("expected ack=%v, got %v", tt.ack, resp.ACK)
+			}
 		})
 	}
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo"
-	expdao "github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/dao"
+	example_dao "github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/dao"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/pkg"
 )
 
@@ -32,16 +32,16 @@ func NewMockTXStore(dao TXRecordDAO, client *redis_lock.Client) *MockTXStore {
 
 func (m *MockTXStore) CreateTX(ctx context.Context, components ...tcc_demo.TCCComponent) (string, error) {
 	// 创建一项内容，里面以唯一事务 id 为 key
-	componentTryStatuses := make(map[string]*expdao.ComponentTryStatus, len(components))
+	componentTryStatuses := make(map[string]*example_dao.ComponentTryStatus, len(components))
 	for _, component := range components {
-		componentTryStatuses[component.ID()] = &expdao.ComponentTryStatus{
+		componentTryStatuses[component.ID()] = &example_dao.ComponentTryStatus{
 			ComponentID: component.ID(),
 			TryStatus:   tcc_demo.TryHanging.String(),
 		}
 	}
 
 	statusesBody, _ := json.Marshal(componentTryStatuses)
-	txID, err := m.dao.CreateTXRecord(ctx, &expdao.TXRecordPO{
+	txID, err := m.dao.CreateTXRecord(ctx, &example_dao.TXRecordPO{
 		Status:               tcc_demo.TXHanging.String(),
 		ComponentTryStatuses: string(statusesBody),
 	})
@@ -66,14 +66,14 @@ func (m *MockTXStore) TXUpdate(ctx context.Context, txID string, componentID str
 }
 
 func (m *MockTXStore) GetHangingTXs(ctx context.Context) ([]*tcc_demo.Transaction, error) {
-	records, err := m.dao.GetTXRecords(ctx, expdao.WithStatus(tcc_demo.TryHanging))
+	records, err := m.dao.GetTXRecords(ctx, example_dao.WithStatus(tcc_demo.TryHanging))
 	if err != nil {
 		return nil, err
 	}
 
 	txs := make([]*tcc_demo.Transaction, 0, len(records))
 	for _, record := range records {
-		componentTryStatuses := make(map[string]*expdao.ComponentTryStatus)
+		componentTryStatuses := make(map[string]*example_dao.ComponentTryStatus)
 		_ = json.Unmarshal([]byte(record.ComponentTryStatuses), &componentTryStatuses)
 		components := make([]*tcc_demo.ComponentTryEntity, 0, len(componentTryStatuses))
 		for _, component := range componentTryStatuses {
@@ -106,7 +106,7 @@ func (m *MockTXStore) Unlock(ctx context.Context) error {
 
 // 提交事务的最终状态
 func (m *MockTXStore) TXSubmit(ctx context.Context, txID string, success bool) error {
-	do := func(ctx context.Context, dao expdao.TXRecordUpdater, record *expdao.TXRecordPO) error {
+	do := func(ctx context.Context, dao example_dao.TXRecordUpdater, record *example_dao.TXRecordPO) error {
 		if success {
 			if record.Status == tcc_demo.TXFailure.String() {
 				return fmt.Errorf("invalid tx status: %s, txid: %s", record.Status, txID)
@@ -133,7 +133,7 @@ func (m *MockTXStore) GetTX(ctx context.Context, txID string) (*tcc_demo.Transac
 	if err != nil {
 		return nil, err
 	}
-	records, err := m.dao.GetTXRecords(ctx, expdao.WithID(uint(parsedID)))
+	records, err := m.dao.GetTXRecords(ctx, example_dao.WithID(uint(parsedID)))
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (m *MockTXStore) GetTX(ctx context.Context, txID string) (*tcc_demo.Transac
 		return nil, errors.New("get tx failed")
 	}
 
-	componentTryStatuses := make(map[string]*expdao.ComponentTryStatus)
+	componentTryStatuses := make(map[string]*example_dao.ComponentTryStatus)
 	_ = json.Unmarshal([]byte(records[0].ComponentTryStatuses), &componentTryStatuses)
 
 	components := make([]*tcc_demo.ComponentTryEntity, 0, len(componentTryStatuses))
@@ -160,9 +160,9 @@ func (m *MockTXStore) GetTX(ctx context.Context, txID string) (*tcc_demo.Transac
 }
 
 type TXRecordDAO interface {
-	GetTXRecords(ctx context.Context, opts ...expdao.QueryOption) ([]*expdao.TXRecordPO, error)
-	CreateTXRecord(ctx context.Context, record *expdao.TXRecordPO) (uint, error)
+	GetTXRecords(ctx context.Context, opts ...example_dao.QueryOption) ([]*example_dao.TXRecordPO, error)
+	CreateTXRecord(ctx context.Context, record *example_dao.TXRecordPO) (uint, error)
 	UpdateComponentStatus(ctx context.Context, id uint, componentID string, status string) error
-	UpdateTXRecord(ctx context.Context, record *expdao.TXRecordPO) error
-	LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao expdao.TXRecordUpdater, record *expdao.TXRecordPO) error) error
+	UpdateTXRecord(ctx context.Context, record *example_dao.TXRecordPO) error
+	LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao example_dao.TXRecordUpdater, record *example_dao.TXRecordPO) error) error
 }

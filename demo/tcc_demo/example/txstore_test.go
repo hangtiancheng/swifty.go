@@ -4,27 +4,110 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo"
-	expdao "github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/dao"
+	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/dao"
+	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/mocks"
+	"go.uber.org/mock/gomock"
 )
 
-type mockTXRecordDAO struct {
+func Test_MockTXStore_Lock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockLock := mocks.NewMockLock(ctrl)
+	mockLock.EXPECT().Lock(gomock.Any()).Return(nil)
+	mockLock.EXPECT().Unlock(gomock.Any()).Return(nil)
+
+	mockTXStore := &MockTXStore{
+		dao:    mocks.NewMockTXRecordDAO(ctrl),
+		client: mocks.NewMockRedisClient(ctrl),
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
+	ctx := context.Background()
+	err := mockTXStore.Lock(ctx, time.Second)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+	err = mockTXStore.Unlock(ctx)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
 }
 
-func newMockTXRecordDAO() TXRecordDAO {
-	return &mockTXRecordDAO{}
+func Test_MockTXStore_CreateTX(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDAO := mocks.NewMockTXRecordDAO(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+	mockClient := mocks.NewMockRedisClient(ctrl)
+
+	mockDAO.EXPECT().CreateTXRecord(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, record *dao.TXRecordPO) (uint, error) {
+		if record.ComponentTryStatuses == "{}" {
+			return 0, errors.New("invalid component try statuses")
+		}
+		return 1, nil
+	}).AnyTimes()
+
+	mockTXStore := &MockTXStore{
+		dao:    mockDAO,
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
+	ctx := context.Background()
+	_, err := mockTXStore.CreateTX(ctx)
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+	_, err = mockTXStore.CreateTX(ctx, NewMockComponent("id", nil))
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
 }
 
-func (m *mockTXRecordDAO) GetTXRecords(ctx context.Context, opts ...expdao.QueryOption) ([]*expdao.TXRecordPO, error) {
-	componentTryStatuses := map[string]*expdao.ComponentTryStatus{
+func Test_MockTXStore_TXUpdate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDAO := mocks.NewMockTXRecordDAO(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+	mockClient := mocks.NewMockRedisClient(ctrl)
+
+	mockDAO.EXPECT().UpdateComponentStatus(gomock.Any(), uint(1), "component_id", tcc_demo.TXSuccessful.String()).Return(nil)
+
+	mockTXStore := &MockTXStore{
+		dao:    mockDAO,
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
+	err := mockTXStore.TXUpdate(context.Background(), "1", "component_id", true)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func Test_MockTXStore_GetHangingTXs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDAO := mocks.NewMockTXRecordDAO(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+	mockClient := mocks.NewMockRedisClient(ctrl)
+
+	componentTryStatuses := map[string]*dao.ComponentTryStatus{
 		"component": {
 			ComponentID: "component",
 			TryStatus:   tcc_demo.TryHanging.String(),
@@ -32,116 +115,107 @@ func (m *mockTXRecordDAO) GetTXRecords(ctx context.Context, opts ...expdao.Query
 	}
 	body, _ := json.Marshal(componentTryStatuses)
 
-	tx := expdao.TXRecordPO{
-		Status:               tcc_demo.TXHanging.String(),
-		ComponentTryStatuses: string(body),
+	mockDAO.EXPECT().GetTXRecords(gomock.Any(), gomock.Any()).Return([]*dao.TXRecordPO{
+		{Status: tcc_demo.TXHanging.String(), ComponentTryStatuses: string(body)},
+	}, nil)
+
+	mockTXStore := &MockTXStore{
+		dao:    mockDAO,
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
 	}
 
-	return []*expdao.TXRecordPO{
-		&tx,
-	}, nil
-}
-
-func (m *mockTXRecordDAO) CreateTXRecord(ctx context.Context, record *expdao.TXRecordPO) (uint, error) {
-	if record.ComponentTryStatuses == "{}" {
-		return 0, errors.New("invalid component try statuses")
-	}
-	return 1, nil
-}
-
-func (m *mockTXRecordDAO) UpdateComponentStatus(ctx context.Context, id uint, componentID string, status string) error {
-	return nil
-}
-
-func (m *mockTXRecordDAO) UpdateTXRecord(ctx context.Context, record *expdao.TXRecordPO) error {
-	return nil
-}
-
-func (m *mockTXRecordDAO) LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao *expdao.TXRecordDAO, record *expdao.TXRecordPO) error) error {
-	switch id {
-	case 1:
-		record := expdao.TXRecordPO{
-			Status: tcc_demo.TXSuccessful.String(),
-		}
-		return do(ctx, &expdao.TXRecordDAO{}, &record)
-	case 2:
-		record := expdao.TXRecordPO{
-			Status: tcc_demo.TXFailure.String(),
-		}
-		return do(ctx, &expdao.TXRecordDAO{}, &record)
-	default:
-		record := expdao.TXRecordPO{
-			Status: tcc_demo.TXHanging.String(),
-		}
-		return do(ctx, &expdao.TXRecordDAO{}, &record)
-	}
-}
-
-func Test_MockTXStore_Lock(t *testing.T) {
-	lockErr := "lockErr"
-	lockErrCtxKey := &lockErr
-	patch := gomonkey.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Lock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		lockErr, _ := ctx.Value(lockErrCtxKey).(bool)
-		if lockErr {
-			return errors.New("lock err")
-		}
-		return nil
-	})
-	patch = patch.ApplyMethod(reflect.TypeOf(&redis_lock.RedisLock{}), "Unlock", func(_ *redis_lock.RedisLock, ctx context.Context) error {
-		return nil
-	})
-	defer patch.Reset()
-
-	ctx := context.Background()
-	mockTXStore := NewMockTXStore(newMockTXRecordDAO(), &redis_lock.Client{})
-	err := mockTXStore.Lock(ctx, time.Second)
-	assert.Equal(t, nil, err)
-	err = mockTXStore.Unlock(ctx)
-	assert.Equal(t, nil, err)
-}
-
-func Test_MockTXStore_CreateTX(t *testing.T) {
-	mockTXStore := NewMockTXStore(newMockTXRecordDAO(), &redis_lock.Client{})
-
-	ctx := context.Background()
-	_, err := mockTXStore.CreateTX(ctx)
-	assert.Equal(t, true, err != nil)
-	_, err = mockTXStore.CreateTX(ctx, NewMockComponent("id", nil))
-	assert.Equal(t, nil, err)
-}
-
-func Test_MockTXStore_TXUpdate(t *testing.T) {
-	mockTXStore := NewMockTXStore(newMockTXRecordDAO(), &redis_lock.Client{})
-	err := mockTXStore.TXUpdate(context.Background(), "tx_id", "component_id", true)
-	assert.Equal(t, nil, err)
-}
-
-func Test_MockTXStore_GetHangingTXs(t *testing.T) {
-	mockTXStore := NewMockTXStore(newMockTXRecordDAO(), &redis_lock.Client{})
 	_, err := mockTXStore.GetHangingTXs(context.Background())
-	assert.Equal(t, nil, err)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
 }
 
 func Test_MockTXStore_TXSubmit(t *testing.T) {
-	patch := gomonkey.ApplyMethod(&expdao.TXRecordDAO{}, "UpdateTXRecord", func(_ *expdao.TXRecordDAO, ctx context.Context, record *expdao.TXRecordPO) error {
-		return nil
-	})
-	defer patch.Reset()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	mockTXStore := NewMockTXStore(newMockTXRecordDAO(), &redis_lock.Client{})
+	mockDAO := mocks.NewMockTXRecordDAO(ctrl)
+	mockUpdater := mocks.NewMockTXRecordUpdater(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+	mockClient := mocks.NewMockRedisClient(ctrl)
+
+	mockUpdater.EXPECT().UpdateTXRecord(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	mockDAO.EXPECT().LockAndDo(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, id uint, do func(context.Context, dao.TXRecordUpdater, *dao.TXRecordPO) error) error {
+			var record dao.TXRecordPO
+			switch id {
+			case 1:
+				record = dao.TXRecordPO{Status: tcc_demo.TXSuccessful.String()}
+			case 2:
+				record = dao.TXRecordPO{Status: tcc_demo.TXFailure.String()}
+			default:
+				record = dao.TXRecordPO{Status: tcc_demo.TXHanging.String()}
+			}
+			return do(ctx, mockUpdater, &record)
+		},
+	).AnyTimes()
+
+	mockTXStore := &MockTXStore{
+		dao:    mockDAO,
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
 	ctx := context.Background()
 	err := mockTXStore.TXSubmit(ctx, "1", false)
-	assert.Equal(t, true, err != nil)
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
 	err = mockTXStore.TXSubmit(ctx, "2", true)
-	assert.Equal(t, true, err != nil)
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
 	err = mockTXStore.TXSubmit(ctx, "3", true)
-	assert.Equal(t, nil, err)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
 	err = mockTXStore.TXSubmit(ctx, "3", false)
-	assert.Equal(t, nil, err)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
 }
 
 func Test_MockTXStore_GetTX(t *testing.T) {
-	mockTXStore := NewMockTXStore(newMockTXRecordDAO(), &redis_lock.Client{})
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDAO := mocks.NewMockTXRecordDAO(ctrl)
+	mockLock := mocks.NewMockLock(ctrl)
+	mockClient := mocks.NewMockRedisClient(ctrl)
+
+	componentTryStatuses := map[string]*dao.ComponentTryStatus{
+		"component": {
+			ComponentID: "component",
+			TryStatus:   tcc_demo.TryHanging.String(),
+		},
+	}
+	body, _ := json.Marshal(componentTryStatuses)
+
+	mockDAO.EXPECT().GetTXRecords(gomock.Any(), gomock.Any()).Return([]*dao.TXRecordPO{
+		{Status: tcc_demo.TXHanging.String(), ComponentTryStatuses: string(body)},
+	}, nil)
+
+	mockTXStore := &MockTXStore{
+		dao:    mockDAO,
+		client: mockClient,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return mockLock
+		},
+	}
+
 	_, err := mockTXStore.GetTX(context.Background(), "1")
-	assert.Equal(t, nil, err)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
 }

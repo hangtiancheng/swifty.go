@@ -2,30 +2,35 @@ package pkg
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
-	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/mysql"
+	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/mocks"
+	"go.uber.org/mock/gomock"
 	"gorm.io/gorm"
 )
 
 func Test_NewDB(t *testing.T) {
-	patch := gomonkey.ApplyMethod(reflect.TypeOf(&mysql.Dialector{}), "Initialize", func(_ *mysql.Dialector, db *gorm.DB) error {
-		return nil
-	})
-	defer patch.Reset()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	db, err := NewDB("", &gorm.Config{
-		DisableAutomaticPing: true,
-	})
+	mockFactory := mocks.NewMockDBFactory(ctrl)
+	mockFactory.EXPECT().Open(gomock.Any(), gomock.Any()).Return(&gorm.DB{}, nil).AnyTimes()
 
-	assert.Equal(t, nil, err)
-	patch = patch.ApplyFunc(gorm.Open, func(dialector gorm.Dialector, opts ...gorm.Option) (db *gorm.DB, err error) {
-		return &gorm.DB{}, nil
-	})
-	defer patch.Reset()
+	oldFactory := dbFactory
+	defer func() { dbFactory = oldFactory }()
+	dbFactory = mockFactory
+
+	db, err := NewDB("", &gorm.Config{DisableAutomaticPing: true})
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+
+	db = nil
+	debounce = sync.Once{}
 
 	defaultDB := GetDB()
-	assert.Equal(t, reflect.TypeOf(defaultDB), reflect.TypeOf(db))
+	if reflect.TypeOf(defaultDB) != reflect.TypeOf(db) {
+		t.Errorf("expected %T, got %T", db, defaultDB)
+	}
 }
