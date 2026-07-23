@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 var ErrScoreNotExist = errors.New("score not exist")
@@ -14,7 +14,7 @@ var ErrScoreNotExist = errors.New("score not exist")
 // Client wraps a github.com/redis/go-redis/v9 client.
 type Client struct {
 	opts   *ClientOptions
-	client *goredis.Client
+	client *go_redis.Client
 }
 
 func NewClient(network, address, password string, opts ...ClientOption) *Client {
@@ -32,7 +32,7 @@ func NewClient(network, address, password string, opts ...ClientOption) *Client 
 
 	repairClient(c.opts)
 
-	client := goredis.NewClient(&goredis.Options{
+	client := go_redis.NewClient(&go_redis.Options{
 		Network:         c.opts.network,
 		Addr:            c.opts.address,
 		Password:        c.opts.password,
@@ -47,7 +47,7 @@ func NewClient(network, address, password string, opts ...ClientOption) *Client 
 
 // ZAdd runs the Redis ZADD command.
 func (c *Client) ZAdd(ctx context.Context, table string, score int64, value string) error {
-	return c.client.ZAdd(ctx, table, goredis.Z{Score: float64(score), Member: value}).Err()
+	return c.client.ZAdd(ctx, table, go_redis.Z{Score: float64(score), Member: value}).Err()
 }
 
 type ScoreEntity struct {
@@ -57,7 +57,7 @@ type ScoreEntity struct {
 
 // ZRangeByScore runs the Redis ZRANGE ... BYSCORE WITHSCORES command.
 func (c *Client) ZRangeByScore(ctx context.Context, table string, score1, score2 int64) ([]*ScoreEntity, error) {
-	members, err := c.client.ZRangeArgsWithScores(ctx, goredis.ZRangeArgs{
+	members, err := c.client.ZRangeArgsWithScores(ctx, go_redis.ZRangeArgs{
 		Key:     table,
 		Start:   score1,
 		Stop:    score2,
@@ -80,7 +80,7 @@ func (c *Client) ZRangeByScore(ctx context.Context, table string, score1, score2
 
 // Ceiling returns the first member with score >= the given score.
 func (c *Client) Ceiling(ctx context.Context, table string, score int64) (*ScoreEntity, error) {
-	members, err := c.client.ZRangeArgsWithScores(ctx, goredis.ZRangeArgs{
+	members, err := c.client.ZRangeArgsWithScores(ctx, go_redis.ZRangeArgs{
 		Key:     table,
 		Start:   score,
 		Stop:    "+inf",
@@ -104,7 +104,7 @@ func (c *Client) Ceiling(ctx context.Context, table string, score int64) (*Score
 
 // Floor returns the first member with score <= the given score (descending).
 func (c *Client) Floor(ctx context.Context, table string, score int64) (*ScoreEntity, error) {
-	members, err := c.client.ZRangeArgsWithScores(ctx, goredis.ZRangeArgs{
+	members, err := c.client.ZRangeArgsWithScores(ctx, go_redis.ZRangeArgs{
 		Key:     table,
 		Start:   score,
 		Stop:    "-inf",
@@ -129,7 +129,7 @@ func (c *Client) Floor(ctx context.Context, table string, score int64) (*ScoreEn
 
 // FirstOrLast returns the member with the smallest (first=true) or largest (first=false) score.
 func (c *Client) FirstOrLast(ctx context.Context, table string, first bool) (*ScoreEntity, error) {
-	args := goredis.ZRangeArgs{
+	args := go_redis.ZRangeArgs{
 		Key:     table,
 		Start:   "-inf",
 		Stop:    "+inf",

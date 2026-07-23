@@ -39,7 +39,7 @@ type Tree struct {
 	levelCompactC chan int
 
 	// Signals tree shutdown.
-	stopc chan struct{}
+	stopChan chan struct{}
 
 	// memtable index; maps 1:1 to the wal file name.
 	memTableIndex int
@@ -55,7 +55,7 @@ func NewTree(conf *Config) (*Tree, error) {
 		conf:          conf,
 		memCompactC:   make(chan *memTableCompactItem),
 		levelCompactC: make(chan int),
-		stopc:         make(chan struct{}),
+		stopChan:      make(chan struct{}),
 		levelToSeq:    make([]atomic.Int32, conf.MaxLevel),
 		nodes:         make([][]*Node, conf.MaxLevel),
 		levelLocks:    make([]sync.RWMutex, conf.MaxLevel),
@@ -79,7 +79,7 @@ func NewTree(conf *Config) (*Tree, error) {
 }
 
 func (t *Tree) Close() {
-	close(t.stopc)
+	close(t.stopChan)
 	for i := 0; i < len(t.nodes); i++ {
 		for j := 0; j < len(t.nodes[i]); j++ {
 			t.nodes[i][j].Close()

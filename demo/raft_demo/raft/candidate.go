@@ -16,12 +16,12 @@ func (r *raft) becomeCandidate() {
 	r.step = stepCandidate
 	r.reset(r.Term + 1)
 	r.tick = r.tickElection
-	// 候选人会先投给自己
+	// Candidate votes for itself
 	r.Vote = r.id
 	r.state = StateCandidate
 }
 
-// candidate 的状态机函数
+// State machine handler for the candidate role
 func stepCandidate(r *raft, m Message) {
 	var voteRespType MessageType
 	if r.state == StatePreCandidate {
@@ -32,33 +32,33 @@ func stepCandidate(r *raft, m Message) {
 
 	switch m.Type {
 	case MsgProp:
-		// candidate 没有负责提交写请求的义务
+		// Candidate does not handle write proposals
 		return
 	case MsgApp:
-		// 收到任期更大的同步日志请求消息，需要退回 follower
+		// Revert to follower upon receiving append from a higher-term leader
 		r.becomeFollower(r.Term, m.From)
-		// 处理同步日志请求
+		// Handle log replication request
 		r.handleAppendEntries(m)
-	case MsgHearbeat:
+	case MsgHeartbeat:
 		r.becomeFollower(m.Term, m.From)
-		// 通过心跳请求更新提交索引
+		// Update commit index via heartbeat
 		r.handleHeartbeat(m)
 	case voteRespType:
-		// 计算当前各个节点的投票
+		// Tally votes from peers
 		granted := r.poll(m.From, !m.Reject)
 		switch r.quorum() {
-		// 赞同票达到了多数派
+		// Granted votes reached quorum
 		case granted:
 			if r.state == StatePreCandidate {
 				r.campaign(campaignElection)
 			} else {
 				r.becomeLeader()
-				// 成为 leader 后要广播一波消息，同步一下存量的日志，在 become leader 方法中，已经添加了一条当前任期内的空日志
-				r.bcastAppend()
+				// Broadcast append to sync existing entries; a no-op entry for the current term was added in becomeLeader
+				r.broadcastAppend()
 			}
-		// 拒绝票达到了多数派
+		// Rejected votes reached quorum
 		case len(r.votes) - granted:
-			// 退回 follower
+			// Revert to follower
 			r.becomeFollower(r.Term, None)
 		}
 	}

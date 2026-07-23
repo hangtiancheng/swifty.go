@@ -9,7 +9,7 @@ import (
 // Migrator is the user-supplied closure that performs data migration.
 type Migrator func(ctx context.Context, dataKeys map[string]struct{}, from, to string) error
 
-func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, nodeID string) (from, to string, datas map[string]struct{}, _err error) {
+func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, nodeID string) (from, to string, dataSet map[string]struct{}, _err error) {
 	// No migrator injected: nothing to do.
 	if c.migrator == nil {
 		return
@@ -28,7 +28,7 @@ func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, node
 	}
 
 	// Find the previous score on the ring.
-	lastScore, err := c.hashRing.Floor(ctx, c.decrScore(virtualScore))
+	lastScore, err := c.hashRing.Floor(ctx, c.decreaseScore(virtualScore))
 	if err != nil {
 		_err = err
 		return
@@ -82,7 +82,7 @@ func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, node
 		return
 	}
 
-	datas = make(map[string]struct{})
+	dataSet = make(map[string]struct{})
 	// Iterate data keys and find those that fall into the new node's range.
 	for dataKey := range dataKeys {
 		dataVirtualScore := c.encryptor.Encrypt(dataKey)
@@ -99,22 +99,22 @@ func (c *ConsistentHash) migrateIn(ctx context.Context, virtualScore int32, node
 		}
 
 		// This data key must migrate.
-		datas[dataKey] = struct{}{}
+		dataSet[dataKey] = struct{}{}
 	}
 
-	if err = c.hashRing.DeleteNodeToDataKeys(ctx, c.getNodeID(nextNodes[0]), datas); err != nil {
+	if err = c.hashRing.DeleteNodeToDataKeys(ctx, c.getNodeID(nextNodes[0]), dataSet); err != nil {
 		return "", "", nil, err
 	}
 
-	if err = c.hashRing.AddNodeToDataKeys(ctx, nodeID, datas); err != nil {
+	if err = c.hashRing.AddNodeToDataKeys(ctx, nodeID, dataSet); err != nil {
 		return "", "", nil, err
 	}
 
-	// from, to, datas
-	return c.getNodeID(nextNodes[0]), nodeID, datas, nil
+	// from, to, dataSet
+	return c.getNodeID(nextNodes[0]), nodeID, dataSet, nil
 }
 
-func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nodeID string) (from, to string, datas map[string]struct{}, err error) {
+func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nodeID string) (from, to string, dataSet map[string]struct{}, err error) {
 	// No migrator injected: nothing to do.
 	if c.migrator == nil {
 		return
@@ -124,15 +124,15 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 		if err != nil {
 			return
 		}
-		if to == "" || len(datas) == 0 {
+		if to == "" || len(dataSet) == 0 {
 			return
 		}
 
-		if err = c.hashRing.DeleteNodeToDataKeys(ctx, nodeID, datas); err != nil {
+		if err = c.hashRing.DeleteNodeToDataKeys(ctx, nodeID, dataSet); err != nil {
 			return
 		}
 
-		err = c.hashRing.AddNodeToDataKeys(ctx, to, datas)
+		err = c.hashRing.AddNodeToDataKeys(ctx, to, dataSet)
 	}()
 
 	from = nodeID
@@ -153,17 +153,17 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 	}
 
 	// No data: nothing to migrate.
-	var allDatas map[string]struct{}
-	if allDatas, err = c.hashRing.DataKeys(ctx, nodeID); err != nil {
+	var allDataSet map[string]struct{}
+	if allDataSet, err = c.hashRing.DataKeys(ctx, nodeID); err != nil {
 		return
 	}
 
-	if len(allDatas) == 0 {
+	if len(allDataSet) == 0 {
 		return
 	}
 
 	// Iterate data keys and find those in the range (lastScore, virtualScore].
-	lastScore, _err := c.hashRing.Floor(ctx, c.decrScore(virtualScore))
+	lastScore, _err := c.hashRing.Floor(ctx, c.decreaseScore(virtualScore))
 	if _err != nil {
 		err = _err
 		return
@@ -183,10 +183,10 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 		lastScore -= math.MaxInt32
 	}
 
-	datas = make(map[string]struct{})
-	for data := range allDatas {
+	dataSet = make(map[string]struct{})
+	for data := range allDataSet {
 		if onlyScore {
-			datas[data] = struct{}{}
+			dataSet[data] = struct{}{}
 			continue
 		}
 		dataScore := c.encryptor.Encrypt(data)
@@ -196,7 +196,7 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 		if dataScore <= lastScore || dataScore > virtualScore {
 			continue
 		}
-		datas[data] = struct{}{}
+		dataSet[data] = struct{}{}
 	}
 
 	// If multiple nodes share this score, delegate to the next node.
@@ -266,7 +266,7 @@ func (c *ConsistentHash) incrScore(score int32) int32 {
 	return score + 1
 }
 
-func (c *ConsistentHash) decrScore(score int32) int32 {
+func (c *ConsistentHash) decreaseScore(score int32) int32 {
 	if score == 0 {
 		return math.MaxInt32 - 1
 	}

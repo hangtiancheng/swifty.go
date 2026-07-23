@@ -2,13 +2,13 @@ package os
 
 import (
 	"fmt"
-	osys "os"
+	"os"
 	"runtime"
 	"strings"
 )
 
-// GetCurrentProcessAndGogroutineIDStr returns a "pid_goroutineID" identifier for the current goroutine.
-func GetCurrentProcessAndGogroutineIDStr() string {
+// GetCurrentProcessAndGoroutineIDStr returns a "pid_goroutineID" identifier for the current goroutine.
+func GetCurrentProcessAndGoroutineIDStr() string {
 	pid := GetCurrentProcessID()
 	goroutineID := GetCurrentGoroutineID()
 	return fmt.Sprintf("%d_%s", pid, goroutineID)
@@ -24,5 +24,5 @@ func GetCurrentGoroutineID() string {
 
 // GetCurrentProcessID returns the current OS process ID.
 func GetCurrentProcessID() int {
-	return osys.Getpid()
+	return os.Getpid()
 }

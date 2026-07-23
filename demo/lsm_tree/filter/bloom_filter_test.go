@@ -1,10 +1,7 @@
 package filter
 
 import (
-	"bytes"
 	"testing"
-
-	"github.com/spaolacci/murmur3"
 )
 
 func Test_BloomFilter_Add_Exist(t *testing.T) {
@@ -53,28 +50,33 @@ func Test_BloomFilter_Hash(t *testing.T) {
 	bf.Add([]byte("a"))
 	bf.Add([]byte("b"))
 
-	// k := 2
-	// hashedKey1: 1009084850  delta: 33065692372498
-	// hashedKey2: 2514386435  delta: 82391414721263
-	// bitmap: 00011100
-	expect := []byte{
-		uint8(28),
-		uint8(2),
+	bitmap := bf.Hash()
+	// bitmap length = ceil(m/8) + 1 = 2 (one data byte + one byte for k)
+	if len(bitmap) != 2 {
+		t.Errorf("bitmap len, expect: 2, got: %d", len(bitmap))
 	}
 
-	if got := bf.Hash(); !bytes.Equal(got, expect) {
-		t.Errorf("expect: %v, got: %v", expect, got)
+	// Optimal k = ln2 * m / n = 69 * 8 / 100 / 2 = 2
+	if k := bitmap[len(bitmap)-1]; k != 2 {
+		t.Errorf("k, expect: 2, got: %d", k)
+	}
+
+	// Added keys must be reported as existing.
+	for _, key := range [][]byte{[]byte("a"), []byte("b")} {
+		if !bf.Exist(bitmap, key) {
+			t.Errorf("key: %s, expect: true, got: false", key)
+		}
 	}
 }
 
 func Test_bitOperation(t *testing.T) {
-	hashedKey1_1 := murmur3.Sum32([]byte("a"))
+	hashedKey1_1 := hashKey([]byte("a"))
 	t.Log(hashedKey1_1)
 	t.Log(hashedKey1_1 & 7)
 	hashedKey1_2 := hashedKey1_1 + (hashedKey1_1 >> 17) | (hashedKey1_1 << 15)
 	t.Log(hashedKey1_2)
 	t.Log(hashedKey1_2 & 7)
-	hashedKey2_1 := murmur3.Sum32([]byte("b"))
+	hashedKey2_1 := hashKey([]byte("b"))
 	t.Log(hashedKey2_1)
 	t.Log(hashedKey2_1 & 7)
 	hashedKey2_2 := hashedKey2_1 + (hashedKey2_1 >> 17) | (hashedKey2_1 << 15)

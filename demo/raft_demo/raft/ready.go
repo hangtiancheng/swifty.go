@@ -1,32 +1,32 @@
 package raft
 
 type Ready struct {
-	// 软状态
+	// Soft state (leader ID, node role)
 	SoftState *SoftState
 
-	// 硬状态
+	// Hard state (term, vote, commit index)
 	HardState HardState
 
-	// 读一致性
+	// Linearizable read states
 	ReadStates []ReadState
 
-	// 发送消息前需要持久化的日志
+	// Unstable entries to persist before sending messages
 	Entries []Entry
 
-	// 已经提交，需要应用到状态机的数据
+	// Committed entries to apply to the state machine
 	CommittedEntries []Entry
 
-	// 消息
+	// Messages to send
 	Message []Message
 }
 
 func newReady(r *raft, preSoft *SoftState, preHard HardState) Ready {
 	rd := Ready{
-		// 尚未持久化，需要持久化的日志
+		// Unstable entries requiring persistence
 		Entries: r.raftLog.unstableEntries(),
-		// 需要提交的日志
-		CommittedEntries: r.raftLog.nextEnts(),
-		// 待发送的消息
+		// Committed entries ready for application
+		CommittedEntries: r.raftLog.nextEntries(),
+		// Pending messages
 		Message: r.msgs,
 	}
 	if soft := r.softState(); !soft.equal(preSoft) {

@@ -243,7 +243,7 @@ func (s *SSTReader) ReadBlockData(block []byte) ([]*KV, error) {
 // ReadRecord reads a single key-value record from buf.
 func (s *SSTReader) ReadRecord(prevKey []byte, buf *bytes.Buffer) (key, value []byte, err error) {
 	// Read the shared-prefix length with the previous key.
-	sharedPrexLen, err := binary.ReadUvarint(buf)
+	sharedPrefixLen, err := binary.ReadUvarint(buf)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -273,8 +273,8 @@ func (s *SSTReader) ReadRecord(prevKey []byte, buf *bytes.Buffer) (key, value []
 	}
 
 	// Reconstruct the full key = shared prefix + remaining key.
-	sharedPrefix := make([]byte, sharedPrexLen)
-	copy(sharedPrefix, prevKey[:sharedPrexLen])
+	sharedPrefix := make([]byte, sharedPrefixLen)
+	copy(sharedPrefix, prevKey[:sharedPrefixLen])
 	key = append(sharedPrefix, key...)
 	return
 }

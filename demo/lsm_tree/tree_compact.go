@@ -22,7 +22,7 @@ func (t *Tree) compact() {
 	for {
 		select {
 		// Tree shutdown signal: exit.
-		case <-t.stopc:
+		case <-t.stopChan:
 			return
 		// Read-only memtable received: flush it to a level-0 sstable.
 		case memCompactItem := <-t.memCompactC:

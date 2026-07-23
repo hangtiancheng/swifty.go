@@ -22,10 +22,10 @@ func Test_redis_xadd(t *testing.T) {
 	t.Log(res)
 }
 
-func Test_redis_xreadergroup(t *testing.T) {
+func Test_redis_xReaderGroup(t *testing.T) {
 	client := NewClient(network, address, password)
 	ctx := context.Background()
-	res, err := client.XReadGroupPending(ctx, "mygroup_4", "my_consumer", "stream_topic")
+	res, err := client.XReadGroupPending(ctx, "my_group_4", "my_consumer", "stream_topic")
 	if err != nil {
 		t.Error(err)
 		return

@@ -10,9 +10,9 @@ const (
 type EntryType int32
 
 const (
-	// 正常日志
+	// Normal log entry
 	EntryNormal EntryType = 0
-	// 配置变更日志
+	// Configuration change entry
 	EntryConfChange EntryType = 1
 )
 
@@ -26,26 +26,26 @@ type Entry struct {
 type MessageType int32
 
 const (
-	// 推进本地节点选举
+	// Triggers local node election
 	MsgHup MessageType = 0
-	// 用于 leader 推进自身进行心跳广播
+	// Triggers leader to broadcast heartbeats
 	MsgBeat MessageType = 1
-	// 用户向 raft 提交数据
+	// Client proposal submitted to raft
 	MsgProp MessageType = 2
-	// leader 向集群其他节点同步数据
+	// Leader replicates entries to followers
 	MsgApp MessageType = 3
-	// 其他节点向 leader 回复同步数据的请求
+	// Follower responds to leader's replication request
 	MsgAppResp MessageType = 4
-	// 投票
+	// Vote request
 	MsgVote     MessageType = 5
 	MsgVoteResp MessageType = 6
-	// 心跳
-	MsgHearbeat     MessageType = 7
-	MsgHearbeatResp MessageType = 8
-	// 读一致性
+	// Heartbeat
+	MsgHeartbeat     MessageType = 7
+	MsgHeartbeatResp MessageType = 8
+	// Linearizable read
 	MsgReadIndex     MessageType = 9
 	MsgReadIndexResp MessageType = 10
-	// 预投票
+	// Pre-vote
 	MsgPreVote     MessageType = 11
 	MsgPreVoteResp MessageType = 12
 )
@@ -54,40 +54,40 @@ type Message struct {
 	Type MessageType `json:"type"`
 	To   uint64      `json:"to"`
 	From uint64      `json:"from"`
-	// 当前任期 term
+	// Current term
 	Term uint64 `json:"term"`
-	// 上一条日志的任期
+	// Term of the preceding log entry
 	LogTerm  uint64 `json:"logTerm"`
 	LogIndex uint64 `json:"logIndex"`
-	// 同步的日志
+	// Log entries to replicate
 	Entries []Entry `json:"entries"`
-	// leader 最晚提交日志的索引
+	// Leader's commit index
 	CommitIndex uint64 `json:"commitIndex"`
-	// 是否拒绝
+	// Whether the request is rejected
 	Reject bool `json:"reject"`
-	// 拒绝同步日志时，最晚的日志索引
+	// Hint index for rejection (follower's last log index)
 	RejectHint uint64 `json:"rejectHint"`
-	// 上下文
+	// Arbitrary context data
 	Context []byte `json:"context"`
 }
 
 type StateType int32
 
 const (
-	// 跟随者
+	// Follower
 	StateFollower StateType = 0
-	// 候选人
+	// Candidate
 	StateCandidate StateType = 1
-	// 领导者
+	// Leader
 	StateLeader StateType = 2
-	// 预竞选
+	// Pre-candidate
 	StatePreCandidate StateType = 3
 )
 
 type SoftState struct {
-	// 当前集群的 leader
+	// Current cluster leader ID
 	Lead uint64
-	// 当前节点的状态
+	// Current node state
 	RaftState StateType
 }
 
@@ -98,11 +98,11 @@ func (s *SoftState) equal(pre *SoftState) bool {
 var emptyHardState HardState
 
 type HardState struct {
-	// 当前的任期
+	// Current term
 	Term uint64 `json:""`
-	// 当前任期把票投给了谁
+	// Candidate voted for in the current term
 	Vote uint64 `json:"vote"`
-	// 已提交日志的 index
+	// Committed log index
 	CommitIndex uint64 `json:"commitIndex"`
 }
 
@@ -111,31 +111,31 @@ func isHardStateEqual(a, b HardState) bool {
 }
 
 type ConfState struct {
-	// 节点信息
+	// Cluster node IDs
 	Nodes []uint64
 }
 
 type Config struct {
-	// 当前节点 id
+	// Local node ID
 	ID uint64
-	// 记录了其他节点的 id
+	// Peer node IDs
 	peers []uint64
-	// 持久化存储接口
+	// Persistent storage interface
 	Storage Storage
-	// 已应用的日志索引
+	// Applied log index
 	Applied uint64
-	// 是否处于预竞选状态
-	Prevote bool
-	// follower 发生选举超时的 tick
+	// Whether pre-vote is enabled
+	PreVote bool
+	// Election timeout tick for followers
 	ElectionTick int32
-	// leader 发送心跳的 tick
-	HearbeatTick int32
+	// Heartbeat tick for the leader
+	HeartbeatTick int32
 }
 
 type Peer struct {
-	// 节点 id
+	// Node ID
 	ID uint64
-	// 上下文信息
+	// Context data
 	Context []byte
 }
 

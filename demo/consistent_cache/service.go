@@ -38,9 +38,9 @@ func (s *Service) Put(ctx context.Context, obj Object) error {
 
 	defer func() {
 		go func() {
-			tctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			if err := s.cache.Enable(tctx, obj.Key(), s.opts.enableDelayMilis); err != nil {
+			if err := s.cache.Enable(ctx, obj.Key(), s.opts.enableDelayMillis); err != nil {
 				s.opts.logger.Errorf("enable fail, key: %s, err: %v", obj.Key(), err)
 			}
 		}()

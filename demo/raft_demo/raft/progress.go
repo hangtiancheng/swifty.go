@@ -8,7 +8,7 @@ const (
 )
 
 type Progress struct {
-	// leader 记录某个节点的状态信息，包括当前确认同步的日志索引和下一笔待同步的日志索引
+	// Tracks a follower's replication state: confirmed match index and next index to send
 	Match, Next uint64
 	State       ProgressStateType
 }
@@ -25,7 +25,7 @@ func (pr *Progress) maybeUpdate(n uint64) bool {
 	return updated
 }
 
-func (pr *Progress) mayDecrTo(logIndex, rejectHint uint64) bool {
+func (pr *Progress) mayDecreaseTo(logIndex, rejectHint uint64) bool {
 	if pr.Next-1 != logIndex {
 		return false
 	}

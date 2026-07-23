@@ -76,19 +76,19 @@ func (c *ConsistentHash) AddNode(ctx context.Context, nodeID string, weight int)
 		// from: the source node id.
 		// to: the destination node id.
 		// data: the data keys to migrate.
-		from, to, datas, err := c.migrateIn(ctx, virtualScore, nodeID)
+		from, to, dataSet, err := c.migrateIn(ctx, virtualScore, nodeID)
 		if err != nil {
 			return err
 		}
 
 		// Skip when there is nothing to migrate.
-		if len(datas) == 0 {
+		if len(dataSet) == 0 {
 			continue
 		}
 
 		// Defer migration so all tasks run in batch before returning.
 		migrateTasks = append(migrateTasks, func() {
-			_ = c.migrator(ctx, datas, from, to)
+			_ = c.migrator(ctx, dataSet, from, to)
 		})
 	}
 
@@ -141,7 +141,7 @@ func (c *ConsistentHash) RemoveNode(ctx context.Context, nodeID string) error {
 		// 4. Hash the i-th virtual node key to get its score on the ring.
 		virtualScore := c.encryptor.Encrypt(fmt.Sprintf("%s_%d", nodeID, i))
 		// 5. Determine migration targets, then remove the virtual node.
-		from, to, datas, err := c.migrateOut(ctx, virtualScore, nodeID)
+		from, to, dataSet, err := c.migrateOut(ctx, virtualScore, nodeID)
 		if err != nil {
 			return err
 		}
@@ -151,13 +151,13 @@ func (c *ConsistentHash) RemoveNode(ctx context.Context, nodeID string) error {
 			return err
 		}
 
-		if len(datas) == 0 {
+		if len(dataSet) == 0 {
 			continue
 		}
 
 		// Defer migration so all tasks run in batch before returning.
 		migrateTasks = append(migrateTasks, func() {
-			_ = c.migrator(ctx, datas, from, to)
+			_ = c.migrator(ctx, dataSet, from, to)
 		})
 
 	}

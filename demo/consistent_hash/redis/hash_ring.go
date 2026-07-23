@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
-	goredis "github.com/redis/go-redis/v9"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 type RedisHashRing struct {
@@ -219,7 +219,7 @@ func (r *RedisHashRing) Node(ctx context.Context, score int32) ([]string, error)
 
 func (r *RedisHashRing) DataKeys(ctx context.Context, nodeID string) (map[string]struct{}, error) {
 	resStr, err := r.redisClient.Get(ctx, r.getNodeDataKey(nodeID))
-	if err != nil && !errors.Is(err, goredis.Nil) {
+	if err != nil && !errors.Is(err, go_redis.Nil) {
 		return nil, fmt.Errorf("redis ring dataKeys get failed, err: %w", err)
 	}
 
@@ -235,7 +235,7 @@ func (r *RedisHashRing) DataKeys(ctx context.Context, nodeID string) (map[string
 
 func (r *RedisHashRing) AddNodeToDataKeys(ctx context.Context, nodeID string, dataKeys map[string]struct{}) error {
 	resStr, err := r.redisClient.Get(ctx, r.getNodeDataKey(nodeID))
-	if err != nil && !errors.Is(err, goredis.Nil) {
+	if err != nil && !errors.Is(err, go_redis.Nil) {
 		return fmt.Errorf("redis ring addNodeToDataKey get failed, err: %w", err)
 	}
 

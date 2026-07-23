@@ -8,66 +8,66 @@ func (r *raft) becomeFollower(term, lead uint64) {
 	r.state = StateFollower
 }
 
-// follower 的状态机函数
+// State machine handler for the follower role
 func stepFollower(r *raft, m Message) {
 	switch m.Type {
 	case MsgProp:
-		// 如果没有 lead，直接忽视
+		// Ignore if no leader is known
 		if r.lead == None {
 			return
 		}
 
-		// 如果有 lead，转给 leader
+		// Forward to the known leader
 		m.To = r.lead
 		r.send(m)
 
 	case MsgApp:
-		// 处理同步日志请求
-		// 收到 leader 的同步日志请求，重置心跳
+		// Handle log replication request
+		// Reset election timer upon receiving leader's append request
 		r.electionElapsed = 0
 		r.lead = m.From
 		r.handleAppendEntries(m)
-	case MsgHearbeat:
-		// 处理心跳请求
-		// 收到 leader 的同步日志请求，重置心跳
+	case MsgHeartbeat:
+		// Handle heartbeat request
+		// Reset election timer upon receiving leader's heartbeat
 		r.electionElapsed = 0
 		r.lead = m.From
 		r.handleHeartbeat(m)
 	case MsgReadIndex:
-		// 处理读请求
-		// 没有 lead 则忽略
+		// Handle linearizable read request
+		// Ignore if no leader is known
 		if r.lead == None {
 			return
 		}
 
-		// 有 lead 则转发
+		// Forward to the leader
 		m.To = r.lead
 		r.send(m)
 
 	case MsgReadIndexResp:
-		// 处理读请求响应
+		// Handle read index response
 		r.readStates = append(r.readStates, ReadState{Index: m.LogIndex, RequestCtx: m.Entries[0].Data})
 	}
 }
 
 func (r *raft) handleAppendEntries(m Message) {
-	// 如果是已提交过的消息，直接无视
+	// Ignore entries already committed
 	if m.LogIndex < r.raftLog.commitIndex {
 		r.send(Message{To: m.From, Type: MsgAppResp, LogIndex: r.raftLog.commitIndex})
 		return
 	}
 
-	// 尝试添加，如果失败则 reject
+	// Attempt to append; reject on failure
 	if mLastIndex, ok := r.raftLog.maybeAppend(m.LogIndex, m.LogIndex, m.CommitIndex, m.Entries...); ok {
 		r.send(Message{To: m.From, Type: MsgAppResp, LogIndex: mLastIndex})
 		return
 	}
 
-	// 添加失败
+	// Append failed, send rejection with hint
 	r.send(Message{To: m.From, Type: MsgAppResp, LogIndex: m.LogIndex, Reject: true, RejectHint: r.raftLog.lastIndex()})
 }
 
 func (r *raft) handleHeartbeat(m Message) {
 	r.raftLog.commitTo(m.CommitIndex)
-	r.send(Message{To: m.From, Type: MsgHearbeatResp, Context: m.Context})
+	r.send(Message{To: m.From, Type: MsgHeartbeatResp, Context: m.Context})
 }

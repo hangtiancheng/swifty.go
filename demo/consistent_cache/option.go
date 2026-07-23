@@ -14,10 +14,10 @@ type Options struct {
 	cacheExpireRandomMode bool
 	// disableExpireSeconds is the TTL of the read-path disable marker, in seconds.
 	disableExpireSeconds int64
-	// enableDelayMilis is the delay applied to re-enabling the read path after a write, in milliseconds.
-	enableDelayMilis int64
-	// rander is the RNG used for TTL jitter.
-	rander *rand.Rand
+	// enableDelayMillis is the delay applied to re-enabling the read path after a write, in milliseconds.
+	enableDelayMillis int64
+	// randInst is the RNG used for TTL jitter.
+	randInst *rand.Rand
 	// logger handles diagnostic output.
 	logger Logger
 }
@@ -28,7 +28,7 @@ func (o *Options) CacheExpireSeconds() int64 {
 	}
 
 	// Jitter between 1x and 2x the base TTL.
-	return o.cacheExpireSeconds + o.rander.Int63n(o.cacheExpireSeconds+1)
+	return o.cacheExpireSeconds + o.randInst.Int63n(o.cacheExpireSeconds+1)
 }
 
 type Option func(*Options)
@@ -38,8 +38,8 @@ const (
 	DefaultCacheExpireSeconds = 60
 	// DefaultDisableExpireSeconds is the default disable-marker TTL (10s).
 	DefaultDisableExpireSeconds = 10
-	// DefaultEnableDelayMilis is the default re-enable delay (1s).
-	DefaultEnableDelayMilis = 1000
+	// DefaultEnableDelayMillis is the default re-enable delay (1s).
+	DefaultEnableDelayMillis = 1000
 )
 
 func WithCacheExpireSeconds(cacheExpireSeconds int64) Option {
@@ -51,7 +51,7 @@ func WithCacheExpireSeconds(cacheExpireSeconds int64) Option {
 func WithCacheExpireRandomMode() Option {
 	return func(o *Options) {
 		o.cacheExpireRandomMode = true
-		o.rander = rand.New(rand.NewSource(time.Now().UnixNano()))
+		o.randInst = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
 }
 
@@ -61,9 +61,9 @@ func WithDisableExpireSeconds(disableExpireSeconds int64) Option {
 	}
 }
 
-func WithEnableDelayMilis(enableDelayMilis int64) Option {
+func WithEnableDelayMillis(enableDelayMillis int64) Option {
 	return func(o *Options) {
-		o.enableDelayMilis = enableDelayMilis
+		o.enableDelayMillis = enableDelayMillis
 	}
 }
 
@@ -82,8 +82,8 @@ func repair(o *Options) {
 		o.disableExpireSeconds = DefaultDisableExpireSeconds
 	}
 
-	if o.enableDelayMilis <= 0 {
-		o.enableDelayMilis = DefaultEnableDelayMilis
+	if o.enableDelayMillis <= 0 {
+		o.enableDelayMillis = DefaultEnableDelayMillis
 	}
 
 	if o.logger == nil {

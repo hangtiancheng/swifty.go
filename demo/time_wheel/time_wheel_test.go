@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	thttp "github.com/hangtiancheng/swifty.go/demo/time_wheel/pkg/http"
+	time_wheel_http "github.com/hangtiancheng/swifty.go/demo/time_wheel/pkg/http"
 	"github.com/hangtiancheng/swifty.go/demo/time_wheel/pkg/redis"
 )
 
@@ -27,15 +27,15 @@ func Test_timeWheel(t *testing.T) {
 }
 
 const (
-	// redis 服务器信息
+	// redis server info
 	network  = "tcp"
-	address  = "请输入 redis 地址"
-	password = "请输入 redis 密码"
+	address  = "please fill in redis address"
+	password = "please fill in redis password"
 )
 
 var (
-	// 定时任务回调信息
-	callbackURL    = "请输入回调地址"
+	// scheduled task callback info
+	callbackURL    = "please fill in callback url"
 	callbackMethod = "POST"
 	callbackReq    interface{}
 	callbackHeader map[string]string
@@ -44,7 +44,7 @@ var (
 func Test_redis_timeWheel(t *testing.T) {
 	rTimeWheel := NewRTimeWheel(
 		redis.NewClient(network, address, password),
-		thttp.NewClient(),
+		time_wheel_http.NewClient(),
 	)
 	defer rTimeWheel.Stop()
 

@@ -8,21 +8,21 @@ import (
 )
 
 type raftProxy struct {
-	// 用户提交写请求
+	// Channel for user-submitted write proposals
 	proposeC <-chan string
-	// 用户提交配置变更请求
+	// Channel for user-submitted configuration change proposals
 	confChangeC <-chan raft.ConfChange
-	// 提交日志
+	// Channel for committed log entries
 	commitC chan<- *string
-	// 客户端 id
+	// Client node ID
 	id uint64
-	// 节点列表
+	// Peer node list
 	peers []string
 
-	// raft 节点
+	// Raft node instance
 	node raft.Node
 
-	// 日志持久化模块
+	// Log persistence storage
 	storage raft.Storage
 }
 
@@ -48,17 +48,17 @@ func (r *raftProxy) run() {
 	}
 
 	c := raft.Config{
-		ID:           uint64(r.id),
-		ElectionTick: 10,
-		HearbeatTick: 1,
-		Storage:      r.storage,
+		ID:            uint64(r.id),
+		ElectionTick:  10,
+		HeartbeatTick: 1,
+		Storage:       r.storage,
 	}
 
 	r.node = raft.StartNode(&c, peers)
 
-	// transport 模块启动
+	// Start transport module
 
-	// 监听模块启动
+	// Start listener module
 	go r.listen()
 }
 
@@ -66,9 +66,9 @@ func (r *raftProxy) listen() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
-	// 监听两个客户端提交请求的 chan
+	// Listen for client proposal channels
 	go r.listenRequest()
-	// 主干流程，监听 ready
+	// Main loop: listen for ready state
 
 	for {
 		select {
@@ -76,13 +76,13 @@ func (r *raftProxy) listen() {
 			r.node.Tick()
 
 		case <-r.node.Ready():
-			// 持久化硬状态和配置信息
+			// Persist hard state and configuration
 
-			// 持久化日志
+			// Persist log entries
 
-			// 发送消息
+			// Send messages to peers
 
-			// 应用已提交的日志
+			// Apply committed log entries to state machine
 
 			// advance
 			r.node.Advance()

@@ -36,7 +36,7 @@ func (l *LockEntityV2) Lock(ctx context.Context, expireSeconds int) error {
 		return nil
 	}
 
-	return errors.New("accquire by others")
+	return errors.New("acquire by others")
 }
 
 func (l *LockEntityV2) Unlock(ctx context.Context) error {
@@ -93,19 +93,19 @@ func (s *SkiplistHashRing) Lock(ctx context.Context, expireSeconds int) error {
 	defer s.doubleLock.Unlock()
 
 	s.lock.Lock()
-	token := os.GetCurrentProcessAndGogroutineIDStr()
+	token := os.GetCurrentProcessAndGoroutineIDStr()
 	s.owner.Store(token)
 	if expireSeconds <= 0 {
 		return nil
 	}
 
 	// Lock now, schedule unlock after the TTL. The unlock must verify ownership to avoid unlocking someone else's lock.
-	cctx, cancel := context.WithCancel(context.Background())
+	ctx2, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	go func() {
 		// This goroutine exits once an unlock is performed.
 		select {
-		case <-cctx.Done():
+		case <-ctx2.Done():
 			return
 		case <-time.After(time.Duration(expireSeconds) * time.Second):
 			s.unlock(ctx, token)
@@ -135,7 +135,7 @@ func (s *SkiplistHashRing) unlock(ctx context.Context, token string) error {
 }
 
 func (s *SkiplistHashRing) Unlock(ctx context.Context) error {
-	token := os.GetCurrentProcessAndGogroutineIDStr()
+	token := os.GetCurrentProcessAndGoroutineIDStr()
 	return s.unlock(ctx, token)
 }
 
@@ -153,8 +153,8 @@ func (s *SkiplistHashRing) Add(ctx context.Context, score int32, nodeID string) 
 
 	rLevel := s.roll()
 	if len(s.root.nexts) < rLevel+1 {
-		difs := make([]*virtualNode, rLevel+1-len(s.root.nexts))
-		s.root.nexts = append(s.root.nexts, difs...)
+		arr := make([]*virtualNode, rLevel+1-len(s.root.nexts))
+		s.root.nexts = append(s.root.nexts, arr...)
 	}
 
 	newNode := virtualNode{
@@ -297,9 +297,9 @@ func (s *SkiplistHashRing) DeleteNodeToDataKeys(ctx context.Context, nodeID stri
 }
 
 func (s *SkiplistHashRing) roll() int {
-	rander := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randInst := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var level int
-	for rander.Intn(2) == 1 {
+	for randInst.Intn(2) == 1 {
 		level++
 	}
 	return level

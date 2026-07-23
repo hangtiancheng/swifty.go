@@ -105,13 +105,13 @@ func (c *Consumer) run() {
 			continue
 		}
 
-		tctx, cancel := context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
-		c.handlerMsgs(tctx, msgs)
+		ctx, cancel := context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
+		c.handlerMsgs(ctx, msgs)
 		cancel()
 
 		// Deliver dead letters.
-		tctx, cancel = context.WithTimeout(c.ctx, c.opts.deadLetterDeliverTimeout)
-		c.deliverDeadLetter(tctx)
+		ctx, cancel = context.WithTimeout(c.ctx, c.opts.deadLetterDeliverTimeout)
+		c.deliverDeadLetter(ctx)
 		cancel()
 
 		// Receive and process pending messages.
@@ -121,8 +121,8 @@ func (c *Consumer) run() {
 			continue
 		}
 
-		tctx, cancel = context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
-		c.handlerMsgs(tctx, pendingMsgs)
+		ctx, cancel = context.WithTimeout(c.ctx, c.opts.handleMsgsTimeout)
+		c.handlerMsgs(ctx, pendingMsgs)
 		cancel()
 	}
 }

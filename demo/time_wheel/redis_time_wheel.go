@@ -9,9 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/demdxx/gocast"
-
-	thttp "github.com/hangtiancheng/swifty.go/demo/time_wheel/pkg/http"
+	time_wheel_http "github.com/hangtiancheng/swifty.go/demo/time_wheel/pkg/http"
 	"github.com/hangtiancheng/swifty.go/demo/time_wheel/pkg/redis"
 	"github.com/hangtiancheng/swifty.go/demo/time_wheel/pkg/util"
 )
@@ -27,17 +25,17 @@ type RTaskElement struct {
 type RTimeWheel struct {
 	sync.Once
 	redisClient *redis.Client
-	httpClient  *thttp.Client
-	stopc       chan struct{}
+	httpClient  *time_wheel_http.Client
+	stopChan    chan struct{}
 	ticker      *time.Ticker
 }
 
-func NewRTimeWheel(redisClient *redis.Client, httpClient *thttp.Client) *RTimeWheel {
+func NewRTimeWheel(redisClient *redis.Client, httpClient *time_wheel_http.Client) *RTimeWheel {
 	r := RTimeWheel{
 		ticker:      time.NewTicker(time.Second),
 		redisClient: redisClient,
 		httpClient:  httpClient,
-		stopc:       make(chan struct{}),
+		stopChan:    make(chan struct{}),
 	}
 
 	go r.run()
@@ -46,35 +44,35 @@ func NewRTimeWheel(redisClient *redis.Client, httpClient *thttp.Client) *RTimeWh
 
 func (r *RTimeWheel) Stop() {
 	r.Do(func() {
-		close(r.stopc)
+		close(r.stopChan)
 		r.ticker.Stop()
 	})
 }
 
 func (r *RTimeWheel) AddTask(ctx context.Context, key string, task *RTaskElement, executeAt time.Time) error {
-	if err := r.addTaskPrecheck(task); err != nil {
+	if err := r.addTaskPreCheck(task); err != nil {
 		return err
 	}
 
 	task.Key = key
 	taskBody, _ := json.Marshal(task)
 	_, err := r.redisClient.Eval(ctx, LuaAddTasks, 2, []interface{}{
-		// 分钟级 zset 时间片
+		// Minute-level zset time slice.
 		r.getMinuteSlice(executeAt),
-		// 标识任务删除的集合
+		// Set marking tasks for deletion.
 		r.getDeleteSetKey(executeAt),
-		// 以执行时刻的秒级时间戳作为 zset 中的 score
+		// The execution-time second-level unix timestamp serves as the zset score.
 		executeAt.Unix(),
-		// 任务明细
+		// Task body.
 		string(taskBody),
-		// 任务 key，用于存放在删除集合中
+		// Task key, stored in the delete set.
 		key,
 	})
 	return err
 }
 
 func (r *RTimeWheel) RemoveTask(ctx context.Context, key string, executeAt time.Time) error {
-	// 标识任务已被删除
+	// Mark the task as deleted.
 	_, err := r.redisClient.Eval(ctx, LuaDeleteTask, 1, []interface{}{
 		r.getDeleteSetKey(executeAt),
 		key,
@@ -85,10 +83,10 @@ func (r *RTimeWheel) RemoveTask(ctx context.Context, key string, executeAt time.
 func (r *RTimeWheel) run() {
 	for {
 		select {
-		case <-r.stopc:
+		case <-r.stopChan:
 			return
 		case <-r.ticker.C:
-			// 每次 tick 获取任务
+			// Fetch tasks on each tick.
 			go r.executeTasks()
 		}
 	}
@@ -101,16 +99,16 @@ func (r *RTimeWheel) executeTasks() {
 		}
 	}()
 
-	// 并发控制，30 s
-	tctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	// Concurrency control: 30s timeout.
+	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
-	tasks, err := r.getExecutableTasks(tctx)
+	tasks, err := r.getExecutableTasks(ctxWithTimeout)
 	if err != nil {
 		// log
 		return
 	}
 
-	// 并发执行任务
+	// Execute tasks concurrently.
 	var wg sync.WaitGroup
 	for _, task := range tasks {
 		wg.Add(1)
@@ -122,7 +120,7 @@ func (r *RTimeWheel) executeTasks() {
 				}
 				wg.Done()
 			}()
-			if err := r.executeTask(tctx, task); err != nil {
+			if err := r.executeTask(ctxWithTimeout, task); err != nil {
 				// log
 			}
 		}()
@@ -134,7 +132,7 @@ func (r *RTimeWheel) executeTask(ctx context.Context, task *RTaskElement) error 
 	return r.httpClient.JSONDo(ctx, task.Method, task.CallbackURL, task.Header, task.Req, nil)
 }
 
-func (r *RTimeWheel) addTaskPrecheck(task *RTaskElement) error {
+func (r *RTimeWheel) addTaskPreCheck(task *RTaskElement) error {
 	if task.Method != http.MethodGet && task.Method != http.MethodPost {
 		return fmt.Errorf("invalid method: %s", task.Method)
 	}
@@ -158,21 +156,21 @@ func (r *RTimeWheel) getExecutableTasks(ctx context.Context) ([]*RTaskElement, e
 		return nil, err
 	}
 
-	replies := gocast.ToInterfaceSlice(rawReply)
-	if len(replies) == 0 {
+	replies, ok := rawReply.([]interface{})
+	if !ok || len(replies) == 0 {
 		return nil, fmt.Errorf("invalid replies: %v", replies)
 	}
 
-	deleteds := gocast.ToStringSlice(replies[0])
-	deletedSet := make(map[string]struct{}, len(deleteds))
-	for _, deleted := range deleteds {
-		deletedSet[deleted] = struct{}{}
+	delArr, _ := replies[0].([]interface{})
+	deletedSet := make(map[string]struct{}, len(delArr))
+	for _, deleted := range delArr {
+		deletedSet[toString(deleted)] = struct{}{}
 	}
 
 	tasks := make([]*RTaskElement, 0, len(replies)-1)
 	for i := 1; i < len(replies); i++ {
 		var task RTaskElement
-		if err := json.Unmarshal([]byte(gocast.ToString(replies[i])), &task); err != nil {
+		if err := json.Unmarshal([]byte(toString(replies[i])), &task); err != nil {
 			// log
 			continue
 		}
@@ -187,9 +185,20 @@ func (r *RTimeWheel) getExecutableTasks(ctx context.Context) ([]*RTaskElement, e
 }
 
 func (r *RTimeWheel) getMinuteSlice(executeAt time.Time) string {
-	return fmt.Sprintf("xiaoxu_time_wheel_task_{%s}", util.GetTimeMinuteStr(executeAt))
+	return fmt.Sprintf("swifty_time_wheel_task_{%s}", util.GetTimeMinuteStr(executeAt))
 }
 
 func (r *RTimeWheel) getDeleteSetKey(executeAt time.Time) string {
-	return fmt.Sprintf("xiaoxu_time_wheel_delset_{%s}", util.GetTimeMinuteStr(executeAt))
+	return fmt.Sprintf("swifty_time_wheel_delete_set_{%s}", util.GetTimeMinuteStr(executeAt))
+}
+
+func toString(v interface{}) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case []byte:
+		return string(s)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }

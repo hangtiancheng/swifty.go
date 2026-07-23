@@ -47,16 +47,16 @@ func Test_WAL(t *testing.T) {
 	restoredKVs := restoredSkiplist.All()
 
 	if len(originKVs) != len(restoredKVs) {
-		t.Errorf("not euqal len, got: %d, expect: %d", len(restoredKVs), len(originKVs))
+		t.Errorf("not equal len, got: %d, expect: %d", len(restoredKVs), len(originKVs))
 		return
 	}
 
 	for i := 0; i < len(originKVs); i++ {
 		if !bytes.Equal(originKVs[i].Key, restoredKVs[i].Key) {
-			t.Errorf("not euqal, index: %d, got key: %s, expect: %s", i, restoredKVs[i].Key, originKVs[i].Key)
+			t.Errorf("not equal, index: %d, got key: %s, expect: %s", i, restoredKVs[i].Key, originKVs[i].Key)
 		}
 		if !bytes.Equal(originKVs[i].Value, restoredKVs[i].Value) {
-			t.Errorf("not euqal, index: %d, got val: %s, expect: %s", i, restoredKVs[i].Value, originKVs[i].Value)
+			t.Errorf("not equal, index: %d, got val: %s, expect: %s", i, restoredKVs[i].Value, originKVs[i].Value)
 		}
 	}
 }

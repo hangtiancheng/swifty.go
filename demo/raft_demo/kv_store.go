@@ -28,7 +28,7 @@ func newKVStore(proposeC chan<- string, commitC <-chan *string) *kvStore {
 
 func (k *kvStore) readCommit(commitC <-chan *string) {
 	for data := range commitC {
-		// 将 data 应用到状态机
+		// Apply committed data to the state machine
 		var kv kv
 		_ = json.Unmarshal([]byte(*data), &kv)
 

@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// GetCurrentProcessAndGogroutineIDStr returns a "pid_goroutineID" identifier for the current goroutine.
-func GetCurrentProcessAndGogroutineIDStr() string {
+// GetCurrentProcessAndGoroutineIDStr returns a "pid_goroutineID" identifier for the current goroutine.
+func GetCurrentProcessAndGoroutineIDStr() string {
 	pid := GetCurrentProcessID()
 	goroutineID := GetCurrentGoroutineID()
 	return fmt.Sprintf("%d_%s", pid, goroutineID)

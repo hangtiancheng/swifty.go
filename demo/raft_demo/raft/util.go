@@ -1,12 +1,12 @@
 package raft
 
 func IsResponseMsg(typ MessageType) bool {
-	return typ == MsgAppResp || typ == MsgHearbeatResp || typ == MsgVoteResp || typ == MsgPreVoteResp
+	return typ == MsgAppResp || typ == MsgHeartbeatResp || typ == MsgVoteResp || typ == MsgPreVoteResp
 }
 
-func numOfPendingConf(ents []Entry) int {
+func numOfPendingConf(entries []Entry) int {
 	var n int
-	for _, ent := range ents {
+	for _, ent := range entries {
 		if ent.Type == EntryConfChange {
 			n++
 		}

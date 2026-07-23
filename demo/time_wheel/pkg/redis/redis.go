@@ -2,15 +2,16 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
-// Client Redis 客户端.
+// Client wraps a github.com/redis/go-redis/v9 client.
 type Client struct {
-	opts *ClientOptions
-	pool *redis.Pool
+	opts   *ClientOptions
+	client *go_redis.Client
 }
 
 func NewClient(network, address, password string, opts ...ClientOption) *Client {
@@ -28,74 +29,34 @@ func NewClient(network, address, password string, opts ...ClientOption) *Client 
 
 	repairClient(c.opts)
 
-	pool := c.getRedisPool()
+	client := go_redis.NewClient(&go_redis.Options{
+		Network:         c.opts.network,
+		Addr:            c.opts.address,
+		Password:        c.opts.password,
+		PoolSize:        c.opts.maxActive,
+		MinIdleConns:    c.opts.maxIdle,
+		ConnMaxIdleTime: time.Duration(c.opts.idleTimeoutSeconds) * time.Second,
+	})
 	return &Client{
-		pool: pool,
+		client: client,
 	}
-}
-
-func (c *Client) getRedisPool() *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     c.opts.maxIdle,
-		IdleTimeout: time.Duration(c.opts.idleTimeoutSeconds) * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := c.getRedisConn()
-			if err != nil {
-				return nil, err
-			}
-			return c, nil
-		},
-		MaxActive: c.opts.maxActive,
-		Wait:      c.opts.wait,
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
-}
-
-func (c *Client) GetConn(ctx context.Context) (redis.Conn, error) {
-	return c.pool.GetContext(ctx)
-}
-
-func (c *Client) getRedisConn() (redis.Conn, error) {
-	if c.opts.address == "" {
-		panic("Cannot get redis address from config")
-	}
-
-	var dialOpts []redis.DialOption
-	if len(c.opts.password) > 0 {
-		dialOpts = append(dialOpts, redis.DialPassword(c.opts.password))
-	}
-	conn, err := redis.DialContext(context.Background(),
-		c.opts.network, c.opts.address, dialOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
 }
 
 func (c *Client) SAdd(ctx context.Context, key, val string) (int, error) {
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return -1, err
-	}
-	defer conn.Close()
-	return redis.Int(conn.Do("SADD", key, val))
+	n, err := c.client.SAdd(ctx, key, val).Result()
+	return int(n), err
 }
 
-// Eval 支持使用 lua 脚本.
+// Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
 func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
-	args := make([]interface{}, 2+len(keysAndArgs))
-	args[0] = src
-	args[1] = keyCount
-	copy(args[2:], keysAndArgs)
-
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return -1, err
+	keys := make([]string, 0, keyCount)
+	args := make([]interface{}, 0, len(keysAndArgs)-keyCount)
+	for i, v := range keysAndArgs {
+		if i < keyCount {
+			keys = append(keys, fmt.Sprintf("%v", v))
+		} else {
+			args = append(args, v)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Do("EVAL", args...)
+	return c.client.Eval(ctx, src, keys, args...).Result()
 }

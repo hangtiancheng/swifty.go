@@ -9,7 +9,7 @@ import (
 // Skiplist is an unsynchronized skip list; it is not safe for concurrent use.
 type Skiplist struct {
 	head      *skipNode // head sentinel node
-	entrisCnt int       // number of key-value pairs
+	entriesCnt int       // number of key-value pairs
 	size      int       // data size in bytes
 }
 
@@ -38,7 +38,7 @@ func (s *Skiplist) Put(key, value []byte) {
 
 	// New key: add the key and value sizes to the total.
 	s.size += (len(key) + len(value))
-	s.entrisCnt++
+	s.entriesCnt++
 	// Roll a height for the new node.
 	newNodeHeight := s.roll()
 
@@ -84,7 +84,7 @@ func (s *Skiplist) All() []*KV {
 		return nil
 	}
 
-	kvs := make([]*KV, 0, s.entrisCnt)
+	kvs := make([]*KV, 0, s.entriesCnt)
 	// Walk the bottom level from left to right.
 	for move := s.head; move.nexts[0] != nil; move = move.nexts[0] {
 		kvs = append(kvs, &KV{
@@ -103,7 +103,7 @@ func (s *Skiplist) Size() int {
 
 // EntriesCnt returns the number of key-value pairs.
 func (s *Skiplist) EntriesCnt() int {
-	return s.entrisCnt
+	return s.entriesCnt
 }
 
 // getNode returns the node matching the key, or nil if not found.
@@ -127,8 +127,8 @@ func (s *Skiplist) getNode(key []byte) *skipNode {
 // roll returns a random node height. Minimum is 1; each extra level has probability 1/2.
 func (s *Skiplist) roll() int {
 	var level int
-	rander := rand.New(rand.NewSource(time.Now().Unix()))
-	for rander.Intn(2) == 1 {
+	randInst := rand.New(rand.NewSource(time.Now().Unix()))
+	for randInst.Intn(2) == 1 {
 		level++
 	}
 	return level + 1

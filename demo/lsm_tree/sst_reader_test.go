@@ -25,7 +25,7 @@ func Test_SSTReader(t *testing.T) {
 	// filter: 0 -> bitmap1  16 -> bitmap2
 	// index: [` 0 0] [e 0 16] [ef 16 7]
 	// footer: ...
-	expectkvs := []*KV{
+	expectKvs := []*KV{
 		{
 			Key:   []byte("a"),
 			Value: []byte("b"),
@@ -44,7 +44,7 @@ func Test_SSTReader(t *testing.T) {
 		},
 	}
 
-	for _, kv := range expectkvs {
+	for _, kv := range expectKvs {
 		sstWriter.Append(kv.Key, kv.Value)
 	}
 
@@ -86,7 +86,7 @@ func Test_SSTReader(t *testing.T) {
 		return
 	}
 
-	if err = assertDataEqual(expectkvs, gotKVs); err != nil {
+	if err = assertDataEqual(expectKvs, gotKVs); err != nil {
 		t.Error(err)
 	}
 }

@@ -16,7 +16,7 @@ const NullData = "Err_Syntax_Null_Data"
 // Cache abstracts the cache module.
 type Cache interface {
 	// Enable turns the read-path write cache on for a key (enabled by default).
-	Enable(ctx context.Context, key string, delayMilis int64) error
+	Enable(ctx context.Context, key string, delayMillis int64) error
 	// Disable turns the read-path write cache off for a key.
 	Disable(ctx context.Context, key string, expireSeconds int64) error
 	// Get reads the cached value for the key.

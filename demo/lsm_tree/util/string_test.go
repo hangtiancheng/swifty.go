@@ -1,5 +1,6 @@
 package util
 
+// cSpell: words abce
 import (
 	"bytes"
 	"testing"

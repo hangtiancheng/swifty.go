@@ -11,26 +11,26 @@ var ErrUnavailable = errors.New("request entry at index is unavailable")
 
 type Storage interface {
 	InitialState() (HardState, ConfState, error)
-	// 根据日志索引获取日志，大小不超过 max
+	// Entries returns log entries in the range [l, r)
 	Entries(l, r uint64) ([]Entry, error)
-	// 通过日志索引获取对应的任期
+	// Term returns the term of the entry at the given index
 	Term(i uint64) (uint64, error)
-	// 最后一笔已持久化的日志索引
+	// LastIndex returns the index of the last persisted entry
 	LastIndex() (uint64, error)
-	// 第一笔已持久化的日志索引
+	// FirstIndex returns the index of the first persisted entry
 	FirstIndex() (uint64, error)
 }
 
 type MemoryStorage struct {
 	sync.Mutex
 	hardState HardState
-	// 持久化的日志
-	ents []Entry
+	// Persisted log entries
+	entries []Entry
 }
 
 func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
-		ents: make([]Entry, 1),
+		entries: make([]Entry, 1),
 	}
 }
 
@@ -42,7 +42,7 @@ func (m *MemoryStorage) Entries(l, r uint64) ([]Entry, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	offset := m.ents[0].Index
+	offset := m.entries[0].Index
 	if l <= offset {
 		return nil, ErrCompacted
 	}
@@ -51,27 +51,27 @@ func (m *MemoryStorage) Entries(l, r uint64) ([]Entry, error) {
 		return nil, ErrUnavailable
 	}
 
-	if len(m.ents) == 1 {
+	if len(m.entries) == 1 {
 		return nil, ErrUnavailable
 	}
 
-	return m.ents[l-offset : r-offset], nil
+	return m.entries[l-offset : r-offset], nil
 
 }
 
 func (m *MemoryStorage) Term(i uint64) (uint64, error) {
 	m.Lock()
 	defer m.Unlock()
-	offset := m.ents[0].Index
+	offset := m.entries[0].Index
 	if i < offset {
 		return 0, ErrCompacted
 	}
 
-	if int(i-offset) >= len(m.ents) {
+	if int(i-offset) >= len(m.entries) {
 		return 0, ErrUnavailable
 	}
 
-	return m.ents[i-offset].Term, nil
+	return m.entries[i-offset].Term, nil
 }
 
 func (m *MemoryStorage) LastIndex() (uint64, error) {
@@ -81,7 +81,7 @@ func (m *MemoryStorage) LastIndex() (uint64, error) {
 }
 
 func (m *MemoryStorage) lastIndex() uint64 {
-	return m.ents[0].Index + uint64(len(m.ents)) - 1
+	return m.entries[0].Index + uint64(len(m.entries)) - 1
 }
 
 func (m *MemoryStorage) FirstIndex() (uint64, error) {
@@ -91,5 +91,5 @@ func (m *MemoryStorage) FirstIndex() (uint64, error) {
 }
 
 func (m *MemoryStorage) firstIndex() uint64 {
-	return m.ents[0].Index + 1
+	return m.entries[0].Index + 1
 }

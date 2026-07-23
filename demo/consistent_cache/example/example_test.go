@@ -69,19 +69,19 @@ func Test_consistent_Cache(t *testing.T) {
 func Test_Consistent_Cache_Correct(t *testing.T) {
 	service := newService()
 	ctx := context.Background()
-	rander := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randInst := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// 100 concurrent writers, with a local backup of every written record.
 	prefix := time.Now().String() + "-"
-	datac := make(chan *Example)
+	dataChan := make(chan *Example)
 	go func() {
 		var wg sync.WaitGroup
 		for i := 0; i < 100; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				k := prefix + strconv.Itoa(rander.Intn(100))
-				v := prefix + strconv.Itoa(rander.Intn(100))
+				k := prefix + strconv.Itoa(randInst.Intn(100))
+				v := prefix + strconv.Itoa(randInst.Intn(100))
 				data := Example{
 					Key_: k,
 					Data: v,
@@ -90,16 +90,16 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				datac <- &data
+				dataChan <- &data
 			}()
 		}
 		wg.Wait()
-		close(datac)
+		close(dataChan)
 	}()
 
 	// Collect written data into a local backup map.
 	mp := make(map[string]string, 500)
-	for data := range datac {
+	for data := range dataChan {
 		mp[data.Key_] = data.Data
 	}
 
@@ -110,7 +110,7 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 	var expectUseCacheCnt int
 	querySet := make(map[string]struct{}, 100)
 	for i := 0; i < 100; i++ {
-		k := strconv.Itoa(rander.Intn(100))
+		k := strconv.Itoa(randInst.Intn(100))
 		data := Example{
 			Key_: prefix + k,
 		}
@@ -156,7 +156,7 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 	prefix := time.Now().String()
 
 	var wg sync.WaitGroup
-	datac := make(chan *Example)
+	dataChan := make(chan *Example)
 
 	// Value range for writers.
 	startV, endV := 1, 5
@@ -176,7 +176,7 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 				if err := service.Put(ctx, &data); err != nil {
 					t.Error(err)
 				}
-				datac <- &data
+				dataChan <- &data
 			}()
 		}
 	}()
@@ -215,10 +215,10 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 	}()
 
 	// Collect the written records.
-	datas := make([]*Example, 0, 5)
+	dataSlice := make([]*Example, 0, 5)
 	for i := startV; i <= endV; i++ {
-		data := <-datac
-		datas = append(datas, data)
+		data := <-dataChan
+		dataSlice = append(dataSlice, data)
 	}
 
 	// After writes settle, read the final value.
@@ -233,8 +233,8 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 	if useCache {
 		t.Errorf("expected useCache=false, got true")
 	}
-	if data.Data != datas[len(datas)-1].Data {
-		t.Errorf("expected data=%s, got %s", datas[len(datas)-1].Data, data.Data)
+	if data.Data != dataSlice[len(dataSlice)-1].Data {
+		t.Errorf("expected data=%s, got %s", dataSlice[len(dataSlice)-1].Data, data.Data)
 	}
 
 	wg.Wait()
@@ -256,7 +256,7 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 	if !useCache {
 		t.Errorf("expected useCache=true, got false")
 	}
-	if data.Data != datas[len(datas)-1].Data {
-		t.Errorf("expected data=%s, got %s", datas[len(datas)-1].Data, data.Data)
+	if data.Data != dataSlice[len(dataSlice)-1].Data {
+		t.Errorf("expected data=%s, got %s", dataSlice[len(dataSlice)-1].Data, data.Data)
 	}
 }

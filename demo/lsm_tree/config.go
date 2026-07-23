@@ -38,7 +38,7 @@ func NewConfig(dir string, opts ...ConfigOption) (*Config, error) {
 	}
 
 	// Fill defaults.
-	repaire(&c)
+	repair(&c)
 
 	return &c, c.check() // validate and create directories if missing
 }
@@ -117,7 +117,7 @@ func WithMemtableConstructor(memtableConstructor memtable.MemTableConstructor) C
 	}
 }
 
-func repaire(c *Config) {
+func repair(c *Config) {
 	// Default to 7 levels.
 	if c.MaxLevel <= 1 {
 		c.MaxLevel = 7

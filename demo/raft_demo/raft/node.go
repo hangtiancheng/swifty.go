@@ -6,29 +6,29 @@ import (
 )
 
 type Node struct {
-	// 本地提交数据使用的 chan
+	// Channel for local proposals
 	proc chan Message
-	// 其他节点提交数据使用的 chan
-	recvc chan Message
-	// 接受配置变更的 chan
-	confc chan Message
-	// 传送 raft 节点的处理结果
-	readyc chan Ready
-	// 推进算法流程向前处理
-	advancec chan struct{}
-	// 定时器
-	tickc chan struct{}
+	// Channel for messages from peers
+	recvChan chan Message
+	// Channel for configuration change proposals
+	confChan chan Message
+	// Channel delivering ready state to the application
+	readyChan chan Ready
+	// Channel signaling the application has applied ready state
+	advanceChan chan struct{}
+	// Tick channel
+	tickChan chan struct{}
 }
 
 func StartNode(conf *Config, peers []Peer) Node {
 	r := newRaft(conf)
-	// 将所有节点添加到配置中
+	// Register all peers in the configuration
 	// for _, peer := range peers {
 
 	// }
 	r.raftLog.commitIndex = r.raftLog.lastIndex()
 
-	// 添加各节点状态信息
+	// Initialize progress for each peer
 	// for _, peer := range peers {
 	// 	r.addNode(peer.ID)
 	// }
@@ -41,57 +41,57 @@ func StartNode(conf *Config, peers []Peer) Node {
 func newNode() Node {
 	return Node{
 		proc:   make(chan Message),
-		recvc:  make(chan Message),
-		confc:  make(chan Message),
-		readyc: make(chan Ready),
-		tickc:  make(chan struct{}),
+		recvChan:  make(chan Message),
+		confChan:  make(chan Message),
+		readyChan: make(chan Ready),
+		tickChan:  make(chan struct{}),
 	}
 }
 
 func (n *Node) run(r *raft) {
 	var (
-		propc    chan Message
-		readyc   chan Ready
-		advancec chan struct{}
-		// 状态信息
+		propChan    chan Message
+		readyChan   chan Ready
+		advanceChan chan struct{}
+		// Ready state
 		rd       Ready
 		prevSoft = r.softState()
 		prevHard = emptyHardState
 
-		prevLastUnstablei, prevLastUnstablet uint64
-		hasPrevLstUnstablei                  bool
+		prevLastUnstableI, prevLastUnstableJ uint64
+		hasPrevLastUnstableI                  bool
 	)
 
 	for {
-		// 判断是否有数据更新，如果有的话会取 readyc 进行投递
-		if advancec != nil {
-			readyc = nil
-			// 构造一个新的数据，如果有更新，就投递到 readyc 当中
+		// Check for state updates and deliver via readyChan if present
+		if advanceChan != nil {
+			readyChan = nil
+			// Build new ready state and deliver if there are updates
 		} else if rd = newReady(r, prevSoft, prevHard); rd.containsUpdates() {
-			readyc = n.readyc
+			readyChan = n.readyChan
 		} else {
-			readyc = nil
+			readyChan = nil
 		}
 
 		select {
-		// 接收到用户提交的数据
-		case m := <-propc:
-			// 处理本地提交的消息
+		// Received a local proposal
+		case m := <-propChan:
+			// Process local proposal message
 			m.From = r.id
 			r.Step(m)
-		case m := <-n.recvc:
-			// 非集群内节点的消息直接忽略
+		case m := <-n.recvChan:
+			// Ignore messages from unknown nodes
 			if _, ok := r.prs[m.From]; !ok || !IsResponseMsg(m.Type) {
 				break
 			}
 			r.Step(m)
-		case <-n.confc:
-		// 定时器到点
-		case <-n.tickc:
+		case <-n.confChan:
+		// Timer tick
+		case <-n.tickChan:
 			r.tick()
-			// 有数据需要投递
-		case readyc <- rd:
-			// 同步已经更新过的状态信息，用于下一轮循环判断是否数据是否有更新
+			// Ready state delivered
+		case readyChan <- rd:
+			// Sync updated state for next iteration's change detection
 			if rd.SoftState != nil {
 				prevSoft = rd.SoftState
 			}
@@ -101,32 +101,32 @@ func (n *Node) run(r *raft) {
 			}
 
 			if len(rd.Entries) > 0 {
-				prevLastUnstablei, prevLastUnstablet = rd.Entries[len(rd.Entries)-1].Index, rd.Entries[len(rd.Entries)-1].Term
-				hasPrevLstUnstablei = true
+				prevLastUnstableI, prevLastUnstableJ = rd.Entries[len(rd.Entries)-1].Index, rd.Entries[len(rd.Entries)-1].Term
+				hasPrevLastUnstableI = true
 			}
 
 			r.msgs = nil
 			r.readStates = nil
-			advancec = n.advancec
-		case <-advancec:
-			// 上一轮的 commit 视为已经应用了，因为只有这样应用层才会给予 advance
+			advanceChan = n.advanceChan
+		case <-advanceChan:
+			// Previous commit index is now applied, as the application signaled advance
 			if prevHard.CommitIndex != 0 {
 				r.raftLog.appliedTo(prevHard.CommitIndex)
 			}
 
-			if hasPrevLstUnstablei {
-				r.raftLog.stableTo(prevLastUnstablei, prevLastUnstablet)
-				hasPrevLstUnstablei = false
+			if hasPrevLastUnstableI {
+				r.raftLog.stableTo(prevLastUnstableI, prevLastUnstableJ)
+				hasPrevLastUnstableI = false
 			}
 
-			advancec = nil
+			advanceChan = nil
 		}
 	}
 }
 
 func (n *Node) Tick() {
 	select {
-	case n.tickc <- struct{}{}:
+	case n.tickChan <- struct{}{}:
 	default:
 	}
 }
@@ -146,15 +146,15 @@ func (n *Node) ProposeConfChange(ctx context.Context, cc ConfChange) error {
 }
 
 func (n *Node) Ready() <-chan Ready {
-	return n.readyc
+	return n.readyChan
 }
 
 func (n *Node) Advance() {
-	n.advancec <- struct{}{}
+	n.advanceChan <- struct{}{}
 }
 
 func (n *Node) step(ctx context.Context, m Message) error {
-	ch := n.recvc
+	ch := n.recvChan
 	if m.Type == MsgProp {
 		ch = n.proc
 	}

@@ -20,6 +20,6 @@ func NewDeadLetterLogger() *DeadLetterLogger {
 }
 
 func (d *DeadLetterLogger) Deliver(ctx context.Context, msg *redis.MsgEntity) error {
-	log.ErrorContextf(ctx, "msg fail execeed retry limit, msg id: %s", msg.MsgID)
+	log.ErrorContextf(ctx, "msg fail exceed retry limit, msg id: %s", msg.MsgID)
 	return nil
 }

@@ -14,7 +14,7 @@ type Client interface {
 	Get(ctx context.Context, key string) (string, error)
 	SetEx(ctx context.Context, key, value string, expireSeconds int64) error
 	Del(ctx context.Context, key string) error
-	PExpire(ctx context.Context, key string, expireMilis int64) error
+	PExpire(ctx context.Context, key string, expireMillis int64) error
 }
 
 // Cache implements consistent_cache.Cache backed by redis.
@@ -29,8 +29,8 @@ func NewRedisCache(config *Config) *Cache {
 
 // Enable re-enables the read-path write cache for a key by expiring the disable marker shortly.
 // The disable marker is considered absent once it expires, which means the read path is enabled.
-func (c *Cache) Enable(ctx context.Context, key string, delayMilis int64) error {
-	return c.client.PExpire(ctx, key, delayMilis)
+func (c *Cache) Enable(ctx context.Context, key string, delayMillis int64) error {
+	return c.client.PExpire(ctx, key, delayMillis)
 }
 
 // Disable turns off the read-path write cache for a key by setting a short-lived disable marker.

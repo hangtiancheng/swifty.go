@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 type MsgEntity struct {
@@ -21,7 +21,7 @@ var ErrNoMsg = errors.New("no msg received")
 // Client wraps a github.com/redis/go-redis/v9 client.
 type Client struct {
 	opts   *ClientOptions
-	client *goredis.Client
+	client *go_redis.Client
 }
 
 func NewClient(network, address, password string, opts ...ClientOption) *Client {
@@ -39,7 +39,7 @@ func NewClient(network, address, password string, opts ...ClientOption) *Client 
 
 	repairClient(c.opts)
 
-	client := goredis.NewClient(&goredis.Options{
+	client := go_redis.NewClient(&go_redis.Options{
 		Network:         c.opts.network,
 		Addr:            c.opts.address,
 		Password:        c.opts.password,
@@ -58,7 +58,7 @@ func (c *Client) XADD(ctx context.Context, topic string, maxLen int, key, val st
 		return "", errors.New("redis XADD topic can't be empty")
 	}
 
-	args := &goredis.XAddArgs{
+	args := &go_redis.XAddArgs{
 		Stream: topic,
 		ID:     "*",
 		Values: map[string]interface{}{key: val},
@@ -92,30 +92,30 @@ func (c *Client) XReadGroupPending(ctx context.Context, groupID, consumerID, top
 }
 
 // XReadGroup reads new messages from the stream for the given consumer group.
-func (c *Client) XReadGroup(ctx context.Context, groupID, consumerID, topic string, timeoutMiliSeconds int) ([]*MsgEntity, error) {
-	return c.xReadGroup(ctx, groupID, consumerID, topic, timeoutMiliSeconds, false)
+func (c *Client) XReadGroup(ctx context.Context, groupID, consumerID, topic string, timeoutMilliSeconds int) ([]*MsgEntity, error) {
+	return c.xReadGroup(ctx, groupID, consumerID, topic, timeoutMilliSeconds, false)
 }
 
-func (c *Client) xReadGroup(ctx context.Context, groupID, consumerID, topic string, timeoutMiliSeconds int, pending bool) ([]*MsgEntity, error) {
+func (c *Client) xReadGroup(ctx context.Context, groupID, consumerID, topic string, timeoutMilliSeconds int, pending bool) ([]*MsgEntity, error) {
 	if groupID == "" || consumerID == "" || topic == "" {
 		return nil, errors.New("redis XREADGROUP groupID/consumerID/topic can't be empty")
 	}
 
 	// pending=true: read messages already assigned to this consumer but not yet acked (id "0-0").
-	// pending=false: read never-delivered new messages (id ">"), blocking up to timeoutMiliSeconds.
-	args := &goredis.XReadGroupArgs{
+	// pending=false: read never-delivered new messages (id ">"), blocking up to timeoutMilliSeconds.
+	args := &go_redis.XReadGroupArgs{
 		Group:    groupID,
 		Consumer: consumerID,
 		Streams:  []string{topic, "0-0"},
 	}
 	if !pending {
 		args.Streams = []string{topic, ">"}
-		args.Block = time.Duration(timeoutMiliSeconds) * time.Millisecond
+		args.Block = time.Duration(timeoutMilliSeconds) * time.Millisecond
 	}
 
 	streams, err := c.client.XReadGroup(ctx, args).Result()
 	if err != nil {
-		if errors.Is(err, goredis.Nil) {
+		if errors.Is(err, go_redis.Nil) {
 			return nil, ErrNoMsg
 		}
 		return nil, err

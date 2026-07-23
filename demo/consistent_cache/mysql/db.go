@@ -10,7 +10,7 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/consistent_cache"
 )
 
-type tabler interface {
+type tableInterface interface {
 	TableName() string
 }
 
@@ -26,9 +26,9 @@ func NewDB(dsn string) *DB {
 // Put writes obj to the database. It emulates upsert: try insert first, fall back to update on unique-key conflict.
 func (d *DB) Put(ctx context.Context, obj consistent_cache.Object) error {
 	db := d.db
-	tabler, ok := obj.(tabler)
+	tableInst, ok := obj.(tableInterface)
 	if ok {
-		db = db.Table(tabler.TableName())
+		db = db.Table(tableInst.TableName())
 	}
 
 	err := db.WithContext(ctx).Create(obj).Error
@@ -45,9 +45,9 @@ func (d *DB) Put(ctx context.Context, obj consistent_cache.Object) error {
 // Get loads obj from the database by its key column.
 func (d *DB) Get(ctx context.Context, obj consistent_cache.Object) error {
 	db := d.db
-	tabler, ok := obj.(tabler)
+	tableInst, ok := obj.(tableInterface)
 	if ok {
-		db = db.Table(tabler.TableName())
+		db = db.Table(tableInst.TableName())
 	}
 
 	err := db.WithContext(ctx).Where(fmt.Sprintf("`%s` = ?", obj.KeyColumn()), obj.Key()).First(obj).Error

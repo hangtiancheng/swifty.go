@@ -34,8 +34,11 @@ func Test_Skiplist(t *testing.T) {
 	if ok {
 		t.Errorf("key: bcd, expect ok: false, got: true")
 	}
-	if skiplist.Size() != 4 {
-		t.Errorf("size, expect: 4, got: %d", skiplist.Size())
+	if skiplist.EntriesCnt() != 4 {
+		t.Errorf("entriesCnt, expect: 4, got: %d", skiplist.EntriesCnt())
+	}
+	if skiplist.Size() != 17 {
+		t.Errorf("size, expect: 17, got: %d", skiplist.Size())
 	}
 
 	kvs := skiplist.All()

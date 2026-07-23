@@ -1,8 +1,8 @@
 package time_wheel
 
 const (
-	// 1 添加任务时，如果存在删除 key 的标识，则将其删除
-	// 添加任务时，根据时间（所属的 min）决定数据从属于哪个分片{}
+	// LuaAddTasks: when adding a task, if a delete marker exists for the key, remove it first.
+	// The task is routed to a shard based on its minute-level timestamp.
 	LuaAddTasks = `
 	   local zsetKey = KEYS[1]
 	   local deleteSetKey = KEYS[2]
@@ -13,7 +13,7 @@ const (
 	   return redis.call('zadd',zsetKey,score,task)
 	`
 
-	// 2 删除任务时，将删除 key 的标识置为 true
+	// LuaDeleteTask: mark the task key as deleted.
 	LuaDeleteTask = `
 	   local deleteSetKey = KEYS[1]
 	   local taskKey = ARGV[1]
@@ -26,7 +26,7 @@ const (
 	   return scnt
 	`
 
-	// 3 执行任务时，通过 zrange 操作取回所有不存在删除 key 标识的任务
+	// LuaZrangeTasks: fetch all tasks whose delete markers are absent via zrange.
 	LuaZrangeTasks = `
 	   local zsetKey = KEYS[1]
 	   local deleteSetKey = KEYS[2]

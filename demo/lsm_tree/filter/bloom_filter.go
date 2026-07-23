@@ -2,9 +2,15 @@ package filter
 
 import (
 	"errors"
-
-	"github.com/spaolacci/murmur3"
+	"hash/fnv"
 )
+
+// hashKey computes the 32-bit hash of a key using FNV-1a.
+func hashKey(key []byte) uint32 {
+	h := fnv.New32a()
+	h.Write(key)
+	return h.Sum32()
+}
 
 // BloomFilter is a bloom filter implementation.
 type BloomFilter struct {
@@ -15,7 +21,7 @@ type BloomFilter struct {
 // NewBloomFilter constructs a BloomFilter with the given bitmap length (bits).
 func NewBloomFilter(m int) (*BloomFilter, error) {
 	if m <= 0 {
-		return nil, errors.New("m must be postive")
+		return nil, errors.New("m must be positive")
 	}
 	return &BloomFilter{
 		m: m,
@@ -24,7 +30,7 @@ func NewBloomFilter(m int) (*BloomFilter, error) {
 
 // Add inserts a key into the bloom filter.
 func (bf *BloomFilter) Add(key []byte) {
-	bf.hashedKeys = append(bf.hashedKeys, murmur3.Sum32(key))
+	bf.hashedKeys = append(bf.hashedKeys, hashKey(key))
 }
 
 // Exist reports whether the key may exist in the filter (false positives are possible).
@@ -36,18 +42,18 @@ func (bf *BloomFilter) Exist(bitmap, key []byte) bool {
 	// Read the hash-function count k.
 	k := bitmap[len(bitmap)-1]
 
-	// Base hash h1 = murmur3.Sum32
+	// Base hash h1 = hashKey(key)
 	// Base hash h2 = h1 >> 17 | h1 << 15
 	// All subsequent hash functions are linearly independent combinations of h1 and h2.
 	// i-th hash function gi = h1 + i * h2
 
 	// h1
-	hashedKey := murmur3.Sum32(key)
+	hashedKey := hashKey(key)
 	// h2
 	delta := (hashedKey >> 17) | (hashedKey << 15)
 	for i := uint32(0); i < uint32(k); i++ {
 		// gi = h1 + i * h2
-		targetBit := (hashedKey + i*delta) % uint32(len(bitmap)<<3)
+		targetBit := (hashedKey + i*delta) % uint32(bf.m)
 		// Check the target bit; if 0, the key definitely does not exist.
 		if bitmap[targetBit>>3]&(1<<(targetBit&7)) == 0 {
 			return false
@@ -65,7 +71,7 @@ func (bf *BloomFilter) Hash() []byte {
 	// Build an empty bitmap with the last byte set to k.
 	bitmap := bf.bitmap(k)
 
-	// Base hash h1 = murmur3.Sum32
+	// Base hash h1 = hashKey(key)
 	// Base hash h2 = h1 >> 17 | h1 << 15
 	// All subsequent hash functions are linearly independent combinations of h1 and h2.
 	// i-th hash function gi = h1 + i * h2
@@ -76,7 +82,7 @@ func (bf *BloomFilter) Hash() []byte {
 		for i := uint32(0); i < uint32(k); i++ {
 			// i-th hash function gi = h1 + i * h2
 			// The bit to set.
-			targetBit := (hashedKey + i*delta) % uint32(len(bitmap)<<3)
+			targetBit := (hashedKey + i*delta) % uint32(bf.m)
 			bitmap[targetBit>>3] |= (1 << (targetBit & 7))
 		}
 	}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 // Config holds redis client configuration.
@@ -24,7 +24,7 @@ type Config struct {
 
 // RClient wraps a github.com/redis/go-redis/v9 client.
 type RClient struct {
-	client *goredis.Client
+	client *go_redis.Client
 }
 
 // NewRClient builds an RClient from Config.
@@ -32,12 +32,12 @@ func NewRClient(config *Config) *RClient {
 	return &RClient{client: getRedisClient(config)}
 }
 
-func getRedisClient(config *Config) *goredis.Client {
+func getRedisClient(config *Config) *go_redis.Client {
 	if config.Address == "" {
 		panic("redis address is required")
 	}
 
-	opts := &goredis.Options{
+	opts := &go_redis.Options{
 		Addr:         config.Address,
 		Password:     config.Password,
 		DB:           config.DB,
@@ -56,7 +56,7 @@ func getRedisClient(config *Config) *goredis.Client {
 	if config.WriteTimeoutSeconds > 0 {
 		opts.WriteTimeout = time.Duration(config.WriteTimeoutSeconds) * time.Second
 	}
-	return goredis.NewClient(opts)
+	return go_redis.NewClient(opts)
 }
 
 func (r *RClient) Get(ctx context.Context, key string) (string, error) {
@@ -65,7 +65,7 @@ func (r *RClient) Get(ctx context.Context, key string) (string, error) {
 	}
 
 	val, err := r.client.Get(ctx, key).Result()
-	if errors.Is(err, goredis.Nil) {
+	if errors.Is(err, go_redis.Nil) {
 		return "", ErrorCacheMiss
 	}
 	if err != nil {
@@ -104,8 +104,8 @@ func (r *RClient) Eval(ctx context.Context, src string, keyCount int, keysAndArg
 	return r.client.Eval(ctx, src, keys, args...).Result()
 }
 
-func (r *RClient) PExpire(ctx context.Context, key string, expireMilis int64) error {
-	return r.client.PExpire(ctx, key, time.Duration(expireMilis)*time.Millisecond).Err()
+func (r *RClient) PExpire(ctx context.Context, key string, expireMillis int64) error {
+	return r.client.PExpire(ctx, key, time.Duration(expireMillis)*time.Millisecond).Err()
 }
 
 // ErrorCacheMiss is returned when a redis key is not found.

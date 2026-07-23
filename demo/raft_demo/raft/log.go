@@ -1,9 +1,9 @@
 package raft
 
 type unstable struct {
-	// 未持久化的日志
+	// Unpersisted log entries
 	entries []Entry
-	// 第一笔未持久化的日志的索引
+	// Index of the first unpersisted entry
 	offset uint64
 }
 
@@ -22,18 +22,18 @@ func (u *unstable) slice(l, r uint64) []Entry {
 	return u.entries[l-u.offset : r-u.offset]
 }
 
-// 在非持久化区域中传入 entries，可能导致原先数据的截断或者重叠追加
-func (u *unstable) truncateAndAppend(ents []Entry) {
-	after := ents[0].Index
+// Appending entries to the unstable region may truncate or overlap existing data
+func (u *unstable) truncateAndAppend(entries []Entry) {
+	after := entries[0].Index
 	switch {
 	case after == u.offset+uint64(len(u.entries)):
-		u.entries = append(u.entries, ents...)
+		u.entries = append(u.entries, entries...)
 	case after <= u.offset:
 		u.offset = after
-		u.entries = ents
+		u.entries = entries
 	default:
 		u.entries = append([]Entry{}, u.slice(u.offset, after)...)
-		u.entries = append(u.entries, ents...)
+		u.entries = append(u.entries, entries...)
 	}
 }
 
@@ -74,11 +74,11 @@ func (u *unstable) stableTo(i, t uint64) {
 }
 
 type raftLog struct {
-	// 存储接口，提供了持久化日志的查询能力
+	// Storage interface providing access to persisted log entries
 	storage Storage
-	// 未持久化的日志
+	// Unpersisted log entries
 	unstable unstable
-	// 已提交的日志索引
+	// Committed log index
 	commitIndex uint64
 	applyIndex  uint64
 }
@@ -116,15 +116,15 @@ func (r *raftLog) unstableEntries() []Entry {
 	return r.unstable.entries
 }
 
-// 获取还未应用但是已提交的 entries
-func (r *raftLog) nextEnts() []Entry {
+// Returns committed but not yet applied entries
+func (r *raftLog) nextEntries() []Entry {
 	off := max(r.applyIndex+1, r.firstIndex())
 	if r.commitIndex > off {
-		ents, err := r.slice(off, r.commitIndex+1)
+		entries, err := r.slice(off, r.commitIndex+1)
 		if err != nil {
 			panic(err)
 		}
-		return ents
+		return entries
 	}
 	return nil
 }
@@ -160,35 +160,35 @@ func (r *raftLog) slice(lo, hi uint64) ([]Entry, error) {
 		return nil, nil
 	}
 
-	var ents []Entry
+	var entries []Entry
 	if lo < r.unstable.offset {
 		entries, err := r.storage.Entries(lo, min(r.unstable.offset, hi))
 		if err != nil {
 			panic(err)
 		}
 
-		ents = append(ents, entries...)
+		entries = append(entries, entries...)
 	}
 
 	if hi > r.unstable.offset {
 		unstable := r.unstable.slice(max(lo, r.unstable.offset), hi)
-		ents = append(ents, unstable...)
+		entries = append(entries, unstable...)
 	}
 
-	return ents, nil
+	return entries, nil
 }
 
-// 此处的 append 只能添加非持久化的日志
-func (r *raftLog) append(ents ...Entry) uint64 {
-	if len(ents) == 0 {
+// Append only adds entries to the unstable (unpersisted) log
+func (r *raftLog) append(entries ...Entry) uint64 {
+	if len(entries) == 0 {
 		return r.lastIndex()
 	}
 
-	if after := ents[0].Index - 1; after < r.commitIndex {
+	if after := entries[0].Index - 1; after < r.commitIndex {
 		panic("entry index less then commit index")
 	}
 
-	r.unstable.truncateAndAppend(ents)
+	r.unstable.truncateAndAppend(entries)
 	return r.lastIndex()
 }
 
@@ -213,7 +213,7 @@ func (r *raftLog) lastTerm() uint64 {
 	return t
 }
 
-// 数据是否新于自身
+// Checks whether the given log is at least as up-to-date as the local log
 func (r *raftLog) isUpToDate(index, term uint64) bool {
 	return term > r.lastTerm() || (term == r.lastIndex() && index >= r.lastIndex())
 }
@@ -228,7 +228,7 @@ func (r *raftLog) appliedTo(i uint64) {
 	r.applyIndex = i
 }
 
-// 返回从 i 开始的日志
+// Returns log entries starting from index i
 func (r *raftLog) entries(i uint64) ([]Entry, error) {
 	if i > r.lastIndex() {
 		return nil, nil
@@ -250,9 +250,9 @@ func (r *raftLog) term(i uint64) (uint64, error) {
 		return 0, nil
 	}
 
-	// 非持久化中取
+	// Retrieve from unstable storage
 
-	// 持久化中取
+	// Retrieve from stable storage
 	t, err := r.storage.Term(i)
 	if err == nil {
 		return t, nil
@@ -265,17 +265,17 @@ func (r *raftLog) term(i uint64) (uint64, error) {
 	panic(err)
 }
 
-// 修改 commit 索引
-func (r *raftLog) commitTo(tocommit uint64) {
-	if r.commitIndex >= tocommit {
+// Advances the commit index
+func (r *raftLog) commitTo(toCommit uint64) {
+	if r.commitIndex >= toCommit {
 		return
 	}
 
-	if r.lastIndex() < tocommit {
+	if r.lastIndex() < toCommit {
 		panic("commit index over last index")
 	}
 
-	r.commitIndex = tocommit
+	r.commitIndex = toCommit
 }
 
 func (r *raftLog) zeroTermOnErrCompacted(t uint64, err error) uint64 {
@@ -289,28 +289,28 @@ func (r *raftLog) zeroTermOnErrCompacted(t uint64, err error) uint64 {
 	panic(err)
 }
 
-func (r *raftLog) maybeAppend(logIndex, logTerm, commitIndex uint64, ents ...Entry) (uint64, bool) {
-	// 倘若前一条日志的 index 和 term 未命中，直接返回
+func (r *raftLog) maybeAppend(logIndex, logTerm, commitIndex uint64, entries ...Entry) (uint64, bool) {
+	// Reject if the preceding entry's index and term do not match
 	if !r.matchTerm(logIndex, logTerm) {
 		return 0, false
 	}
 
-	// 找到第一笔不重复的日志，从那个部分开始追加
-	conflictStart := r.findConflict(ents)
+	// Find the first conflicting entry and append from that point
+	conflictStart := r.findConflict(entries)
 	if conflictStart <= r.commitIndex {
 		panic("conflict before commit index")
 	}
 	offset := logIndex + 1
-	r.append(ents[conflictStart-offset:]...)
+	r.append(entries[conflictStart-offset:]...)
 
-	// 更新已提交的 commit index
-	lastNewI := logIndex + uint64(len(ents))
+	// Update the commit index
+	lastNewI := logIndex + uint64(len(entries))
 	r.commitTo(min(commitIndex, lastNewI))
 	return lastNewI, true
 }
 
-func (r *raftLog) findConflict(ents []Entry) uint64 {
-	for _, ent := range ents {
+func (r *raftLog) findConflict(entries []Entry) uint64 {
+	for _, ent := range entries {
 		if r.matchTerm(ent.Index, ent.Term) {
 			continue
 		}

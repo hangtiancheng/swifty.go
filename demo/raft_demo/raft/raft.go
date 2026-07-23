@@ -8,91 +8,91 @@ import (
 type stepFunc func(*raft, Message)
 
 type raft struct {
-	// 当前节点 id
+	// Local node ID
 	id uint64
-	// 任期号
+	// Current term
 	Term uint64
-	// 读一致性
+	// Linearizable read states
 	readStates []ReadState
-	// 日模块
+	// Raft log module
 	raftLog *raftLog
-	// 各节点的进度
+	// Replication progress for each peer
 	prs map[uint64]*Progress
-	// 节点状态
+	// Current node state
 	state StateType
-	// 存放了哪些节点投票给了本节点
+	// Votes received from peers
 	votes map[uint64]bool
-	// 存放了要投放的消息
+	// Outbound message queue
 	msgs []Message
-	// 记录了 leader 的节点 id
+	// Current leader ID
 	lead uint64
-	// 标识当前还存在未被应用的配置数据
+	// Indicates pending unapplied configuration entries
 	pendingConf bool
-	// 全局读请求信息
+	// Global read-only request tracker
 	readOnly *readOnly
-	// 是否处于预竞选状态
+	// Whether pre-vote is enabled
 	preVote bool
-	// tick 函数，定时器到期时需要执行的操作，不同角色的处理逻辑不同
+	// Tick handler invoked on timer expiry; behavior varies by role
 	tick func()
-	// 步入某个角色后需要执行的逻辑，不同角色的处理逻辑不同
+	// Step function handling incoming messages; behavior varies by role
 	step stepFunc
-	// 投票给哪个节点 id
+	// Candidate voted for in the current term
 	Vote uint64
-	// 是否确认不处于小分区
+	// Whether quorum checking is enabled
 	checkQuorum bool
-	// 选举超时 tick
+	// Election timeout in ticks
 	electionTimeout int32
-	// 选举超时随机 tick
+	// Randomized election timeout in ticks
 	randomizedElectionTimeout int32
-	// 选举 tick 计数器
+	// Election elapsed tick counter
 	electionElapsed int32
-	// 心跳超时 tick
+	// Heartbeat timeout in ticks
 	heartbeatTimeout int32
-	// 心跳 tick 计数器
+	// Heartbeat elapsed tick counter
 	heartbeatElapsed int32
 }
 
 func newRaft(conf *Config) *raft {
 
-	// 通过 storage 模块获取配置信息和硬状态
+	// Retrieve initial state from storage
 	// hs, cs, err := conf.Storage.InitialState()
 	// if err != nil {
 	// 	panic(err)
 	// }
 
-	// 从 conf 中读取配置创建 raft 对象
+	// Initialize raft instance from configuration
 	r := raft{
 		id:               conf.ID,
 		lead:             None,
 		raftLog:          newRaftLog(conf.Storage),
 		electionTimeout:  conf.ElectionTick,
-		heartbeatTimeout: conf.HearbeatTick,
-		preVote:          conf.Prevote,
+		heartbeatTimeout: conf.HeartbeatTick,
+		preVote:          conf.PreVote,
 		readOnly:         newReadOnly(),
 	}
 
-	// 将 peers 添加 prs
+	// Register peers in the progress map
 	for _, peer := range conf.peers {
 		r.prs[peer] = &Progress{Next: 1}
 	}
 
-	// 更新 applied 状态
+	// Restore applied index
 	r.raftLog.appliedTo(conf.Applied)
 
-	// 启动变为 follower 状态
+	// Start as a follower
 	r.becomeFollower(1, None)
 
 	return &r
 }
 
 func (r *raft) Step(m Message) error {
-	// 第一个 switch 对任期进行 dispatch
+	// Dispatch by term comparison
 	switch {
-	// 来自本地消息，直接放行
+	// Local message, pass through
 	case m.Term == 0:
 	case m.Term > r.Term:
 		lead := m.From
-		// 消息任期更大
+		// Message has a higher term
 		if m.Type == MsgVote || m.Type == MsgPreVote {
 			lead = None
 		}
@@ -102,45 +102,46 @@ func (r *raft) Step(m Message) error {
 		}
 
 	case m.Term < r.Term:
-		// 消息任期更小
-		// 心跳或者同步日志请求，有义务告知其更新的任期
-		if r.checkQuorum && (m.Type == MsgHearbeat || m.Type == MsgApp) {
+		// Message has a lower term
+		// For heartbeat/append from a stale leader, respond with current term
+		if r.checkQuorum && (m.Type == MsgHeartbeat || m.Type == MsgApp) {
 			r.send(Message{To: m.From, Type: MsgAppResp})
 		}
-		// 任期更小的消息一定无需理会
+		// Discard messages with a lower term
 		return nil
 	}
 
-	// 第二个 switch 对消息类型 dispatch
+	// Dispatch by message type
 	switch m.Type {
-	// 推进本节点参与选举
+	// Trigger local election
 	case MsgHup:
-		// 已经是 leader 了，直接跳过
+		// Already the leader, skip
 		if r.state == StateLeader {
 			break
 		}
-		// 如果还有已提交未应用的配置变更消息，则不能发起投票
-		ents, err := r.raftLog.slice(r.raftLog.applyIndex+1, r.raftLog.commitIndex+1)
+		// Cannot campaign with unapplied configuration changes
+		entries, err := r.raftLog.slice(r.raftLog.applyIndex+1, r.raftLog.commitIndex+1)
 		if err != nil {
 			panic(err)
 		}
 
-		if n := numOfPendingConf(ents); n > 0 {
+		if n := numOfPendingConf(entries); n > 0 {
 			break
 		}
 
-		// 进行选举
+		// Start election
 		if r.preVote {
-			// 进行预选举
+			// Start pre-vote election
 			r.campaign(campaignPreElection)
 			break
 		}
 		r.campaign(campaignElection)
 
-	// 接收到号票消息
+	// Handle vote request
 	case MsgVote, MsgPreVote:
-		// 收到了任期大于等于自身的号票消息
-		// 如果对方的数据比自己新并且后 3 个条件满足其一（1）当前节点没投过票、（2）竞选任期大于自身、（3）对方是自己之前的投票对象
+		// Received a vote request with term >= current term
+		// Grant vote if the candidate's log is up-to-date and one of:
+		// (1) haven't voted yet, (2) candidate's term is higher, (3) already voted for this candidate
 		if r.raftLog.isUpToDate(m.LogIndex, m.LogTerm) && (r.Vote == None || m.Term > r.Term || m.From == r.Vote) {
 			if m.Type == MsgVote {
 				r.Vote = m.From
@@ -156,7 +157,7 @@ func (r *raft) Step(m Message) error {
 		}
 		r.send(Message{Type: MsgPreVoteResp, To: m.From, Reject: true})
 
-	// 其他情形走入定制化的状态机函数
+	// Delegate to role-specific state machine handler
 	default:
 		r.step(r, m)
 	}
@@ -172,7 +173,7 @@ func (r *raft) reset(term uint64) {
 	r.lead = None
 	r.electionElapsed = 0
 	r.heartbeatElapsed = 0
-	// 重置一下选举超时时间
+	// Reset randomized election timeout
 	r.resetRandomizedElectionTimeout()
 }
 
@@ -208,25 +209,25 @@ func (r *raft) send(m Message) {
 }
 
 func (r *raft) campaign(typ CampaignType) {
-	// 竞选实际上氛围 prevote 和 vote 两个阶段
+	// Campaign consists of pre-vote and vote phases
 	var (
 		term    uint64
 		msgType MessageType
 	)
 
 	if typ == campaignPreElection {
-		// 预竞选的时候 raft 的 term 不会自增
+		// Pre-vote does not increment the term
 		r.becomePreCandidate()
 		term = r.Term + 1
 		msgType = MsgPreVote
 	} else {
-		// 竞选的时候 raft 的 term 会自增
+		// Election increments the term
 		r.becomeCandidate()
 		term = r.Term
 		msgType = MsgVote
 	}
 
-	// 作为候选人本身，先把票投给自己，然后检查一次是否达到多数派
+	// Vote for self first, then check if quorum is already reached
 	if r.quorum() == r.poll(r.id, true) {
 		if typ == campaignPreElection {
 			r.campaign(campaignElection)
@@ -236,9 +237,9 @@ func (r *raft) campaign(typ CampaignType) {
 		return
 	}
 
-	// 向集群所有节点进行拉票
+	// Request votes from all peers
 	for id := range r.prs {
-		// 自己无须发
+		// Skip self
 		if id == r.id {
 			continue
 		}
@@ -248,7 +249,7 @@ func (r *raft) campaign(typ CampaignType) {
 }
 
 func (r *raft) poll(id uint64, v bool) int {
-	// 如果 id 还没有投票，则更新其投票状态
+	// Record vote if not already tracked
 	if _, ok := r.votes[id]; !ok {
 		r.votes[id] = v
 	}
@@ -286,7 +287,7 @@ func (r *raft) tickHeartbeat() {
 	}
 }
 
-// 校验一个节点是否仍在集群中
+// Checks whether the node is still a cluster member
 func (r *raft) promotable(id uint64) bool {
 	_, ok := r.prs[id]
 	return ok
@@ -302,7 +303,7 @@ func (r *raft) appendEntry(es ...Entry) {
 		es[i].Term = r.Term
 		es[i].Index = lastIndex + uint64(i) + 1
 	}
-	// 设置新增日志的 term 以及 index
+	// Assign term and index to new entries
 	r.raftLog.append(es...)
 	r.prs[r.id].maybeUpdate(r.raftLog.lastIndex())
 

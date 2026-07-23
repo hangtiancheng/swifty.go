@@ -17,7 +17,7 @@ type TimeWheel struct {
 	sync.Once
 	interval     time.Duration
 	ticker       *time.Ticker
-	stopc        chan struct{}
+	stopChan        chan struct{}
 	addTaskCh    chan *taskElement
 	removeTaskCh chan string
 	slots        []*list.List
@@ -36,7 +36,7 @@ func NewTimeWheel(slotNum int, interval time.Duration) *TimeWheel {
 	t := TimeWheel{
 		interval:     interval,
 		ticker:       time.NewTicker(interval),
-		stopc:        make(chan struct{}),
+		stopChan:        make(chan struct{}),
 		keyToETask:   make(map[string]*list.Element),
 		slots:        make([]*list.List, 0, slotNum),
 		addTaskCh:    make(chan *taskElement),
@@ -52,7 +52,7 @@ func NewTimeWheel(slotNum int, interval time.Duration) *TimeWheel {
 func (t *TimeWheel) Stop() {
 	t.Do(func() {
 		t.ticker.Stop()
-		close(t.stopc)
+		close(t.stopChan)
 	})
 }
 
@@ -79,7 +79,7 @@ func (t *TimeWheel) run() {
 
 	for {
 		select {
-		case <-t.stopc:
+		case <-t.stopChan:
 			return
 		case <-t.ticker.C:
 			t.tick()
@@ -98,7 +98,7 @@ func (t *TimeWheel) tick() {
 }
 
 func (t *TimeWheel) execute(l *list.List) {
-	// 遍历每个 list
+	// Iterate each list.
 	for e := l.Front(); e != nil; {
 		taskElement, _ := e.Value.(*taskElement)
 		if taskElement.cycle > 0 {
@@ -107,7 +107,7 @@ func (t *TimeWheel) execute(l *list.List) {
 			continue
 		}
 
-		// 执行任务
+		// Execute the task.
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
@@ -117,7 +117,7 @@ func (t *TimeWheel) execute(l *list.List) {
 			taskElement.task()
 		}()
 
-		// 执行任务后，从时间轮中删除
+		// After execution, remove the task from the wheel.
 		next := e.Next()
 		l.Remove(e)
 		delete(t.keyToETask, taskElement.key)

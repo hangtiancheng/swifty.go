@@ -94,9 +94,9 @@ func (t *Tree) loadNode(sstEntry fs.DirEntry) error {
 
 func getLevelSeqFromSSTFile(file string) (level int, seq int32) {
 	file = strings.Replace(file, ".sst", "", -1)
-	splitted := strings.Split(file, "_")
-	level, _ = strconv.Atoi(splitted[0])
-	_seq, _ := strconv.Atoi(splitted[1])
+	arr := strings.Split(file, "_")
+	level, _ = strconv.Atoi(arr[0])
+	_seq, _ := strconv.Atoi(arr[1])
 	return level, int32(_seq)
 }
 
