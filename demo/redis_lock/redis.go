@@ -33,7 +33,7 @@ import (
 // LockClient is the redis surface used by RedisLock.
 type LockClient interface {
 	SetNEX(ctx context.Context, key, value string, expireSeconds int64) (int64, error)
-	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error)
+	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error)
 }
 
 // Client wraps a github.com/redis/go-redis/v9 client.
@@ -139,9 +139,9 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 }
 
 // Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
-func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	keys := make([]string, 0, keyCount)
-	args := make([]interface{}, 0, len(keysAndArgs)-keyCount)
+	args := make([]any, 0, len(keysAndArgs)-keyCount)
 	for i, v := range keysAndArgs {
 		if i < keyCount {
 			keys = append(keys, fmt.Sprintf("%v", v))

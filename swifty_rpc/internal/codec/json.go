@@ -26,11 +26,11 @@ const JSON Type = 1
 
 type jSONCodec struct{}
 
-func (j *jSONCodec) Marshal(v interface{}) ([]byte, error) {
+func (j *jSONCodec) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (j *jSONCodec) Unmarshal(data []byte, v interface{}) error {
+func (j *jSONCodec) Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(data, v)
 }
 

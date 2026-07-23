@@ -30,7 +30,7 @@ import (
 
 // Client abstracts the redis commands used by Cache.
 type Client interface {
-	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error)
+	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error)
 	Get(ctx context.Context, key string) (string, error)
 	SetEx(ctx context.Context, key, value string, expireSeconds int64) error
 	Del(ctx context.Context, key string) error
@@ -72,7 +72,7 @@ func (c *Cache) Get(ctx context.Context, key string) (string, error) {
 
 // PutWhenEnable writes the cache only if the read-path write cache is enabled (i.e. disable marker absent).
 func (c *Cache) PutWhenEnable(ctx context.Context, key, value string, expireSeconds int64) (bool, error) {
-	reply, err := c.client.Eval(ctx, LuaCheckEnableAndWriteCache, 2, []interface{}{
+	reply, err := c.client.Eval(ctx, LuaCheckEnableAndWriteCache, 2, []any{
 		c.disableKey(key),
 		key,
 		value,

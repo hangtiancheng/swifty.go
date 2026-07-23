@@ -65,7 +65,7 @@ func (w *SSEWriter) Data(data string) {
 	w.mu.Unlock()
 }
 
-func (w *SSEWriter) JSON(event string, obj interface{}) {
+func (w *SSEWriter) JSON(event string, obj any) {
 	bytes, err := json.Marshal(obj)
 	if err != nil {
 		return

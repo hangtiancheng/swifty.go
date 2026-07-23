@@ -32,7 +32,7 @@ import (
 )
 
 type KVStore struct {
-	data      map[string]interface{}
+	data      map[string]any
 	expiredAt map[string]time.Time
 
 	expireTimeWheel SortedSet
@@ -42,7 +42,7 @@ type KVStore struct {
 
 func NewKVStore(persister handler.Persister) database.DataStore {
 	return &KVStore{
-		data:            make(map[string]interface{}),
+		data:            make(map[string]any),
 		expiredAt:       make(map[string]time.Time),
 		expireTimeWheel: newSkiplist("expireTimeWheel"),
 		persister:       persister,

@@ -119,7 +119,7 @@ func RegisterSwiftyCacheServer(s grpc.ServiceRegistrar, srv SwiftyCacheServer) {
 	s.RegisterService(&SwiftyCache_ServiceDesc, srv)
 }
 
-func _SwiftyCache_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _SwiftyCache_Get_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(Request)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -131,13 +131,13 @@ func _SwiftyCache_Get_Handler(srv interface{}, ctx context.Context, dec func(int
 		Server:     srv,
 		FullMethod: SwiftyCache_Get_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(SwiftyCacheServer).Get(ctx, req.(*Request))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SwiftyCache_Set_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _SwiftyCache_Set_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(Request)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -149,13 +149,13 @@ func _SwiftyCache_Set_Handler(srv interface{}, ctx context.Context, dec func(int
 		Server:     srv,
 		FullMethod: SwiftyCache_Set_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(SwiftyCacheServer).Set(ctx, req.(*Request))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SwiftyCache_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _SwiftyCache_Delete_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(Request)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func _SwiftyCache_Delete_Handler(srv interface{}, ctx context.Context, dec func(
 		Server:     srv,
 		FullMethod: SwiftyCache_Delete_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(SwiftyCacheServer).Delete(ctx, req.(*Request))
 	}
 	return interceptor(ctx, in, info, handler)

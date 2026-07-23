@@ -159,7 +159,7 @@ func (a *App) register(ctx *swifty_http.Context, next func()) {
 func (a *App) getUserSessions(ctx *swifty_http.Context, next func()) {
 	username := usernameFrom(ctx)
 	key := sessionsCacheKey(username)
-	var sessions interface{}
+	var sessions any
 	if a.cacheGetJSON(ctx.Request.Context(), key, &sessions) {
 		writeSuccess(ctx, swifty_http.H{"sessions": sessions})
 		return
@@ -278,7 +278,7 @@ func (a *App) getChatHistoryList(ctx *swifty_http.Context, next func()) {
 	}
 	username := usernameFrom(ctx)
 	key := historyCacheKey(username, req.SessionID)
-	var history interface{}
+	var history any
 	if a.cacheGetJSON(ctx.Request.Context(), key, &history) {
 		writeSuccess(ctx, swifty_http.H{"history": history})
 		return
@@ -357,7 +357,7 @@ func historyCacheKey(username string, sessionID string) string {
 	return "history:" + username + ":" + sessionID
 }
 
-func (a *App) cacheGetJSON(ctx context.Context, key string, out interface{}) bool {
+func (a *App) cacheGetJSON(ctx context.Context, key string, out any) bool {
 	if a.cache == nil {
 		return false
 	}
@@ -368,7 +368,7 @@ func (a *App) cacheGetJSON(ctx context.Context, key string, out interface{}) boo
 	return json.Unmarshal([]byte(value), out) == nil
 }
 
-func (a *App) cacheSetJSON(ctx context.Context, key string, value interface{}) {
+func (a *App) cacheSetJSON(ctx context.Context, key string, value any) {
 	if a.cache == nil {
 		return
 	}

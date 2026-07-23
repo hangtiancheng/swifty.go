@@ -24,7 +24,7 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_http"
 )
 
-func JsonBack(ctx *swifty_http.Context, message string, ret int, data interface{}) {
+func JsonBack(ctx *swifty_http.Context, message string, ret int, data any) {
 	ctx.Status = 200
 	switch ret {
 	case 0:

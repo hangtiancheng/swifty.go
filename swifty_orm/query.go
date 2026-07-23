@@ -54,7 +54,7 @@ func (q *Query) setErr(err error) {
 //	Where(bson.M{"a": 1, "b": 2})    object form, one equality per key
 //	Where("field", value)            equality; nil value becomes a null check
 //	Where("field", op, value)        operator form; see opAliases and "$" ops
-func (q *Query) Where(args ...interface{}) *Query {
+func (q *Query) Where(args ...any) *Query {
 	conditions, err := parseWhere(args...)
 	if err != nil {
 		q.setErr(err)
@@ -65,17 +65,17 @@ func (q *Query) Where(args ...interface{}) *Query {
 }
 
 // WhereNot adds a "field != value" condition.
-func (q *Query) WhereNot(field string, value interface{}) *Query {
+func (q *Query) WhereNot(field string, value any) *Query {
 	q.conditions = append(q.conditions, condition{field: field, op: "$ne", value: value})
 	return q
 }
 
-func (q *Query) WhereIn(field string, values interface{}) *Query {
+func (q *Query) WhereIn(field string, values any) *Query {
 	q.conditions = append(q.conditions, condition{field: field, op: "$in", value: values})
 	return q
 }
 
-func (q *Query) WhereNotIn(field string, values interface{}) *Query {
+func (q *Query) WhereNotIn(field string, values any) *Query {
 	q.conditions = append(q.conditions, condition{field: field, op: "$nin", value: values})
 	return q
 }
@@ -90,13 +90,13 @@ func (q *Query) WhereNotNull(field string) *Query {
 	return q
 }
 
-func (q *Query) WhereBetween(field string, low interface{}, high interface{}) *Query {
-	q.conditions = append(q.conditions, condition{field: field, op: "between", value: [2]interface{}{low, high}})
+func (q *Query) WhereBetween(field string, low any, high any) *Query {
+	q.conditions = append(q.conditions, condition{field: field, op: "between", value: [2]any{low, high}})
 	return q
 }
 
-func (q *Query) WhereNotBetween(field string, low interface{}, high interface{}) *Query {
-	q.conditions = append(q.conditions, condition{field: field, op: "notBetween", value: [2]interface{}{low, high}})
+func (q *Query) WhereNotBetween(field string, low any, high any) *Query {
+	q.conditions = append(q.conditions, condition{field: field, op: "notBetween", value: [2]any{low, high}})
 	return q
 }
 
@@ -114,7 +114,7 @@ func (q *Query) WhereILike(field string, pattern string) *Query {
 
 // OrWhere appends an $or branch. The object form Where(bson.M{...}) produces
 // a single branch whose keys are combined with AND, matching knex semantics.
-func (q *Query) OrWhere(args ...interface{}) *Query {
+func (q *Query) OrWhere(args ...any) *Query {
 	conditions, err := parseWhere(args...)
 	if err != nil {
 		q.setErr(err)
@@ -128,17 +128,17 @@ func (q *Query) OrWhere(args ...interface{}) *Query {
 	return q
 }
 
-func (q *Query) OrWhereNot(field string, value interface{}) *Query {
+func (q *Query) OrWhereNot(field string, value any) *Query {
 	q.orGroups = append(q.orGroups, []condition{{field: field, op: "$ne", value: value}})
 	return q
 }
 
-func (q *Query) OrWhereIn(field string, values interface{}) *Query {
+func (q *Query) OrWhereIn(field string, values any) *Query {
 	q.orGroups = append(q.orGroups, []condition{{field: field, op: "$in", value: values}})
 	return q
 }
 
-func (q *Query) OrWhereNotIn(field string, values interface{}) *Query {
+func (q *Query) OrWhereNotIn(field string, values any) *Query {
 	q.orGroups = append(q.orGroups, []condition{{field: field, op: "$nin", value: values}})
 	return q
 }
@@ -153,8 +153,8 @@ func (q *Query) OrWhereNotNull(field string) *Query {
 	return q
 }
 
-func (q *Query) OrWhereBetween(field string, low interface{}, high interface{}) *Query {
-	q.orGroups = append(q.orGroups, []condition{{field: field, op: "between", value: [2]interface{}{low, high}}})
+func (q *Query) OrWhereBetween(field string, low any, high any) *Query {
+	q.orGroups = append(q.orGroups, []condition{{field: field, op: "between", value: [2]any{low, high}}})
 	return q
 }
 

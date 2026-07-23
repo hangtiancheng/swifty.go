@@ -33,7 +33,7 @@ import (
 )
 
 type Server struct {
-	services map[string]interface{}
+	services map[string]any
 	limiter  *limiter.TokenBucket
 	listener net.Listener
 	handler  *Handler
@@ -53,7 +53,7 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 	}
 
 	s := &Server{
-		services: make(map[string]interface{}),
+		services: make(map[string]any),
 		limiter:  limiter.NewTokenBucket(10000),
 		handler:  h,
 		conns:    make(map[*transport.TCPConnection]struct{}),
@@ -68,7 +68,7 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) Register(name string, service interface{}) {
+func (s *Server) Register(name string, service any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.services[name] = service

@@ -30,7 +30,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func (q *Query) Distinct(ctx context.Context, field string) ([]interface{}, error) {
+func (q *Query) Distinct(ctx context.Context, field string) ([]any, error) {
 	if err := q.preflight(); err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (q *Query) CountDistinct(ctx context.Context, field string) (int64, error) 
 // out, which must be a pointer to a slice of the value type (e.g. *[]string).
 // Documents missing the field contribute the zero value. Sort, limit, and
 // offset are honored; the Query's projection is not mutated.
-func (q *Query) Pluck(ctx context.Context, field string, out interface{}) error {
+func (q *Query) Pluck(ctx context.Context, field string, out any) error {
 	if err := q.preflight(); err != nil {
 		return err
 	}

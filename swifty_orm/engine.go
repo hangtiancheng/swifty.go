@@ -88,7 +88,7 @@ func (e *Engine) Collection(name string) *Query {
 	return &Query{collection: col, engine: e}
 }
 
-func (e *Engine) Model(value interface{}) *Query {
+func (e *Engine) Model(value any) *Query {
 	return e.Collection(CollectionName(value))
 }
 
@@ -147,7 +147,7 @@ func (e *Engine) Transaction(ctx context.Context, fn func(sc context.Context, tx
 		return err
 	}
 	defer session.EndSession(ctx)
-	_, err = session.WithTransaction(ctx, func(sc mongo.SessionContext) (interface{}, error) {
+	_, err = session.WithTransaction(ctx, func(sc mongo.SessionContext) (any, error) {
 		txEngine := &Engine{
 			client:       e.client,
 			database:     e.database,

@@ -24,6 +24,6 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_orm"
 )
 
-func ActiveQuery(model interface{}) *swifty_orm.Query {
+func ActiveQuery(model any) *swifty_orm.Query {
 	return Engine.Model(model).WhereNull("deleted_at")
 }

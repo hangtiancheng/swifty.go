@@ -25,9 +25,9 @@ import "context"
 // TCC request parameters
 type TCCReq struct {
 	// Globally unique transaction ID
-	ComponentID string                 `json:"componentID"`
-	TXID        string                 `json:"txID"`
-	Data        map[string]interface{} `json:"data"`
+	ComponentID string         `json:"componentID"`
+	TXID        string         `json:"txID"`
+	Data        map[string]any `json:"data"`
 }
 
 // TCC response result

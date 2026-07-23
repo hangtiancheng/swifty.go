@@ -121,31 +121,31 @@ func NewLogger(options Options) *Logger {
 	}
 }
 
-func (l *Logger) Debugf(format string, v ...interface{}) {
+func (l *Logger) Debugf(format string, v ...any) {
 	if l.level <= DebugLevel {
 		l.logger.Output(3, fmt.Sprintf("[DEBUG] "+format, v...))
 	}
 }
 
-func (l *Logger) Infof(format string, v ...interface{}) {
+func (l *Logger) Infof(format string, v ...any) {
 	if l.level <= InfoLevel {
 		l.logger.Output(3, fmt.Sprintf("[INFO] "+format, v...))
 	}
 }
 
-func (l *Logger) Warnf(format string, v ...interface{}) {
+func (l *Logger) Warnf(format string, v ...any) {
 	if l.level <= WarnLevel {
 		l.logger.Output(3, fmt.Sprintf("[WARN] "+format, v...))
 	}
 }
 
-func (l *Logger) Errorf(format string, v ...interface{}) {
+func (l *Logger) Errorf(format string, v ...any) {
 	if l.level <= ErrorLevel {
 		l.logger.Output(3, fmt.Sprintf("[ERROR] "+format, v...))
 	}
 }
 
-func (l *Logger) Fatalf(format string, v ...interface{}) {
+func (l *Logger) Fatalf(format string, v ...any) {
 	if l.level <= FatalLevel {
 		l.logger.Output(3, fmt.Sprintf("[FATAL] "+format, v...))
 	}

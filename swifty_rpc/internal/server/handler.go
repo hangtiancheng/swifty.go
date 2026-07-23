@@ -42,7 +42,7 @@ type Handler struct {
 	codec codec.Codec
 }
 
-func NewHandler(s interface{}, opts ...HandleOption) (*Handler, error) {
+func NewHandler(s any, opts ...HandleOption) (*Handler, error) {
 	h := &Handler{}
 
 	for _, opt := range opts {
@@ -58,7 +58,7 @@ func NewHandler(s interface{}, opts ...HandleOption) (*Handler, error) {
 	return h, nil
 }
 
-func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server interface{}, streamWg *sync.WaitGroup) {
+func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server any, streamWg *sync.WaitGroup) {
 	// Honour the codec announced by the client; fall back to the server
 	// codec for peers that do not set Header.CodecType.
 	reqCodec := h.codec
@@ -135,7 +135,7 @@ func safeCall(method reflect.Value, args []reflect.Value) (results []reflect.Val
 	return method.Call(args), nil
 }
 
-func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, requestID uint64, service interface{}, serviceName, methodName string, body []byte, cc codec.Codec, streamWg *sync.WaitGroup) (interface{}, bool, error) {
+func (h *Handler) invoke(ctx context.Context, conn *transport.TCPConnection, requestID uint64, service any, serviceName, methodName string, body []byte, cc codec.Codec, streamWg *sync.WaitGroup) (any, bool, error) {
 	if service == nil {
 		return nil, false, fmt.Errorf("service not found: %s", serviceName)
 	}

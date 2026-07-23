@@ -27,7 +27,7 @@ import (
 
 type call struct {
 	wg  sync.WaitGroup
-	val interface{}
+	val any
 	err error
 }
 
@@ -38,7 +38,7 @@ type SingleFlightGroup struct {
 
 // Do runs fn once for a key while concurrent duplicate callers wait for the same result.
 // A panic inside fn is recovered and surfaced as an error to every caller.
-func (g *SingleFlightGroup) Do(key string, fn func() (interface{}, error)) (interface{}, error) {
+func (g *SingleFlightGroup) Do(key string, fn func() (any, error)) (any, error) {
 	c := &call{}
 	c.wg.Add(1)
 

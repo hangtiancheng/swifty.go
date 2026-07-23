@@ -208,9 +208,9 @@ func (c *Client) Del(ctx context.Context, key string) error {
 }
 
 // Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
-func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	keys := make([]string, 0, keyCount)
-	args := make([]interface{}, 0, len(keysAndArgs)-keyCount)
+	args := make([]any, 0, len(keysAndArgs)-keyCount)
 	for i, v := range keysAndArgs {
 		if i < keyCount {
 			keys = append(keys, fmt.Sprintf("%v", v))
@@ -237,7 +237,7 @@ func (c *Client) SetNEX(ctx context.Context, key, value string, expireSeconds in
 	return 0, nil
 }
 
-func toString(v interface{}) string {
+func toString(v any) string {
 	switch s := v.(type) {
 	case string:
 		return s

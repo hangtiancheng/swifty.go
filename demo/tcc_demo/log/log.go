@@ -28,14 +28,14 @@ import (
 )
 
 type Logger interface {
-	Error(v ...interface{})
-	Warn(v ...interface{})
-	Info(v ...interface{})
-	Debug(v ...interface{})
-	Errorf(format string, v ...interface{})
-	Warnf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-	Debugf(format string, v ...interface{})
+	Error(v ...any)
+	Warn(v ...any)
+	Info(v ...any)
+	Debug(v ...any)
+	Errorf(format string, v ...any)
+	Warnf(format string, v ...any)
+	Infof(format string, v ...any)
+	Debugf(format string, v ...any)
 }
 
 var (
@@ -118,49 +118,49 @@ func NewSugarLogger(options Options) *stdLoggerWrapper {
 	}
 }
 
-func (w *stdLoggerWrapper) Debug(v ...interface{}) {
+func (w *stdLoggerWrapper) Debug(v ...any) {
 	if w.level <= 0 {
 		w.logger.Output(2, fmt.Sprint(v...))
 	}
 }
 
-func (w *stdLoggerWrapper) Info(v ...interface{}) {
+func (w *stdLoggerWrapper) Info(v ...any) {
 	if w.level <= 1 {
 		w.logger.Output(2, fmt.Sprint(v...))
 	}
 }
 
-func (w *stdLoggerWrapper) Warn(v ...interface{}) {
+func (w *stdLoggerWrapper) Warn(v ...any) {
 	if w.level <= 2 {
 		w.logger.Output(2, fmt.Sprint(v...))
 	}
 }
 
-func (w *stdLoggerWrapper) Error(v ...interface{}) {
+func (w *stdLoggerWrapper) Error(v ...any) {
 	if w.level <= 3 {
 		w.logger.Output(2, fmt.Sprint(v...))
 	}
 }
 
-func (w *stdLoggerWrapper) Debugf(format string, v ...interface{}) {
+func (w *stdLoggerWrapper) Debugf(format string, v ...any) {
 	if w.level <= 0 {
 		w.logger.Output(2, fmt.Sprintf(format, v...))
 	}
 }
 
-func (w *stdLoggerWrapper) Infof(format string, v ...interface{}) {
+func (w *stdLoggerWrapper) Infof(format string, v ...any) {
 	if w.level <= 1 {
 		w.logger.Output(2, fmt.Sprintf(format, v...))
 	}
 }
 
-func (w *stdLoggerWrapper) Warnf(format string, v ...interface{}) {
+func (w *stdLoggerWrapper) Warnf(format string, v ...any) {
 	if w.level <= 2 {
 		w.logger.Output(2, fmt.Sprintf(format, v...))
 	}
 }
 
-func (w *stdLoggerWrapper) Errorf(format string, v ...interface{}) {
+func (w *stdLoggerWrapper) Errorf(format string, v ...any) {
 	if w.level <= 3 {
 		w.logger.Output(2, fmt.Sprintf(format, v...))
 	}
@@ -172,64 +172,64 @@ func GetDefaultLogger() Logger {
 }
 
 // Debugf logs a message at Debug level
-func Debugf(format string, args ...interface{}) {
+func Debugf(format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
 // Infof logs a message at Info level
-func Infof(format string, args ...interface{}) {
+func Infof(format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
 // Warnf logs a message at Warn level
-func Warnf(format string, args ...interface{}) {
+func Warnf(format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
 // Errorf logs a message at Error level
-func Errorf(format string, args ...interface{}) {
+func Errorf(format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
 // DebugContext logs at Debug level with context
-func DebugContext(ctx context.Context, args ...interface{}) {
+func DebugContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Debug(args...)
 }
 
 // DebugContextf logs at Debug level with context
-func DebugContextf(ctx context.Context, format string, args ...interface{}) {
+func DebugContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
 // InfoContext logs at Info level with context
-func InfoContext(ctx context.Context, args ...interface{}) {
+func InfoContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Info(args...)
 }
 
 // InfoContextf logs at Info level with context
-func InfoContextf(ctx context.Context, format string, args ...interface{}) {
+func InfoContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
 // WarnContext logs at Warn level with context
-func WarnContext(ctx context.Context, args ...interface{}) {
+func WarnContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Warn(args...)
 }
 
 // WarnContextf logs at Warn level with context
-func WarnContextf(ctx context.Context, format string, args ...interface{}) {
+func WarnContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
 // ErrorContext logs at Error level with context
-func ErrorContext(ctx context.Context, args ...interface{}) {
+func ErrorContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Error(args...)
 }
 
-func ErrorContextf(ctx context.Context, format string, args ...interface{}) {
+func ErrorContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
-func Fatalf(format string, args ...interface{}) {
+func Fatalf(format string, args ...any) {
 	Errorf(format, args...)
 }

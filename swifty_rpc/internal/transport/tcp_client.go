@@ -179,14 +179,14 @@ func (c *TCPClient) shutdown(err error) {
 
 	_ = c.conn.Close()
 
-	c.pending.Range(func(key, value interface{}) bool {
+	c.pending.Range(func(key, value any) bool {
 		future := value.(*Future)
 		future.Done(nil, err)
 		c.pending.Delete(key)
 		return true
 	})
 
-	c.streams.Range(func(key, value interface{}) bool {
+	c.streams.Range(func(key, value any) bool {
 		value.(*ClientStreamConn).Error(err)
 		c.streams.Delete(key)
 		return true

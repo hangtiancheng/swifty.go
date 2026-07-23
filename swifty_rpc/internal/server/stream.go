@@ -35,7 +35,7 @@ type serverStream struct {
 	ctx       context.Context
 }
 
-func (s *serverStream) Send(msg interface{}) error {
+func (s *serverStream) Send(msg any) error {
 	body, err := s.codec.Marshal(msg)
 	if err != nil {
 		return err

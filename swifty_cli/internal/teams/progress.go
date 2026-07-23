@@ -34,14 +34,14 @@ type ToolActivity struct {
 }
 
 // NewToolActivity creates a ToolActivity with an auto-generated description.
-func NewToolActivity(toolName string, input map[string]interface{}) ToolActivity {
+func NewToolActivity(toolName string, input map[string]any) ToolActivity {
 	return ToolActivity{
 		ToolName:    toolName,
 		Description: describeActivity(toolName, input),
 	}
 }
 
-func describeActivity(toolName string, input map[string]interface{}) string {
+func describeActivity(toolName string, input map[string]any) string {
 	getStr := func(key string) string {
 		if v, ok := input[key]; ok {
 			return fmt.Sprintf("%v", v)
@@ -96,7 +96,7 @@ func NewTeammateProgress(name, teamName, spinnerVerb string) *TeammateProgress {
 	}
 }
 
-func (p *TeammateProgress) RecordToolUse(toolName string, input map[string]interface{}) {
+func (p *TeammateProgress) RecordToolUse(toolName string, input map[string]any) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.ToolUseCount++

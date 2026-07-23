@@ -30,7 +30,7 @@ const PROTO Type = 2
 
 type protoCodec struct{}
 
-func (p *protoCodec) Marshal(v interface{}) ([]byte, error) {
+func (p *protoCodec) Marshal(v any) ([]byte, error) {
 	msg, ok := v.(proto.Message)
 	if !ok {
 		return nil, fmt.Errorf("proto codec: not proto.Message")
@@ -38,7 +38,7 @@ func (p *protoCodec) Marshal(v interface{}) ([]byte, error) {
 	return proto.Marshal(msg)
 }
 
-func (p *protoCodec) Unmarshal(data []byte, v interface{}) error {
+func (p *protoCodec) Unmarshal(data []byte, v any) error {
 	msg, ok := v.(proto.Message)
 	if !ok {
 		return fmt.Errorf("proto codec: not proto.Message")

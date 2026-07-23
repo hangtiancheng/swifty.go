@@ -105,7 +105,7 @@ func TestNewEngineValidation(t *testing.T) {
 }
 
 func TestCollectionName(t *testing.T) {
-	cases := map[string]interface{}{
+	cases := map[string]any{
 		"test_users":  &testUser{},
 		"test_cities": []testCity{},
 		"":            42,
@@ -564,7 +564,7 @@ func TestWhereNotBetweenFilter(t *testing.T) {
 }
 
 func TestNormalizeUpdateExtended(t *testing.T) {
-	if m, ok := normalizeUpdate(map[string]interface{}{"name": "Tom"}).(bson.M); !ok || m["$set"] == nil {
+	if m, ok := normalizeUpdate(map[string]any{"name": "Tom"}).(bson.M); !ok || m["$set"] == nil {
 		t.Fatalf("plain map not wrapped")
 	}
 	if m, ok := normalizeUpdate(bson.D{{Key: "name", Value: "Tom"}}).(bson.M); !ok || m["$set"] == nil {
@@ -586,22 +586,22 @@ func TestNormalizeUpdateExtended(t *testing.T) {
 
 func TestExpandInsertDocs(t *testing.T) {
 	users := []*testUser{{ID: 1}, {ID: 2}}
-	if got := expandInsertDocs([]interface{}{users}); len(got) != 2 {
+	if got := expandInsertDocs([]any{users}); len(got) != 2 {
 		t.Fatalf("pointer slice not expanded: %d", len(got))
 	}
 	values := []testUser{{ID: 1}, {ID: 2}, {ID: 3}}
-	if got := expandInsertDocs([]interface{}{values}); len(got) != 3 {
+	if got := expandInsertDocs([]any{values}); len(got) != 3 {
 		t.Fatalf("value slice not expanded: %d", len(got))
 	}
 	doc := bson.D{{Key: "name", Value: "Tom"}}
-	if got := expandInsertDocs([]interface{}{doc}); len(got) != 1 {
+	if got := expandInsertDocs([]any{doc}); len(got) != 1 {
 		t.Fatalf("bson.D must stay a single document: %d", len(got))
 	}
 	raw := []byte{1, 2, 3}
-	if got := expandInsertDocs([]interface{}{raw}); len(got) != 1 {
+	if got := expandInsertDocs([]any{raw}); len(got) != 1 {
 		t.Fatalf("byte slice must stay a single argument: %d", len(got))
 	}
-	if got := expandInsertDocs([]interface{}{&testUser{ID: 1}, &testUser{ID: 2}}); len(got) != 2 {
+	if got := expandInsertDocs([]any{&testUser{ID: 1}, &testUser{ID: 2}}); len(got) != 2 {
 		t.Fatalf("multi-arg form must pass through: %d", len(got))
 	}
 }

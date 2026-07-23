@@ -80,7 +80,7 @@ func (s *ClientStreamConn) terminate(err error) {
 	})
 }
 
-func (s *ClientStreamConn) Recv(msg interface{}) error {
+func (s *ClientStreamConn) Recv(msg any) error {
 	// Drain buffered data frames before reporting the terminal state so no
 	// frame received prior to StreamEnd/StreamError is lost.
 	select {

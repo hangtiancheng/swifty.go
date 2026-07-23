@@ -139,7 +139,7 @@ func Test_MockComponent_Try(t *testing.T) {
 			ctx:  ctx,
 			req: &tcc_demo.TCCReq{
 				TXID: "tx",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"biz_id": "setTXToBizErr",
 				},
 			},
@@ -150,7 +150,7 @@ func Test_MockComponent_Try(t *testing.T) {
 			ctx:  ctx,
 			req: &tcc_demo.TCCReq{
 				TXID: "tx",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"biz_id": "frozeBizErr",
 				},
 			},
@@ -161,7 +161,7 @@ func Test_MockComponent_Try(t *testing.T) {
 			ctx:  ctx,
 			req: &tcc_demo.TCCReq{
 				TXID: "tx",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"biz_id": "frozeBizFail",
 				},
 			},

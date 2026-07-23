@@ -38,7 +38,7 @@ type RTaskElement struct {
 	Key         string            `json:"key"`
 	CallbackURL string            `json:"callback_url"`
 	Method      string            `json:"method"`
-	Req         interface{}       `json:"req"`
+	Req         any               `json:"req"`
 	Header      map[string]string `json:"header"`
 }
 
@@ -76,7 +76,7 @@ func (r *RTimeWheel) AddTask(ctx context.Context, key string, task *RTaskElement
 
 	task.Key = key
 	taskBody, _ := json.Marshal(task)
-	_, err := r.redisClient.Eval(ctx, LuaAddTasks, 2, []interface{}{
+	_, err := r.redisClient.Eval(ctx, LuaAddTasks, 2, []any{
 		// Minute-level zset time slice.
 		r.getMinuteSlice(executeAt),
 		// Set marking tasks for deletion.
@@ -93,7 +93,7 @@ func (r *RTimeWheel) AddTask(ctx context.Context, key string, task *RTaskElement
 
 func (r *RTimeWheel) RemoveTask(ctx context.Context, key string, executeAt time.Time) error {
 	// Mark the task as deleted.
-	_, err := r.redisClient.Eval(ctx, LuaDeleteTask, 1, []interface{}{
+	_, err := r.redisClient.Eval(ctx, LuaDeleteTask, 1, []any{
 		r.getDeleteSetKey(executeAt),
 		key,
 	})
@@ -169,19 +169,19 @@ func (r *RTimeWheel) getExecutableTasks(ctx context.Context) ([]*RTaskElement, e
 	nowSecond := util.GetTimeSecond(now)
 	score1 := nowSecond.Unix()
 	score2 := nowSecond.Add(time.Second).Unix()
-	rawReply, err := r.redisClient.Eval(ctx, LuaZrangeTasks, 2, []interface{}{
+	rawReply, err := r.redisClient.Eval(ctx, LuaZrangeTasks, 2, []any{
 		minuteSlice, deleteSetKey, score1, score2,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	replies, ok := rawReply.([]interface{})
+	replies, ok := rawReply.([]any)
 	if !ok || len(replies) == 0 {
 		return nil, fmt.Errorf("invalid replies: %v", replies)
 	}
 
-	delArr, _ := replies[0].([]interface{})
+	delArr, _ := replies[0].([]any)
 	deletedSet := make(map[string]struct{}, len(delArr))
 	for _, deleted := range delArr {
 		deletedSet[toString(deleted)] = struct{}{}
@@ -212,7 +212,7 @@ func (r *RTimeWheel) getDeleteSetKey(executeAt time.Time) string {
 	return fmt.Sprintf("swifty_time_wheel_delete_set_{%s}", util.GetTimeMinuteStr(executeAt))
 }
 
-func toString(v interface{}) string {
+func toString(v any) string {
 	switch s := v.(type) {
 	case string:
 		return s

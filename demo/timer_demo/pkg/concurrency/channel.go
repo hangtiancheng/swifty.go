@@ -29,18 +29,18 @@ type SafeChan struct {
 	sync.Once
 	ctx   context.Context
 	close func()
-	ch    chan interface{}
+	ch    chan any
 }
 
 func NewSafeChan(size int) *SafeChan {
 	s := SafeChan{
-		ch: make(chan interface{}, size),
+		ch: make(chan any, size),
 	}
 	s.ctx, s.close = context.WithCancel(context.Background())
 	return &s
 }
 
-func (s *SafeChan) Put(element interface{}) {
+func (s *SafeChan) Put(element any) {
 	select {
 	case <-s.ctx.Done():
 	case s.ch <- element:
@@ -48,11 +48,11 @@ func (s *SafeChan) Put(element interface{}) {
 	}
 }
 
-func (s *SafeChan) GetChan() chan interface{} {
+func (s *SafeChan) GetChan() chan any {
 	return s.ch
 }
 
-func (s *SafeChan) Get() interface{} {
+func (s *SafeChan) Get() any {
 	return <-s.ch
 }
 

@@ -38,7 +38,7 @@ var ErrCollectionRequired = errors.New("collection is required before query exec
 var ErrNotFound = mongo.ErrNoDocuments
 
 type InsertResult struct {
-	InsertedIDs   []interface{}
+	InsertedIDs   []any
 	InsertedCount int64
 }
 
@@ -46,10 +46,10 @@ type UpsertResult struct {
 	MatchedCount  int64
 	ModifiedCount int64
 	UpsertedCount int64
-	UpsertedID    interface{}
+	UpsertedID    any
 }
 
-func (q *Query) Insert(ctx context.Context, documents ...interface{}) (InsertResult, error) {
+func (q *Query) Insert(ctx context.Context, documents ...any) (InsertResult, error) {
 	if err := q.preflight(); err != nil {
 		return InsertResult{}, err
 	}
@@ -63,7 +63,7 @@ func (q *Query) Insert(ctx context.Context, documents ...interface{}) (InsertRes
 		if err != nil {
 			return InsertResult{}, err
 		}
-		return InsertResult{InsertedIDs: []interface{}{result.InsertedID}, InsertedCount: 1}, nil
+		return InsertResult{InsertedIDs: []any{result.InsertedID}, InsertedCount: 1}, nil
 	}
 	result, err := q.collection.InsertMany(ctx, documents)
 	if err != nil {
@@ -78,7 +78,7 @@ func (q *Query) Insert(ctx context.Context, documents ...interface{}) (InsertRes
 // expandInsertDocs allows Insert(ctx, sliceOfDocs) by flattening a single
 // slice/array argument into individual documents. bson.D (a single document
 // that happens to be a slice) and byte slices are left untouched.
-func expandInsertDocs(documents []interface{}) []interface{} {
+func expandInsertDocs(documents []any) []any {
 	if len(documents) != 1 {
 		return documents
 	}
@@ -92,14 +92,14 @@ func expandInsertDocs(documents []interface{}) []interface{} {
 	if v.Type().Elem().Kind() == reflect.Uint8 {
 		return documents
 	}
-	expanded := make([]interface{}, v.Len())
+	expanded := make([]any, v.Len())
 	for i := 0; i < v.Len(); i++ {
 		expanded[i] = v.Index(i).Interface()
 	}
 	return expanded
 }
 
-func (q *Query) First(ctx context.Context, out interface{}) error {
+func (q *Query) First(ctx context.Context, out any) error {
 	if err := q.preflight(); err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (q *Query) First(ctx context.Context, out interface{}) error {
 	return q.collection.FindOne(q.execCtx(ctx), q.buildFilter(), opts).Decode(out)
 }
 
-func (q *Query) Find(ctx context.Context, out interface{}) error {
+func (q *Query) Find(ctx context.Context, out any) error {
 	if err := q.preflight(); err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func (q *Query) findOptions() *options.FindOptions {
 // Update applies the update to all matching documents and returns the number
 // of matched documents (knex-style affected rows). Plain documents without
 // "$" operators are wrapped in $set.
-func (q *Query) Update(ctx context.Context, update interface{}) (int64, error) {
+func (q *Query) Update(ctx context.Context, update any) (int64, error) {
 	if err := q.preflight(); err != nil {
 		return 0, err
 	}
@@ -162,7 +162,7 @@ func (q *Query) Update(ctx context.Context, update interface{}) (int64, error) {
 
 // Upsert updates all matching documents, inserting a new document from the
 // filter equalities and the update when nothing matches.
-func (q *Query) Upsert(ctx context.Context, update interface{}) (UpsertResult, error) {
+func (q *Query) Upsert(ctx context.Context, update any) (UpsertResult, error) {
 	if err := q.preflight(); err != nil {
 		return UpsertResult{}, err
 	}
@@ -277,14 +277,14 @@ func (q *Query) execCtx(ctx context.Context) context.Context {
 
 // normalizeUpdate wraps plain documents (bson.M, map, bson.D, struct) that
 // contain no "$"-prefixed keys into {$set: doc}, aligning with knex update.
-func normalizeUpdate(update interface{}) interface{} {
+func normalizeUpdate(update any) any {
 	switch doc := update.(type) {
 	case bson.M:
 		if hasOperatorKey(doc) {
 			return update
 		}
 		return bson.M{"$set": doc}
-	case map[string]interface{}:
+	case map[string]any:
 		if hasOperatorKey(doc) {
 			return update
 		}
@@ -310,7 +310,7 @@ func normalizeUpdate(update interface{}) interface{} {
 	return update
 }
 
-func hasOperatorKey(doc map[string]interface{}) bool {
+func hasOperatorKey(doc map[string]any) bool {
 	for key := range doc {
 		if strings.HasPrefix(key, "$") {
 			return true

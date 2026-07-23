@@ -59,7 +59,7 @@ func (c *Client) SetEx(ctx context.Context, key, value string, expireSeconds int
 }
 
 // SetNX executes the Redis SETNX command and sets expiration on success.
-func (c *Client) SetNX(ctx context.Context, key, value string, expireSeconds int64) (interface{}, error) {
+func (c *Client) SetNX(ctx context.Context, key, value string, expireSeconds int64) (any, error) {
 	if key == "" || value == "" {
 		return -1, errors.New("redis SET keyNX or value can't be empty")
 	}
@@ -74,9 +74,9 @@ func (c *Client) SetNX(ctx context.Context, key, value string, expireSeconds int
 }
 
 // Eval executes a Lua script.
-func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	keys := make([]string, 0, keyCount)
-	args := make([]interface{}, 0, len(keysAndArgs)-keyCount)
+	args := make([]any, 0, len(keysAndArgs)-keyCount)
 	for i, v := range keysAndArgs {
 		if i < keyCount {
 			keys = append(keys, v.(string))
@@ -118,7 +118,7 @@ func (c *Client) HGet(ctx context.Context, table, key string) (string, error) {
 }
 
 // HSet executes the Redis HSET command.
-func (c *Client) HSet(ctx context.Context, table, key string, value interface{}) error {
+func (c *Client) HSet(ctx context.Context, table, key string, value any) error {
 	return c.client.HSet(ctx, table, key, value).Err()
 }
 
@@ -131,7 +131,7 @@ func (c *Client) ZrangeByScore(ctx context.Context, table string, score1, score2
 }
 
 // ZAdd executes the Redis ZADD command.
-func (c *Client) ZAdd(ctx context.Context, table string, score int64, value interface{}) error {
+func (c *Client) ZAdd(ctx context.Context, table string, score int64, value any) error {
 	return c.client.ZAdd(ctx, table, go_redis.Z{Score: float64(score), Member: value}).Err()
 }
 
@@ -140,28 +140,28 @@ func (c *Client) Expire(ctx context.Context, key string, expireSeconds int64) er
 	return c.client.Expire(ctx, key, time.Duration(expireSeconds)*time.Second).Err()
 }
 
-func NewSetCommand(args ...interface{}) *Command {
+func NewSetCommand(args ...any) *Command {
 	return &Command{
 		Name: "SET",
 		Args: args,
 	}
 }
 
-func NewZAddCommand(args ...interface{}) *Command {
+func NewZAddCommand(args ...any) *Command {
 	return &Command{
 		Name: "ZADD",
 		Args: args,
 	}
 }
 
-func NewSetBitCommand(args ...interface{}) *Command {
+func NewSetBitCommand(args ...any) *Command {
 	return &Command{
 		Name: "SETBIT",
 		Args: args,
 	}
 }
 
-func NewExpireCommand(args ...interface{}) *Command {
+func NewExpireCommand(args ...any) *Command {
 	return &Command{
 		Name: "EXPIRE",
 		Args: args,
@@ -170,11 +170,11 @@ func NewExpireCommand(args ...interface{}) *Command {
 
 type Command struct {
 	Name string
-	Args []interface{}
+	Args []any
 }
 
 // Transaction executes a pipeline of commands atomically.
-func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]interface{}, error) {
+func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]any, error) {
 	if len(commands) == 0 {
 		return nil, nil
 	}
@@ -206,7 +206,7 @@ func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]inter
 		return nil, err
 	}
 
-	res := make([]interface{}, len(results))
+	res := make([]any, len(results))
 	for i, r := range results {
 		res[i] = r
 	}
@@ -261,7 +261,7 @@ func (c *Client) GetDistributionLock(key string) DistributeLocker {
 	return NewReentrantDistributeLock(key, c)
 }
 
-func toInt64(v interface{}) int64 {
+func toInt64(v any) int64 {
 	switch val := v.(type) {
 	case int:
 		return int64(val)

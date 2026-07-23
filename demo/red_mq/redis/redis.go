@@ -81,7 +81,7 @@ func (c *Client) XADD(ctx context.Context, topic string, maxLen int, key, val st
 	args := &go_redis.XAddArgs{
 		Stream: topic,
 		ID:     "*",
-		Values: map[string]interface{}{key: val},
+		Values: map[string]any{key: val},
 	}
 	if maxLen > 0 {
 		args.MaxLen = int64(maxLen)
@@ -160,14 +160,14 @@ func (c *Client) xReadGroup(ctx context.Context, groupID, consumerID, topic stri
 }
 
 // parseStreamValues extracts the first field name/value pair from a stream message.
-func parseStreamValues(values map[string]interface{}) (string, string) {
+func parseStreamValues(values map[string]any) (string, string) {
 	for k, v := range values {
 		return k, toString(v)
 	}
 	return "", ""
 }
 
-func toString(v interface{}) string {
+func toString(v any) string {
 	switch s := v.(type) {
 	case string:
 		return s
@@ -246,9 +246,9 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 }
 
 // Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
-func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	keys := make([]string, 0, keyCount)
-	args := make([]interface{}, 0, len(keysAndArgs)-keyCount)
+	args := make([]any, 0, len(keysAndArgs)-keyCount)
 	for i, v := range keysAndArgs {
 		if i < keyCount {
 			keys = append(keys, fmt.Sprintf("%v", v))

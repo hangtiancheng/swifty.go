@@ -51,7 +51,7 @@ func compoundIndex(fields ...string) mongo.IndexModel {
 func InitIndexes() {
 	ctx := context.Background()
 	specs := []struct {
-		model   interface{}
+		model   any
 		indexes []mongo.IndexModel
 	}{
 		{&model.UserInfo{}, []mongo.IndexModel{

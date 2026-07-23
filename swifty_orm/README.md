@@ -10,7 +10,7 @@ Module path: `github.com/hangtiancheng/swifty.go/swifty_orm`
 
 - Chainable query builder with Where (equality / operator / object form) / WhereNot / OrWhere and Or-variants / WhereIn / WhereNotIn / WhereBetween / WhereNotBetween / WhereNull / WhereNotNull / WhereLike / WhereILike predicates
 - Safe filter construction: conditions on the same field are always AND-combined (never silently overwritten); invalid builder input surfaces as an error at execution instead of panicking
-- Automatic `$set` wrapping: plain `bson.M`, `map[string]interface{}`, `bson.D`, and struct updates without MongoDB operators are transparently wrapped in `$set`
+- Automatic `$set` wrapping: plain `bson.M`, `map[string]any`, `bson.D`, and struct updates without MongoDB operators are transparently wrapped in `$set`
 - knex-style write helpers: Upsert, Increment / Decrement, Insert accepts a slice of documents
 - Built-in aggregation methods: Count / CountDistinct / Sum / Avg / Min / Max / Distinct / Pluck
 - Query Clone for deriving variants from a shared base without state sharing
@@ -274,7 +274,7 @@ avg, err := engine.Collection("orders").Avg(ctx, "amount")
 mn,  err := engine.Collection("orders").Min(ctx, "amount")
 mx,  err := engine.Collection("orders").Max(ctx, "amount")
 
-vals, err := engine.Collection("users").Distinct(ctx, "city")       // []interface{}
+vals, err := engine.Collection("users").Distinct(ctx, "city")       // []any
 n,    err := engine.Collection("users").CountDistinct(ctx, "city")  // number of distinct values
 
 // Pluck collects one field into a slice of the value type. Sort/limit/offset

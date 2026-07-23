@@ -53,7 +53,7 @@ func (q *Query) GroupBy(fields ...string) *Query {
 
 // Having filters grouped rows. It accepts the same argument forms as Where
 // and references result column names: group keys or accumulator aliases.
-func (q *Query) Having(args ...interface{}) *Query {
+func (q *Query) Having(args ...any) *Query {
 	conditions, err := parseWhere(args...)
 	if err != nil {
 		q.setErr(err)
@@ -118,7 +118,7 @@ func (q *Query) addAggSpec(alias string, op string, field string) *Query {
 // accumulator aliases as top-level fields. Where conditions are applied
 // before grouping, Having after; OrderBy/Offset/Limit apply to the rows and
 // must reference result column names.
-func (q *Query) Aggregate(ctx context.Context, out interface{}) error {
+func (q *Query) Aggregate(ctx context.Context, out any) error {
 	if err := q.preflightBase(); err != nil {
 		return err
 	}

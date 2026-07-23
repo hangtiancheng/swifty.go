@@ -274,7 +274,7 @@ func (g *Group) Close() error {
 
 func (g *Group) load(ctx context.Context, key string) (ByteView, error) {
 	startTime := time.Now()
-	viewInterface, err := g.loader.Do(key, func() (interface{}, error) {
+	viewInterface, err := g.loader.Do(key, func() (any, error) {
 		// Singleflight only dedups concurrent overlapping calls; two serial
 		// callers can both miss the cache, so check again before loading.
 		if view, ok := g.mainCache.Get(ctx, key); ok {
@@ -365,8 +365,8 @@ func (g *Group) getPeers() PeerPicker {
 }
 
 // Stats returns a snapshot of group and cache statistics.
-func (g *Group) Stats() map[string]interface{} {
-	stats := map[string]interface{}{
+func (g *Group) Stats() map[string]any {
+	stats := map[string]any{
 		"name":            g.name,
 		"closed":          atomic.LoadInt32(&g.closed) == 1,
 		"expiration":      g.expiration,

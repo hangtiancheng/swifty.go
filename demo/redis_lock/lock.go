@@ -152,7 +152,7 @@ func (r *RedisLock) runWatchDog(ctx context.Context) {
 
 // DelayExpire extends the lock TTL. Atomicity is guaranteed by a Lua script that checks ownership first.
 func (r *RedisLock) DelayExpire(ctx context.Context, expireSeconds int64) error {
-	keysAndArgs := []interface{}{r.getLockKey(), r.token, expireSeconds}
+	keysAndArgs := []any{r.getLockKey(), r.token, expireSeconds}
 	reply, err := r.client.Eval(ctx, LuaCheckAndExpireDistributionLock, 1, keysAndArgs)
 	if err != nil {
 		return err
@@ -206,7 +206,7 @@ func (r *RedisLock) Unlock(ctx context.Context) error {
 		}
 	}()
 
-	keysAndArgs := []interface{}{r.getLockKey(), r.token}
+	keysAndArgs := []any{r.getLockKey(), r.token}
 	reply, err := r.client.Eval(ctx, LuaCheckAndDeleteDistributionLock, 1, keysAndArgs)
 	if err != nil {
 		return err

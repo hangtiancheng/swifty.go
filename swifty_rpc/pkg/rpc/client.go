@@ -117,7 +117,7 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 	}, nil
 }
 
-func (cc *ClientConn) Invoke(ctx context.Context, service, method string, args, reply interface{}) error {
+func (cc *ClientConn) Invoke(ctx context.Context, service, method string, args, reply any) error {
 	switch cc.mode {
 	case modeRegistry:
 		return cc.regClient.Invoke(ctx, service, method, args, reply)
@@ -126,7 +126,7 @@ func (cc *ClientConn) Invoke(ctx context.Context, service, method string, args, 
 	}
 }
 
-func (cc *ClientConn) invokeStatic(ctx context.Context, service, method string, args, reply interface{}) error {
+func (cc *ClientConn) invokeStatic(ctx context.Context, service, method string, args, reply any) error {
 	ctx, cancel := context.WithTimeout(ctx, cc.timeout)
 	defer cancel()
 
@@ -140,7 +140,7 @@ func (cc *ClientConn) invokeStatic(ctx context.Context, service, method string, 
 // InvokeAsync sends a request without waiting for the response. The returned
 // Future resolves with the reply, an error, or context.DeadlineExceeded once
 // the dial timeout elapses.
-func (cc *ClientConn) InvokeAsync(ctx context.Context, service, method string, args interface{}) (*Future, error) {
+func (cc *ClientConn) InvokeAsync(ctx context.Context, service, method string, args any) (*Future, error) {
 	switch cc.mode {
 	case modeRegistry:
 		return cc.regClient.InvokeAsync(ctx, service, method, args)
@@ -149,7 +149,7 @@ func (cc *ClientConn) InvokeAsync(ctx context.Context, service, method string, a
 	}
 }
 
-func (cc *ClientConn) invokeAsyncStatic(ctx context.Context, service, method string, args interface{}) (*Future, error) {
+func (cc *ClientConn) invokeAsyncStatic(ctx context.Context, service, method string, args any) (*Future, error) {
 	acquireCtx, cancel := context.WithTimeout(ctx, cc.timeout)
 	future, err := cc.sendAsyncStatic(acquireCtx, service, method, args)
 	cancel()
@@ -168,7 +168,7 @@ func (cc *ClientConn) invokeAsyncStatic(ctx context.Context, service, method str
 	return future, nil
 }
 
-func (cc *ClientConn) sendAsyncStatic(ctx context.Context, service, method string, args interface{}) (*Future, error) {
+func (cc *ClientConn) sendAsyncStatic(ctx context.Context, service, method string, args any) (*Future, error) {
 	conn, err := cc.pool.Acquire(ctx)
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func (cc *ClientConn) sendAsyncStatic(ctx context.Context, service, method strin
 	}, cc.codec)
 }
 
-func (cc *ClientConn) NewStream(ctx context.Context, service, method string, args interface{}) (ClientStream, error) {
+func (cc *ClientConn) NewStream(ctx context.Context, service, method string, args any) (ClientStream, error) {
 	switch cc.mode {
 	case modeRegistry:
 		return cc.regClient.InvokeStream(ctx, service, method, args)
@@ -199,7 +199,7 @@ func (cc *ClientConn) NewStream(ctx context.Context, service, method string, arg
 	}
 }
 
-func (cc *ClientConn) newStreamStatic(ctx context.Context, service, method string, args interface{}) (ClientStream, error) {
+func (cc *ClientConn) newStreamStatic(ctx context.Context, service, method string, args any) (ClientStream, error) {
 	acquireCtx, cancel := context.WithTimeout(ctx, cc.timeout)
 	conn, err := cc.pool.Acquire(acquireCtx)
 	cancel()

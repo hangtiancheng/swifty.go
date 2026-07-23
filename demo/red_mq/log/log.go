@@ -30,14 +30,14 @@ import (
 
 // Logger is the logging surface used by red_mq.
 type Logger interface {
-	Error(v ...interface{})
-	Warn(v ...interface{})
-	Info(v ...interface{})
-	Debug(v ...interface{})
-	Errorf(format string, v ...interface{})
-	Warnf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-	Debugf(format string, v ...interface{})
+	Error(v ...any)
+	Warn(v ...any)
+	Info(v ...any)
+	Debug(v ...any)
+	Errorf(format string, v ...any)
+	Warnf(format string, v ...any)
+	Infof(format string, v ...any)
+	Debugf(format string, v ...any)
 }
 
 var defaultLogger Logger
@@ -144,49 +144,49 @@ func (l *stdLogger) output(callDepth int, level string, msg string) {
 	l.logger.Output(callDepth+1, fmt.Sprintf("[%s] %s", level, msg))
 }
 
-func (l *stdLogger) Debug(v ...interface{}) {
+func (l *stdLogger) Debug(v ...any) {
 	if l.level <= DebugLevel {
 		l.output(2, "DEBUG", fmt.Sprint(v...))
 	}
 }
 
-func (l *stdLogger) Info(v ...interface{}) {
+func (l *stdLogger) Info(v ...any) {
 	if l.level <= InfoLevel {
 		l.output(2, "INFO", fmt.Sprint(v...))
 	}
 }
 
-func (l *stdLogger) Warn(v ...interface{}) {
+func (l *stdLogger) Warn(v ...any) {
 	if l.level <= WarnLevel {
 		l.output(2, "WARN", fmt.Sprint(v...))
 	}
 }
 
-func (l *stdLogger) Error(v ...interface{}) {
+func (l *stdLogger) Error(v ...any) {
 	if l.level <= ErrorLevel {
 		l.output(2, "ERROR", fmt.Sprint(v...))
 	}
 }
 
-func (l *stdLogger) Debugf(format string, v ...interface{}) {
+func (l *stdLogger) Debugf(format string, v ...any) {
 	if l.level <= DebugLevel {
 		l.output(2, "DEBUG", fmt.Sprintf(format, v...))
 	}
 }
 
-func (l *stdLogger) Infof(format string, v ...interface{}) {
+func (l *stdLogger) Infof(format string, v ...any) {
 	if l.level <= InfoLevel {
 		l.output(2, "INFO", fmt.Sprintf(format, v...))
 	}
 }
 
-func (l *stdLogger) Warnf(format string, v ...interface{}) {
+func (l *stdLogger) Warnf(format string, v ...any) {
 	if l.level <= WarnLevel {
 		l.output(2, "WARN", fmt.Sprintf(format, v...))
 	}
 }
 
-func (l *stdLogger) Errorf(format string, v ...interface{}) {
+func (l *stdLogger) Errorf(format string, v ...any) {
 	if l.level <= ErrorLevel {
 		l.output(2, "ERROR", fmt.Sprintf(format, v...))
 	}
@@ -197,54 +197,54 @@ func GetDefaultLogger() Logger {
 	return defaultLogger
 }
 
-func Debugf(format string, args ...interface{}) {
+func Debugf(format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
-func Infof(format string, args ...interface{}) {
+func Infof(format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
-func Warnf(format string, args ...interface{}) {
+func Warnf(format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
-func Errorf(format string, args ...interface{}) {
+func Errorf(format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
-func DebugContext(ctx context.Context, args ...interface{}) {
+func DebugContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Debug(args...)
 }
 
-func DebugContextf(ctx context.Context, format string, args ...interface{}) {
+func DebugContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
-func InfoContext(ctx context.Context, args ...interface{}) {
+func InfoContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Info(args...)
 }
 
-func InfoContextf(ctx context.Context, format string, args ...interface{}) {
+func InfoContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
-func WarnContext(ctx context.Context, args ...interface{}) {
+func WarnContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Warn(args...)
 }
 
-func WarnContextf(ctx context.Context, format string, args ...interface{}) {
+func WarnContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
-func ErrorContext(ctx context.Context, args ...interface{}) {
+func ErrorContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Error(args...)
 }
 
-func ErrorContextf(ctx context.Context, format string, args ...interface{}) {
+func ErrorContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
-func Fatalf(format string, args ...interface{}) {
+func Fatalf(format string, args ...any) {
 	Errorf(format, args...)
 }

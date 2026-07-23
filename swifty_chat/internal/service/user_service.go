@@ -214,7 +214,7 @@ func DeleteUsers(ctx context.Context, uuidList []string) (string, int) {
 	for _, uuid := range uuidList {
 		invalidateSessionCacheByReceiver(ctx, uuid)
 		cleanups := []struct {
-			m     interface{}
+			m     any
 			field string
 		}{
 			{&model.Session{}, "send_id"},

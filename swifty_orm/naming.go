@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-func CollectionName(value interface{}) string {
+func CollectionName(value any) string {
 	typ := reflect.TypeOf(value)
 	for typ != nil && typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()

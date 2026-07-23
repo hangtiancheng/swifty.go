@@ -135,15 +135,15 @@ type DialOption func(*dialOptions)
 type ServerOption func(*serverOptions)
 
 type Server struct { /* wraps internal/server.Server */ }
-func (s *Server) Register(name string, service interface{})
+func (s *Server) Register(name string, service any)
 func (s *Server) Serve(lis net.Listener) error
 func (s *Server) GracefulStop()
 func (s *Server) Stop()
 
 type ClientConn struct { /* unexported fields */ }
-func (cc *ClientConn) Invoke(ctx context.Context, service, method string, args, reply interface{}) error
-func (cc *ClientConn) InvokeAsync(ctx context.Context, service, method string, args interface{}) (*Future, error)
-func (cc *ClientConn) NewStream(ctx context.Context, service, method string, args interface{}) (ClientStream, error)
+func (cc *ClientConn) Invoke(ctx context.Context, service, method string, args, reply any) error
+func (cc *ClientConn) InvokeAsync(ctx context.Context, service, method string, args any) (*Future, error)
+func (cc *ClientConn) NewStream(ctx context.Context, service, method string, args any) (ClientStream, error)
 func (cc *ClientConn) Close() error   // always returns nil
 ```
 
@@ -164,8 +164,8 @@ Method behavior:
 func (f *Future) Wait() ([]byte, error)                       // raw body, blocks forever
 func (f *Future) WaitWithContext(ctx context.Context) ([]byte, error)
 func (f *Future) WaitWithTimeout(d time.Duration) ([]byte, error)
-func (f *Future) GetResult(reply interface{}) error           // decode with future codec, blocks forever
-func (f *Future) GetResultWithContext(ctx context.Context, reply interface{}) error
+func (f *Future) GetResult(reply any) error           // decode with future codec, blocks forever
+func (f *Future) GetResultWithContext(ctx context.Context, reply any) error
 func (f *Future) DoneChan() <-chan struct{}
 func (f *Future) IsDone() bool
 func (f *Future) OnComplete(fn func(error))                   // fires immediately if already done
@@ -178,12 +178,12 @@ func (f *Future) Done(res []byte, err error)                  // producer side; 
 
 ```go
 type ServerStream interface {
-    Send(msg interface{}) error
+    Send(msg any) error
     Context() context.Context
 }
 
 type ClientStream interface {
-    Recv(msg interface{}) error   // io.EOF on clean end, error on StreamError
+    Recv(msg any) error   // io.EOF on clean end, error on StreamError
     Context() context.Context
 }
 ```
@@ -257,8 +257,8 @@ Every client send path (static and registry, unary and stream) writes the client
 
 ```go
 type Codec interface {
-    Marshal(v interface{}) ([]byte, error)
-    Unmarshal(data []byte, v interface{}) error
+    Marshal(v any) ([]byte, error)
+    Unmarshal(data []byte, v any) error
 }
 type Type byte           // JSON = 1, PROTO = 2
 type CompressionType byte // CompressionNone = 0, CompressionGzip = 1
@@ -493,11 +493,11 @@ for {
 
 ### Method signature reference
 
-| Signature                                          | Style     | Notes                                                          |
-| -------------------------------------------------- | --------- | -------------------------------------------------------------- |
-| `Method(ctx context.Context, req *T) (*R, error)`  | grpc-go   | Recommended. nil `*R` yields empty body. `*R` must be pointer.  |
-| `Method(req *T, reply *R) error`                   | net/rpc   | Reply allocated by framework.                                  |
-| `Method(req *T, stream rpc.ServerStream) error`    | streaming | Runs in own goroutine. Terminal frame emitted by framework.    |
+| Signature                                         | Style     | Notes                                                          |
+| ------------------------------------------------- | --------- | -------------------------------------------------------------- |
+| `Method(ctx context.Context, req *T) (*R, error)` | grpc-go   | Recommended. nil `*R` yields empty body. `*R` must be pointer. |
+| `Method(req *T, reply *R) error`                  | net/rpc   | Reply allocated by framework.                                  |
+| `Method(req *T, stream rpc.ServerStream) error`   | streaming | Runs in own goroutine. Terminal frame emitted by framework.    |
 
 ## Pitfalls / known limitations
 
@@ -531,54 +531,54 @@ for {
 
 15. Errors cross the wire as strings in `Header.Error` and come back as fresh `errors.New` values. `errors.Is`/`errors.As` against typed errors does not work across the RPC boundary; match on substrings.
 
-16. `NewHandler`'s first parameter (`s interface{}`) is unused; the service is passed per-request through `Process`. Do not expect handler-level service binding.
+16. `NewHandler`'s first parameter (`s any`) is unused; the service is passed per-request through `Process`. Do not expect handler-level service binding.
 
 ## File map
 
-| File                                          | Purpose                                                                 |
-| --------------------------------------------- | ----------------------------------------------------------------------- |
-| `pkg/rpc/rpc.go`                              | Type aliases (CodecType, Registry, Instance, LoadBalancer, Future), CodecJSON/CodecProto, NewRegistry |
-| `pkg/rpc/client.go`                           | DialOption set, Dial, ClientConn (Invoke, InvokeAsync, NewStream, Close), static-mode send paths |
-| `pkg/rpc/server.go`                           | ServerOption set, NewServer (panics on bad options), Server facade      |
-| `pkg/rpc/stream.go`                           | ServerStream / ClientStream aliases                                      |
-| `pkg/rpc/stream_test.go`                      | End-to-end streaming tests: basic, mid-stream error, unary coexistence, cancellation |
-| `pkg/rpc/fixes_test.go`                       | Regression tests: GracefulStop with idle connection, stream not blocking unary, panic/bad-signature resilience, public InvokeAsync |
-| `pkg/api/arith.go`, `pkg/api/arith_test.go`   | Example Arith/Arith2 services                                            |
-| `internal/server/server.go`                   | Accept loop, per-connection Handle loop, GracefulStop/Stop, serveWg/wg tracking, rate limit |
-| `internal/server/handler.go`                  | Reflection dispatch (3 signatures), per-header codec selection, safeCall panic recovery, async stream launch |
-| `internal/server/options.go`                  | HandleOption / ServerOption, WithHandlerCodec, WithServerCodec           |
-| `internal/server/stream.go`                   | serverStream: Send (StreamData), end (StreamEnd), sendError (StreamError) |
-| `internal/server/server_test.go`              | Handler invoke tests, Process response tests, serve/stop lifecycle       |
-| `internal/client/client.go`                   | Registry-mode Client struct, NewClient defaults, Close (stops limiter and pools) |
-| `internal/client/invoke.go`                   | Invoke (timeout feeds breaker), InvokeAsync (timer watchdog), InvokeStream, observedStream |
-| `internal/client/option.go`                   | ClientOption: codec, timeout, load balancer (validated)                  |
-| `internal/client/resolver.go`                 | getPool, getAddr (discover + select), getBreaker (hard-coded params)     |
-| `internal/client/client_test.go`              | Default codec, option validation, registry-less errors                   |
-| `internal/transport/tcp_connection.go`        | TCPConnection, PacketBuffer with looping magic resync, SetReadDeadline, SetLinger(0) close |
-| `internal/transport/tcp_client.go`            | TCPClient: seq allocation, pending/streams maps, readLoop demux, unified shutdown |
-| `internal/transport/tcp_connection_pool.go`   | ConnectionPool (Acquire with dead-conn eviction, Close), ErrPoolClosed   |
-| `internal/transport/future.go`                | Future: idempotent Done, OnComplete, Wait/GetResult variants             |
-| `internal/transport/stream.go`                | ClientStreamConn: 64-frame buffer, out-of-band terminal state, drain-before-EOF Recv, ErrStreamNotFound |
-| `internal/transport/transport_test.go`        | Future semantics, packet buffer, SendAsync round trip, Close unblocking pending, non-blocking terminal |
-| `internal/protocol/header.go`                 | Header struct, CodecType, StreamFlag constants                            |
-| `internal/protocol/message.go`                | Magic, Encode/Decode with compression and overflow checks                 |
-| `internal/protocol/message_test.go`           | Round trip and malformed-frame tests                                      |
-| `internal/codec/codec.go`                     | Codec interface, factory registry (panics on misuse)                     |
-| `internal/codec/json.go`, `internal/codec/protobuf.go` | JSON and Protobuf codec implementations                           |
-| `internal/codec/compress.go`                  | CompressionType, Gzip compressor, compressor registry                    |
-| `internal/codec/codec_test.go`                | Codec round trips, registry panics, compression errors                    |
-| `internal/breaker/breaker.go`                 | Three-state circuit breaker with rolling window                           |
-| `internal/breaker/breaker_test.go`            | State transition tests including single half-open probe                   |
-| `internal/limiter/token_bucket.go`            | Per-second refill token bucket with idempotent Stop                       |
-| `internal/limiter/token_bucket_test.go`       | Refill, zero/negative rate, concurrent Allow/Stop                          |
-| `internal/load_balance/balancer.go`           | LoadBalancer interface                                                     |
-| `internal/load_balance/round_robin.go`        | RoundRobin (atomic, index 0 first)                                         |
-| `internal/load_balance/random.go`             | Random (seeded, mutex-guarded)                                             |
-| `internal/load_balance/weighted_rr.go`        | Smooth weighted round-robin with weight clamping                           |
-| `internal/load_balance/load_balance_test.go`  | Distribution and concurrency tests                                          |
-| `internal/registry/registry.go`               | etcd v3 register (lease + keepalive drain), discover cache, watch loop     |
-| `internal/registry/registry_test.go`          | Defensive-copy and Close tests                                              |
-| `internal/stream/stream.go`                   | ServerStream / ClientStream interfaces (dependency cycle breaker)           |
+| File                                                   | Purpose                                                                                                                            |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `pkg/rpc/rpc.go`                                       | Type aliases (CodecType, Registry, Instance, LoadBalancer, Future), CodecJSON/CodecProto, NewRegistry                              |
+| `pkg/rpc/client.go`                                    | DialOption set, Dial, ClientConn (Invoke, InvokeAsync, NewStream, Close), static-mode send paths                                   |
+| `pkg/rpc/server.go`                                    | ServerOption set, NewServer (panics on bad options), Server facade                                                                 |
+| `pkg/rpc/stream.go`                                    | ServerStream / ClientStream aliases                                                                                                |
+| `pkg/rpc/stream_test.go`                               | End-to-end streaming tests: basic, mid-stream error, unary coexistence, cancellation                                               |
+| `pkg/rpc/fixes_test.go`                                | Regression tests: GracefulStop with idle connection, stream not blocking unary, panic/bad-signature resilience, public InvokeAsync |
+| `pkg/api/arith.go`, `pkg/api/arith_test.go`            | Example Arith/Arith2 services                                                                                                      |
+| `internal/server/server.go`                            | Accept loop, per-connection Handle loop, GracefulStop/Stop, serveWg/wg tracking, rate limit                                        |
+| `internal/server/handler.go`                           | Reflection dispatch (3 signatures), per-header codec selection, safeCall panic recovery, async stream launch                       |
+| `internal/server/options.go`                           | HandleOption / ServerOption, WithHandlerCodec, WithServerCodec                                                                     |
+| `internal/server/stream.go`                            | serverStream: Send (StreamData), end (StreamEnd), sendError (StreamError)                                                          |
+| `internal/server/server_test.go`                       | Handler invoke tests, Process response tests, serve/stop lifecycle                                                                 |
+| `internal/client/client.go`                            | Registry-mode Client struct, NewClient defaults, Close (stops limiter and pools)                                                   |
+| `internal/client/invoke.go`                            | Invoke (timeout feeds breaker), InvokeAsync (timer watchdog), InvokeStream, observedStream                                         |
+| `internal/client/option.go`                            | ClientOption: codec, timeout, load balancer (validated)                                                                            |
+| `internal/client/resolver.go`                          | getPool, getAddr (discover + select), getBreaker (hard-coded params)                                                               |
+| `internal/client/client_test.go`                       | Default codec, option validation, registry-less errors                                                                             |
+| `internal/transport/tcp_connection.go`                 | TCPConnection, PacketBuffer with looping magic resync, SetReadDeadline, SetLinger(0) close                                         |
+| `internal/transport/tcp_client.go`                     | TCPClient: seq allocation, pending/streams maps, readLoop demux, unified shutdown                                                  |
+| `internal/transport/tcp_connection_pool.go`            | ConnectionPool (Acquire with dead-conn eviction, Close), ErrPoolClosed                                                             |
+| `internal/transport/future.go`                         | Future: idempotent Done, OnComplete, Wait/GetResult variants                                                                       |
+| `internal/transport/stream.go`                         | ClientStreamConn: 64-frame buffer, out-of-band terminal state, drain-before-EOF Recv, ErrStreamNotFound                            |
+| `internal/transport/transport_test.go`                 | Future semantics, packet buffer, SendAsync round trip, Close unblocking pending, non-blocking terminal                             |
+| `internal/protocol/header.go`                          | Header struct, CodecType, StreamFlag constants                                                                                     |
+| `internal/protocol/message.go`                         | Magic, Encode/Decode with compression and overflow checks                                                                          |
+| `internal/protocol/message_test.go`                    | Round trip and malformed-frame tests                                                                                               |
+| `internal/codec/codec.go`                              | Codec interface, factory registry (panics on misuse)                                                                               |
+| `internal/codec/json.go`, `internal/codec/protobuf.go` | JSON and Protobuf codec implementations                                                                                            |
+| `internal/codec/compress.go`                           | CompressionType, Gzip compressor, compressor registry                                                                              |
+| `internal/codec/codec_test.go`                         | Codec round trips, registry panics, compression errors                                                                             |
+| `internal/breaker/breaker.go`                          | Three-state circuit breaker with rolling window                                                                                    |
+| `internal/breaker/breaker_test.go`                     | State transition tests including single half-open probe                                                                            |
+| `internal/limiter/token_bucket.go`                     | Per-second refill token bucket with idempotent Stop                                                                                |
+| `internal/limiter/token_bucket_test.go`                | Refill, zero/negative rate, concurrent Allow/Stop                                                                                  |
+| `internal/load_balance/balancer.go`                    | LoadBalancer interface                                                                                                             |
+| `internal/load_balance/round_robin.go`                 | RoundRobin (atomic, index 0 first)                                                                                                 |
+| `internal/load_balance/random.go`                      | Random (seeded, mutex-guarded)                                                                                                     |
+| `internal/load_balance/weighted_rr.go`                 | Smooth weighted round-robin with weight clamping                                                                                   |
+| `internal/load_balance/load_balance_test.go`           | Distribution and concurrency tests                                                                                                 |
+| `internal/registry/registry.go`                        | etcd v3 register (lease + keepalive drain), discover cache, watch loop                                                             |
+| `internal/registry/registry_test.go`                   | Defensive-copy and Close tests                                                                                                     |
+| `internal/stream/stream.go`                            | ServerStream / ClientStream interfaces (dependency cycle breaker)                                                                  |
 
 ## Dependencies
 

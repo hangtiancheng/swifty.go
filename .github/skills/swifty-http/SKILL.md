@@ -131,7 +131,7 @@ Per-request state carrying the request, response writer, deferred response field
 and route params.
 
 ```go
-type H map[string]interface{}             // convenience alias for inline JSON literals
+type H map[string]any             // convenience alias for inline JSON literals
 type Middleware func(ctx *Context, next func())
 
 type Context struct {
@@ -140,9 +140,9 @@ type Context struct {
     Path    string                  // request URL path
     Method  string                  // HTTP method
     Status  int                     // deferred status; default http.StatusNotFound
-    Body    interface{}             // deferred body; nil means no body
+    Body    any             // deferred body; nil means no body
     Type    string                  // Content-Type for the deferred response
-    State   map[string]interface{}  // per-request key/value bag for middleware
+    State   map[string]any  // per-request key/value bag for middleware
     Params  map[string]string       // route parameters captured by :name / *name
 }
 ```
@@ -183,14 +183,14 @@ responses share the unified `{message, data}` envelope used on success paths.
 
 Request accessors:
 
-| Method | Description |
-| ------ | ----------- |
-| `Query(key string) string` | URL query parameter |
-| `Param(key string) string` | Route path parameter (`:name` or `*name`) |
-| `PostForm(key string) string` | Form value (urlencoded or multipart) |
-| `Get(header string) string` | Request header |
-| `BindJSON(out interface{}) error` | Decode the JSON request body; closes `Request.Body` via `defer` |
-| `FormFile(key string) (multipart.File, *multipart.FileHeader, error)` | Uploaded file from a multipart form |
+| Method                                                                | Description                                                     |
+| --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `Query(key string) string`                                            | URL query parameter                                             |
+| `Param(key string) string`                                            | Route path parameter (`:name` or `*name`)                       |
+| `PostForm(key string) string`                                         | Form value (urlencoded or multipart)                            |
+| `Get(header string) string`                                           | Request header                                                  |
+| `BindJSON(out any) error`                                             | Decode the JSON request body; closes `Request.Body` via `defer` |
+| `FormFile(key string) (multipart.File, *multipart.FileHeader, error)` | Uploaded file from a multipart form                             |
 
 `BindJSON` is destructive: it consumes and closes the request body. Call it at most
 once per request. There is no raw-body accessor; read `ctx.Request.Body` yourself
@@ -198,14 +198,14 @@ before any `BindJSON` call if you need the bytes.
 
 Response setters (deferred; written by `respond()` at the end of the chain):
 
-| Method | Description |
-| ------ | ----------- |
-| `JSON(obj interface{})` | `Type = "application/json"`, `Body = obj`, promote status |
-| `String(format string, values ...interface{})` | `Type = "text/plain"`, `Body = fmt.Sprintf(...)`, promote status |
-| `Data(data []byte)` | `Body = data`, promote status; Content-Type is whatever `Type` holds (may be empty) |
-| `HTML(name string, data interface{})` | `Type = "text/html"`, `Body = htmlPayload{name, data}`, promote status; requires `LoadHTMLGlob` |
-| `Redirect(url string)` | Sets the `Location` header; keeps an explicitly chosen 3xx status (300, 301, 302, 303, 305, 307, 308), otherwise defaults to 302; marks the status explicit; if `Body` is nil, sets a `text/plain` body `"Redirecting to <url>"` |
-| `Set(header, value string)` | Buffers a response header under its canonical key (`http.CanonicalHeaderKey`); flushed by `respond()`, `SSE()`, and the Static handler |
+| Method                                 | Description                                                                                                                                                                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `JSON(obj any)`                        | `Type = "application/json"`, `Body = obj`, promote status                                                                                                                                                                        |
+| `String(format string, values ...any)` | `Type = "text/plain"`, `Body = fmt.Sprintf(...)`, promote status                                                                                                                                                                 |
+| `Data(data []byte)`                    | `Body = data`, promote status; Content-Type is whatever `Type` holds (may be empty)                                                                                                                                              |
+| `HTML(name string, data any)`          | `Type = "text/html"`, `Body = htmlPayload{name, data}`, promote status; requires `LoadHTMLGlob`                                                                                                                                  |
+| `Redirect(url string)`                 | Sets the `Location` header; keeps an explicitly chosen 3xx status (300, 301, 302, 303, 305, 307, 308), otherwise defaults to 302; marks the status explicit; if `Body` is nil, sets a `text/plain` body `"Redirecting to <url>"` |
+| `Set(header, value string)`            | Buffers a response header under its canonical key (`http.CanonicalHeaderKey`); flushed by `respond()`, `SSE()`, and the Static handler                                                                                           |
 
 `respond()` behavior, in order:
 
@@ -305,7 +305,7 @@ the deferred response setters afterwards.
 ```go
 func (w *SSEWriter) Event(event string, data string)
 func (w *SSEWriter) Data(data string)
-func (w *SSEWriter) JSON(event string, obj interface{})
+func (w *SSEWriter) JSON(event string, obj any)
 func (w *SSEWriter) ID(id string)
 func (w *SSEWriter) Retry(ms int)
 func (w *SSEWriter) Comment(text string)
@@ -316,19 +316,19 @@ func (w *SSEWriter) Flush()
 func (w *SSEWriter) Done()
 ```
 
-| Method | Description |
-| ------ | ----------- |
-| `Event(event, data)` | Writes `event: <event>\n`, then one `data:` line per input line, then a blank line |
-| `Data(data)` | Data block only; multiline input becomes multiple `data:` lines |
-| `JSON(event, obj)` | `json.Marshal` then a single `data:` line; the `event:` line is omitted when `event == ""`; marshal errors are silently dropped |
-| `ID(id)` | Writes `id: <id>\n` -- a field line, not a complete event |
-| `Retry(ms)` | Writes `retry: <ms>\n\n` |
-| `Comment(text)` | One `: ` comment line per input line, then a blank line |
-| `Heartbeat(interval)` | Spawns a goroutine writing `: keepalive\n\n` every interval; returns an idempotent stop function |
-| `Stream(ch)` | Forwards channel values via `Data` until `ch` closes or the client disconnects |
-| `Closed()` | Returns `ctx.Request.Context().Done()` for disconnect detection |
-| `Flush()` | Manually invokes the underlying `http.Flusher` |
-| `Done()` | Writes `data: [DONE]\n\n`, the OpenAI-compatible sentinel |
+| Method                | Description                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `Event(event, data)`  | Writes `event: <event>\n`, then one `data:` line per input line, then a blank line                                              |
+| `Data(data)`          | Data block only; multiline input becomes multiple `data:` lines                                                                 |
+| `JSON(event, obj)`    | `json.Marshal` then a single `data:` line; the `event:` line is omitted when `event == ""`; marshal errors are silently dropped |
+| `ID(id)`              | Writes `id: <id>\n` -- a field line, not a complete event                                                                       |
+| `Retry(ms)`           | Writes `retry: <ms>\n\n`                                                                                                        |
+| `Comment(text)`       | One `: ` comment line per input line, then a blank line                                                                         |
+| `Heartbeat(interval)` | Spawns a goroutine writing `: keepalive\n\n` every interval; returns an idempotent stop function                                |
+| `Stream(ch)`          | Forwards channel values via `Data` until `ch` closes or the client disconnects                                                  |
+| `Closed()`            | Returns `ctx.Request.Context().Done()` for disconnect detection                                                                 |
+| `Flush()`             | Manually invokes the underlying `http.Flusher`                                                                                  |
+| `Done()`              | Writes `data: [DONE]\n\n`, the OpenAI-compatible sentinel                                                                       |
 
 Concurrency and lifetime contracts:
 
@@ -548,7 +548,7 @@ Wraps `next()` in `defer`/`recover`. Behavior on panic:
   built from `runtime.Callers(3, ...)` / `runtime.CallersFrames` (safe against nil
   frames), and converted into a deferred 500 response: `Status = 500` (explicit),
   `Type` cleared, all buffered headers discarded, `Body = H{"message": "Internal
-  Server Error"}`. Clearing `Type` and headers prevents a pre-panic
+Server Error"}`. Clearing `Type` and headers prevents a pre-panic
   `ctx.Type = "text/html"` or stray `ctx.Set` calls from polluting the error
   response.
 
@@ -838,25 +838,25 @@ app.Get("/ws", func(ctx *swifty.Context, next func()) {
 
 ## File map
 
-| File | Purpose |
-| ---- | ------- |
-| `swifty.go` | `Application`, `New`/`Default`, `Listen`/`Shutdown`, template loading, `ServeHTTP`, `compose` with double-next guard |
-| `context.go` | `Context`, `H`, `Middleware`, request accessors, `Throw`, `SetStatus`, header buffering (`Set`) |
-| `response.go` | Body setters (`JSON`, `String`, `Data`, `HTML`, `Redirect`), `promoteStatus`, empty-status handling, `respond` and per-type renderers, `setContentType` |
-| `group.go` | `Router` with `normalizePrefix`, `Use`, method registration, `Static` with existence probe / no directory listing / `statusRecorder`, `matchRouterPath` |
-| `router.go` | Internal `router`: pattern canonicalization in `addRoute`, `getRoute`, `handle`, synthesized 404 handler |
-| `trie.go` | Trie `node`: `insert`, `search`, `travel`, literal-before-wildcard child matching |
-| `sse.go` | `SSEWriter` and `Context.SSE` |
-| `websocket.go` | `Context.Upgrade`, `UpgradeOptions`, `WSConn`, frame I/O with fragmentation reassembly and RFC validation, constants, errors |
-| `logger.go` | `Logger` middleware |
-| `recovery.go` | `Recovery` middleware with `http.ErrAbortHandler` passthrough and safe traceback |
-| `main.go` | Demo entry point; `//go:build ignore`, excluded from package builds |
-| `context_test.go` | Request accessor, `BindJSON`, `State`, `Throw` tests |
-| `response_test.go` | Renderer, promotion, `SetStatus`, empty-status, `Redirect`, Content-Type precedence, onion-model tests |
-| `router_test.go` | `parsePattern`, trie route resolution, literal-over-wildcard priority, 404 tests |
-| `sse_test.go` | SSE wire format, multiline data, JSON events, comments, stream, heartbeat concurrency tests |
-| `swifty_test.go` | Router nesting/normalization, middleware order, prefix boundary, Recovery, static files (listing disabled, fd close), templates, double-next 500 tests |
-| `websocket_test.go` | Handshake, accept key, echo, JSON, heartbeat, fragmentation, unmasked-frame rejection, version validation tests |
+| File                | Purpose                                                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `swifty.go`         | `Application`, `New`/`Default`, `Listen`/`Shutdown`, template loading, `ServeHTTP`, `compose` with double-next guard                                    |
+| `context.go`        | `Context`, `H`, `Middleware`, request accessors, `Throw`, `SetStatus`, header buffering (`Set`)                                                         |
+| `response.go`       | Body setters (`JSON`, `String`, `Data`, `HTML`, `Redirect`), `promoteStatus`, empty-status handling, `respond` and per-type renderers, `setContentType` |
+| `group.go`          | `Router` with `normalizePrefix`, `Use`, method registration, `Static` with existence probe / no directory listing / `statusRecorder`, `matchRouterPath` |
+| `router.go`         | Internal `router`: pattern canonicalization in `addRoute`, `getRoute`, `handle`, synthesized 404 handler                                                |
+| `trie.go`           | Trie `node`: `insert`, `search`, `travel`, literal-before-wildcard child matching                                                                       |
+| `sse.go`            | `SSEWriter` and `Context.SSE`                                                                                                                           |
+| `websocket.go`      | `Context.Upgrade`, `UpgradeOptions`, `WSConn`, frame I/O with fragmentation reassembly and RFC validation, constants, errors                            |
+| `logger.go`         | `Logger` middleware                                                                                                                                     |
+| `recovery.go`       | `Recovery` middleware with `http.ErrAbortHandler` passthrough and safe traceback                                                                        |
+| `main.go`           | Demo entry point; `//go:build ignore`, excluded from package builds                                                                                     |
+| `context_test.go`   | Request accessor, `BindJSON`, `State`, `Throw` tests                                                                                                    |
+| `response_test.go`  | Renderer, promotion, `SetStatus`, empty-status, `Redirect`, Content-Type precedence, onion-model tests                                                  |
+| `router_test.go`    | `parsePattern`, trie route resolution, literal-over-wildcard priority, 404 tests                                                                        |
+| `sse_test.go`       | SSE wire format, multiline data, JSON events, comments, stream, heartbeat concurrency tests                                                             |
+| `swifty_test.go`    | Router nesting/normalization, middleware order, prefix boundary, Recovery, static files (listing disabled, fd close), templates, double-next 500 tests  |
+| `websocket_test.go` | Handshake, accept key, echo, JSON, heartbeat, fragmentation, unmasked-frame rejection, version validation tests                                         |
 
 ## Dependencies
 
@@ -886,31 +886,31 @@ Standard library packages used: `bufio`, `context`, `crypto/sha1`,
 Non-obvious contracts enforced by the source. Use this table when generating or
 reviewing `swifty_http` code.
 
-| Area | Contract |
-| ---- | -------- |
-| Status promotion | Body setters promote 404 to 200 immediately (`promoteStatus`); middleware after `next()` sees the final status. `respond()` repeats the check for direct `ctx.Body` assignments. |
-| Explicit status | `SetStatus`, `Throw`, and `Redirect` mark the status explicit; direct `ctx.Status` field assignment does not, so explicit 404+body requires `SetStatus`/`Throw`. |
-| Throw shape | `Throw` sets `Body = H{"message": msg, "data": nil}` -- the unified `{message, data}` envelope. |
-| Redirect status | `Redirect` keeps a previously chosen 3xx (300/301/302/303/305/307/308), otherwise defaults to 302, and adds a `"Redirecting to <url>"` text body when `Body` is nil. |
-| Empty statuses | 204/205/304 strip the body and Content-Type/Length/Transfer-Encoding headers in `respond()`. |
-| Content-Type | A Content-Type buffered via `ctx.Set` always beats the inferred `ctx.Type`. |
-| Header keys | `ctx.Set` canonicalizes keys; single value per header, no removal API, no multi-value (`Set-Cookie`) support. |
-| respond skip | `respond()` returns early when `ctx.flushed`; `SSE()`, `Upgrade()`, and Static rely on this. |
-| JSON failure | `respondJSON` marshals before committing the status line; marshal failure downgrades cleanly to 500 JSON. |
-| next() guard | `compose` panics on a repeated `next()`; Recovery turns it into a 500. |
-| Recovery | Re-raises `http.ErrAbortHandler`; otherwise logs `%v` + traceback and resets Status/Type/headers/Body to a fixed 500 JSON. |
-| Logger accuracy | Logger reads `ctx.Status` after the chain; SSE records 200, Upgrade records 101, Static mirrors the real status via `statusRecorder`. |
-| Router prefix | `normalizePrefix` forces a leading `/` and strips trailing `/`; `/v1` matches `/v1` and `/v1/...`, never `/v10`. |
-| Middleware collection | Collected at request time from all matching routers in creation order; `Use` after child creation still applies. |
-| Pattern canonicalization | `addRoute` rebuilds the pattern from parsed parts; `/users`, `/users/`, `//users` share one handler slot (last wins). |
-| Wildcard | `*name` must be last; later segments are silently dropped. Literal children beat wildcards. |
-| Static | Probes existence (handle closed immediately), 404 on miss, no directory listings without `index.html`, flushes `ctx.Set` headers before delegating. |
-| Server lifecycle | `http.Server` is built in `New()`; `go app.Listen` + `Shutdown` is race-free; `Listen` returns `http.ErrServerClosed` after shutdown. |
-| Templates | `SetFuncMap` before `LoadHTMLGlob`; `LoadHTMLGlob` panics on parse errors. |
-| SSE heartbeat | Stop functions (SSE and WS) are idempotent and block until the goroutine exits. |
-| SSE fields | `ID` is a bare field line (pair it with `Data`/`Event`/`JSON`); `Retry` terminates the current event block. |
-| WS handshake | GET only (405), Connection/Upgrade tokens (400), `Sec-WebSocket-Version: 13` (400 + advisory header), key required (400), origin check (403), hijack required (500). |
-| WS frames | Fragmentation reassembled up to 65536 bytes total; unmasked client frames, RSV bits, oversized/fragmented control frames, unknown opcodes all rejected with `ErrWSInvalidFrame`. |
-| WS reads | `ReadMessage` auto-handles ping/pong and returns `ErrWSClosed` on close; `Listen` does not take `readMu` -- never mix the two. |
-| WS close | `Closed()` channel closes exactly once; read errors after a local `Close` do not trigger `OnError`. |
-| WS writes | Serialized by `writeMu`; `WriteBufferSize` is unused; no write-side size cap. |
+| Area                     | Contract                                                                                                                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status promotion         | Body setters promote 404 to 200 immediately (`promoteStatus`); middleware after `next()` sees the final status. `respond()` repeats the check for direct `ctx.Body` assignments. |
+| Explicit status          | `SetStatus`, `Throw`, and `Redirect` mark the status explicit; direct `ctx.Status` field assignment does not, so explicit 404+body requires `SetStatus`/`Throw`.                 |
+| Throw shape              | `Throw` sets `Body = H{"message": msg, "data": nil}` -- the unified `{message, data}` envelope.                                                                                  |
+| Redirect status          | `Redirect` keeps a previously chosen 3xx (300/301/302/303/305/307/308), otherwise defaults to 302, and adds a `"Redirecting to <url>"` text body when `Body` is nil.             |
+| Empty statuses           | 204/205/304 strip the body and Content-Type/Length/Transfer-Encoding headers in `respond()`.                                                                                     |
+| Content-Type             | A Content-Type buffered via `ctx.Set` always beats the inferred `ctx.Type`.                                                                                                      |
+| Header keys              | `ctx.Set` canonicalizes keys; single value per header, no removal API, no multi-value (`Set-Cookie`) support.                                                                    |
+| respond skip             | `respond()` returns early when `ctx.flushed`; `SSE()`, `Upgrade()`, and Static rely on this.                                                                                     |
+| JSON failure             | `respondJSON` marshals before committing the status line; marshal failure downgrades cleanly to 500 JSON.                                                                        |
+| next() guard             | `compose` panics on a repeated `next()`; Recovery turns it into a 500.                                                                                                           |
+| Recovery                 | Re-raises `http.ErrAbortHandler`; otherwise logs `%v` + traceback and resets Status/Type/headers/Body to a fixed 500 JSON.                                                       |
+| Logger accuracy          | Logger reads `ctx.Status` after the chain; SSE records 200, Upgrade records 101, Static mirrors the real status via `statusRecorder`.                                            |
+| Router prefix            | `normalizePrefix` forces a leading `/` and strips trailing `/`; `/v1` matches `/v1` and `/v1/...`, never `/v10`.                                                                 |
+| Middleware collection    | Collected at request time from all matching routers in creation order; `Use` after child creation still applies.                                                                 |
+| Pattern canonicalization | `addRoute` rebuilds the pattern from parsed parts; `/users`, `/users/`, `//users` share one handler slot (last wins).                                                            |
+| Wildcard                 | `*name` must be last; later segments are silently dropped. Literal children beat wildcards.                                                                                      |
+| Static                   | Probes existence (handle closed immediately), 404 on miss, no directory listings without `index.html`, flushes `ctx.Set` headers before delegating.                              |
+| Server lifecycle         | `http.Server` is built in `New()`; `go app.Listen` + `Shutdown` is race-free; `Listen` returns `http.ErrServerClosed` after shutdown.                                            |
+| Templates                | `SetFuncMap` before `LoadHTMLGlob`; `LoadHTMLGlob` panics on parse errors.                                                                                                       |
+| SSE heartbeat            | Stop functions (SSE and WS) are idempotent and block until the goroutine exits.                                                                                                  |
+| SSE fields               | `ID` is a bare field line (pair it with `Data`/`Event`/`JSON`); `Retry` terminates the current event block.                                                                      |
+| WS handshake             | GET only (405), Connection/Upgrade tokens (400), `Sec-WebSocket-Version: 13` (400 + advisory header), key required (400), origin check (403), hijack required (500).             |
+| WS frames                | Fragmentation reassembled up to 65536 bytes total; unmasked client frames, RSV bits, oversized/fragmented control frames, unknown opcodes all rejected with `ErrWSInvalidFrame`. |
+| WS reads                 | `ReadMessage` auto-handles ping/pong and returns `ErrWSClosed` on close; `Listen` does not take `readMu` -- never mix the two.                                                   |
+| WS close                 | `Closed()` channel closes exactly once; read errors after a local `Close` do not trigger `OnError`.                                                                              |
+| WS writes                | Serialized by `writeMu`; `WriteBufferSize` is unused; no write-side size cap.                                                                                                    |

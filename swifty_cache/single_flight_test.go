@@ -31,7 +31,7 @@ import (
 
 func TestDoReturnsValueAndError(t *testing.T) {
 	var g swifty_cache.SingleFlightGroup
-	value, err := g.Do("key", func() (interface{}, error) {
+	value, err := g.Do("key", func() (any, error) {
 		return "value", nil
 	})
 	if err != nil || value != "value" {
@@ -39,7 +39,7 @@ func TestDoReturnsValueAndError(t *testing.T) {
 	}
 
 	wantErr := errors.New("load failed")
-	value, err = g.Do("err", func() (interface{}, error) {
+	value, err = g.Do("err", func() (any, error) {
 		return nil, wantErr
 	})
 	if value != nil || !errors.Is(err, wantErr) {
@@ -63,7 +63,7 @@ func TestDoSuppressesDuplicateCalls(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			value, err := g.Do("key", func() (interface{}, error) {
+			value, err := g.Do("key", func() (any, error) {
 				mu.Lock()
 				calls++
 				if calls == 1 {
@@ -96,7 +96,7 @@ func TestDoSuppressesDuplicateCalls(t *testing.T) {
 		t.Fatalf("calls = %d, want 1", calls)
 	}
 
-	if _, err := g.Do("key", func() (interface{}, error) {
+	if _, err := g.Do("key", func() (any, error) {
 		calls++
 		return "next", nil
 	}); err != nil {

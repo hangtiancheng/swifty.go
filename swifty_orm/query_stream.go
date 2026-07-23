@@ -72,7 +72,7 @@ func (c *Cursor) Next(ctx context.Context) bool {
 }
 
 // Decode unmarshals the current document into out.
-func (c *Cursor) Decode(out interface{}) error {
+func (c *Cursor) Decode(out any) error {
 	return c.cursor.Decode(out)
 }
 

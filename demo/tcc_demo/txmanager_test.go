@@ -299,7 +299,7 @@ func Test_txmanager_transaction_fail(t *testing.T) {
 		}
 		componentReqs = append(componentReqs, &RequestEntity{
 			ComponentID: componentID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"reject_flag": true,
 			},
 		})
@@ -399,7 +399,7 @@ func Test_txmanager_transaction_advance_progress(t *testing.T) {
 		}
 		componentReqs = append(componentReqs, &RequestEntity{
 			ComponentID: componentID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"hanging_flag": true,
 			},
 		})

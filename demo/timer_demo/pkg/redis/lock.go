@@ -77,7 +77,7 @@ func (r *ReentrantDistributeLock) Lock(ctx context.Context, expireSeconds int64)
 
 // Unlock releases the lock using a Lua script for atomicity.
 func (r *ReentrantDistributeLock) Unlock(ctx context.Context) error {
-	keysAndArgs := []interface{}{r.getLockKey(), r.token}
+	keysAndArgs := []any{r.getLockKey(), r.token}
 	reply, err := r.client.Eval(ctx, LuaCheckAndDeleteDistributionLock, 1, keysAndArgs)
 	if err != nil {
 		return err
@@ -91,7 +91,7 @@ func (r *ReentrantDistributeLock) Unlock(ctx context.Context) error {
 
 // ExpireLock updates the lock expiration using a Lua script for atomicity.
 func (r *ReentrantDistributeLock) ExpireLock(ctx context.Context, expireSeconds int64) error {
-	keysAndArgs := []interface{}{r.getLockKey(), r.token, expireSeconds}
+	keysAndArgs := []any{r.getLockKey(), r.token, expireSeconds}
 	reply, err := r.client.Eval(ctx, LuaCheckAndExpireDistributionLock, 1, keysAndArgs)
 	if err != nil {
 		return err

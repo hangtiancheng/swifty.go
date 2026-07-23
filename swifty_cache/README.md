@@ -261,7 +261,7 @@ func (g *Group) Delete(ctx context.Context, key string) error
 func (g *Group) Clear()
 func (g *Group) Close() error
 func (g *Group) RegisterPeers(peers PeerPicker)   // May only be called once.
-func (g *Group) Stats() map[string]interface{}    // Hit rate, load latency, per-level hits.
+func (g *Group) Stats() map[string]any    // Hit rate, load latency, per-level hits.
 func (g *Group) Entries() []Entry                 // All live entries in local cache.
 func (g *Group) DashboardEnabled() bool           // Whether the dashboard is active.
 ```
@@ -340,7 +340,7 @@ func Register(svcName, addr string, stopCh <-chan error) error
 
 ```go
 type SingleFlightGroup struct{ /* ... */ }
-func (g *SingleFlightGroup) Do(key string, fn func() (interface{}, error)) (interface{}, error)
+func (g *SingleFlightGroup) Do(key string, fn func() (any, error)) (any, error)
 ```
 
 ### Dashboard

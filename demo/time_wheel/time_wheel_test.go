@@ -57,7 +57,7 @@ var (
 	// scheduled task callback info
 	callbackURL    = "please fill in callback url"
 	callbackMethod = "POST"
-	callbackReq    interface{}
+	callbackReq    any
 	callbackHeader map[string]string
 )
 

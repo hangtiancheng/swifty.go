@@ -37,13 +37,13 @@ func (ctx *Context) promoteStatus() {
 	}
 }
 
-func (ctx *Context) JSON(obj interface{}) {
+func (ctx *Context) JSON(obj any) {
 	ctx.Type = "application/json"
 	ctx.Body = obj
 	ctx.promoteStatus()
 }
 
-func (ctx *Context) String(format string, values ...interface{}) {
+func (ctx *Context) String(format string, values ...any) {
 	ctx.Type = "text/plain"
 	ctx.Body = fmt.Sprintf(format, values...)
 	ctx.promoteStatus()
@@ -54,7 +54,7 @@ func (ctx *Context) Data(data []byte) {
 	ctx.promoteStatus()
 }
 
-func (ctx *Context) HTML(name string, data interface{}) {
+func (ctx *Context) HTML(name string, data any) {
 	ctx.Type = "text/html"
 	ctx.Body = htmlPayload{name: name, data: data}
 	ctx.promoteStatus()
@@ -79,7 +79,7 @@ func (ctx *Context) Redirect(url string) {
 
 type htmlPayload struct {
 	name string
-	data interface{}
+	data any
 }
 
 // emptyStatus reports whether the status code forbids a response body
@@ -140,7 +140,7 @@ func (ctx *Context) setContentType(value string) {
 	}
 }
 
-func (ctx *Context) respondJSON(obj interface{}) {
+func (ctx *Context) respondJSON(obj any) {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		log.Printf("swifty_http: json marshal failed: %v", err)

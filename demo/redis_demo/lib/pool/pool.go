@@ -32,7 +32,7 @@ import (
 
 func init() {
 	gopool.SetCap(50000)
-	gopool.SetPanicHandler(func(_ context.Context, e interface{}) {
+	gopool.SetPanicHandler(func(_ context.Context, e any) {
 		stackInfo := strings.Replace(string(debug.Stack()), "\n", "", -1)
 		log.GetDefaultLogger().Errorf("recover info: %v, stack info: %s", e, stackInfo)
 	})

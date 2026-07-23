@@ -81,17 +81,17 @@ func main() {
 	defer cancel()
 	_, success, err := txManager.Transaction(ctx, []*tcc_demo.RequestEntity{
 		{ComponentID: componentAID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentAID + "_biz",
 			},
 		},
 		{ComponentID: componentBID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentBID + "_biz",
 			},
 		},
 		{ComponentID: componentCID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentCID + "_biz",
 			},
 		},

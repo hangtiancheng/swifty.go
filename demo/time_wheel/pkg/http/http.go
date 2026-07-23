@@ -40,15 +40,15 @@ func NewClient() *Client {
 	}
 }
 
-func (c *Client) JSONGet(ctx context.Context, url string, header, params map[string]string, resp interface{}) error {
+func (c *Client) JSONGet(ctx context.Context, url string, header, params map[string]string, resp any) error {
 	return c.JSONDo(ctx, http.MethodGet, getCompleteURL(url, params), header, nil, resp)
 }
 
-func (c *Client) JSONPost(ctx context.Context, url string, header map[string]string, req, resp interface{}) error {
+func (c *Client) JSONPost(ctx context.Context, url string, header map[string]string, req, resp any) error {
 	return c.JSONDo(ctx, http.MethodPost, url, header, req, resp)
 }
 
-func (c *Client) JSONDo(ctx context.Context, method, url string, header map[string]string, req, resp interface{}) error {
+func (c *Client) JSONDo(ctx context.Context, method, url string, header map[string]string, req, resp any) error {
 	var reqReader io.Reader
 	if req != nil {
 		body, _ := json.Marshal(req)

@@ -34,7 +34,7 @@ import (
 type condition struct {
 	field string
 	op    string
-	value interface{}
+	value any
 }
 
 // Canonical internal ops beyond MongoDB "$" operators:
@@ -63,7 +63,7 @@ var opAliases = map[string]string{
 //	parseWhere(map)                -> one equality condition per key
 //	parseWhere(field, value)       -> equality (nil value becomes null check)
 //	parseWhere(field, op, value)   -> operator condition
-func parseWhere(args ...interface{}) ([]condition, error) {
+func parseWhere(args ...any) ([]condition, error) {
 	switch len(args) {
 	case 1:
 		return parseWhereMap(args[0])
@@ -95,15 +95,15 @@ func parseWhere(args ...interface{}) ([]condition, error) {
 	}
 }
 
-func parseWhereMap(arg interface{}) ([]condition, error) {
-	var doc map[string]interface{}
+func parseWhereMap(arg any) ([]condition, error) {
+	var doc map[string]any
 	switch m := arg.(type) {
 	case bson.M:
 		doc = m
-	case map[string]interface{}:
+	case map[string]any:
 		doc = m
 	default:
-		return nil, fmt.Errorf("where: single argument must be bson.M or map[string]interface{}, got %T", arg)
+		return nil, fmt.Errorf("where: single argument must be bson.M or map[string]any, got %T", arg)
 	}
 	keys := make([]string, 0, len(doc))
 	for k := range doc {
@@ -121,7 +121,7 @@ func parseWhereMap(arg interface{}) ([]condition, error) {
 	return conditions, nil
 }
 
-func normalizeOp(rawOp string, value interface{}) (string, interface{}, error) {
+func normalizeOp(rawOp string, value any) (string, any, error) {
 	op, known := opAliases[strings.ToLower(strings.TrimSpace(rawOp))]
 	if !known {
 		if strings.HasPrefix(rawOp, "$") {
@@ -144,15 +144,15 @@ func normalizeOp(rawOp string, value interface{}) (string, interface{}, error) {
 	return op, value, nil
 }
 
-func toBetweenPair(value interface{}) ([2]interface{}, error) {
-	if pair, ok := value.([2]interface{}); ok {
+func toBetweenPair(value any) ([2]any, error) {
+	if pair, ok := value.([2]any); ok {
 		return pair, nil
 	}
 	rv := reflect.ValueOf(value)
 	if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) && rv.Len() == 2 {
-		return [2]interface{}{rv.Index(0).Interface(), rv.Index(1).Interface()}, nil
+		return [2]any{rv.Index(0).Interface(), rv.Index(1).Interface()}, nil
 	}
-	return [2]interface{}{}, fmt.Errorf("where: between requires a 2-element slice or array, got %T", value)
+	return [2]any{}, fmt.Errorf("where: between requires a 2-element slice or array, got %T", value)
 }
 
 // likeToRegex converts a SQL LIKE pattern (% and _ wildcards) into an anchored
@@ -199,7 +199,7 @@ func buildConditionFilter(conditions []condition) bson.M {
 	opFields := make(map[string]bool)
 	var andClauses []bson.M
 
-	setEquality := func(field string, value interface{}) {
+	setEquality := func(field string, value any) {
 		existing, exists := filter[field]
 		if !exists {
 			filter[field] = value
@@ -215,7 +215,7 @@ func buildConditionFilter(conditions []condition) bson.M {
 		andClauses = append(andClauses, bson.M{field: value})
 	}
 
-	setOp := func(field string, op string, value interface{}) {
+	setOp := func(field string, op string, value any) {
 		existing, exists := filter[field]
 		if exists {
 			if opFields[field] {
@@ -241,11 +241,11 @@ func buildConditionFilter(conditions []condition) bson.M {
 		case "notNull":
 			setOp(c.field, "$ne", nil)
 		case "between":
-			pair := c.value.([2]interface{})
+			pair := c.value.([2]any)
 			setOp(c.field, "$gte", pair[0])
 			setOp(c.field, "$lte", pair[1])
 		case "notBetween":
-			pair := c.value.([2]interface{})
+			pair := c.value.([2]any)
 			setOp(c.field, "$not", bson.M{"$gte": pair[0], "$lte": pair[1]})
 		case "like":
 			setOp(c.field, "$regex", primitive.Regex{Pattern: likeToRegex(c.value.(string))})

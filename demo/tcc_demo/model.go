@@ -28,7 +28,7 @@ type RequestEntity struct {
 	// Component name
 	ComponentID string `json:"componentName"`
 	// Component request parameters
-	Request map[string]interface{} `json:"request"`
+	Request map[string]any `json:"request"`
 }
 
 type ComponentEntities []*ComponentEntity
@@ -42,7 +42,7 @@ func (c ComponentEntities) ToComponents() []TCCComponent {
 }
 
 type ComponentEntity struct {
-	Request   map[string]interface{}
+	Request   map[string]any
 	Component TCCComponent
 }
 

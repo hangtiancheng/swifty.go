@@ -34,7 +34,7 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_rpc/internal/transport"
 )
 
-func (c *Client) InvokeAsync(ctx context.Context, service string, method string, args interface{}) (*transport.Future, error) {
+func (c *Client) InvokeAsync(ctx context.Context, service string, method string, args any) (*transport.Future, error) {
 	future, err := c.invokeAsync(ctx, service, method, args)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 }
 
 // Invoke runs one RPC call and applies the client timeout to both send and wait.
-func (c *Client) Invoke(ctx context.Context, service string, method string, args interface{}, reply interface{}) error {
+func (c *Client) Invoke(ctx context.Context, service string, method string, args any, reply any) error {
 	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -71,7 +71,7 @@ func (c *Client) Invoke(ctx context.Context, service string, method string, args
 	return err
 }
 
-func (c *Client) InvokeStream(ctx context.Context, service string, method string, args interface{}) (stream.ClientStream, error) {
+func (c *Client) InvokeStream(ctx context.Context, service string, method string, args any) (stream.ClientStream, error) {
 	if !c.limiter.Allow() {
 		return nil, errors.New("rate limit exceeded")
 	}
@@ -125,7 +125,7 @@ type observedStream struct {
 	once  sync.Once
 }
 
-func (o *observedStream) Recv(msg interface{}) error {
+func (o *observedStream) Recv(msg any) error {
 	err := o.inner.Recv(msg)
 	switch {
 	case err == nil:
@@ -143,7 +143,7 @@ func (o *observedStream) Context() context.Context {
 	return o.inner.Context()
 }
 
-func (c *Client) invokeAsync(ctx context.Context, service string, method string, args interface{}) (*transport.Future, error) {
+func (c *Client) invokeAsync(ctx context.Context, service string, method string, args any) (*transport.Future, error) {
 	if !c.limiter.Allow() {
 		return nil, errors.New("rate limit exceeded")
 	}

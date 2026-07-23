@@ -80,7 +80,7 @@ type fakeStream struct {
 	sent   bool
 }
 
-func (s *fakeStream) Recv(msg interface{}) error {
+func (s *fakeStream) Recv(msg any) error {
 	if s.sent {
 		return io.EOF
 	}
@@ -122,7 +122,7 @@ func TestRegisterLoginAndAuthenticatedChat(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register", strings.NewReader(registerBody))
 	engine.ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestStreamRoutesUseSSE(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register", strings.NewReader(`{"email":"stream@example.com","password":"pass"}`))
 	engine.ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestSendMessageStreamToSession(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register", strings.NewReader(`{"email":"stream2@example.com","password":"pass"}`))
 	engine.ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	json.Unmarshal(rec.Body.Bytes(), &body)
 	token := body["token"].(string)
 
@@ -213,7 +213,7 @@ func TestAuthRejectsInvalidToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/chat/get-user-sessions-by-username", nil)
 	app.Engine().ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestTokenQueryAuth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/chat/get-user-sessions-by-username?token="+token, nil)
 	app.Engine().ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestInvalidModelTypeRejected(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register", strings.NewReader(`{"email":"model@example.com","password":"pass"}`))
 	engine.ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestRAGModelTypeIsAccepted(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register", strings.NewReader(`{"email":"rag@example.com","password":"pass"}`))
 	engine.ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
@@ -328,12 +328,12 @@ func TestSessionsCanBeServedFromCache(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/chat/get-user-sessions-by-username", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	app.Engine().ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
-	sessions := body["sessions"].([]interface{})
-	session := sessions[0].(map[string]interface{})
+	sessions := body["sessions"].([]any)
+	session := sessions[0].(map[string]any)
 	if session["id"] != "cached" {
 		t.Fatalf("body = %v", body)
 	}
@@ -354,12 +354,12 @@ func TestHistoryCanBeServedFromCache(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat/get-chat-history-list", strings.NewReader(`{"session_id":"session-1"}`))
 	req.Header.Set("Authorization", "Bearer "+token)
 	app.Engine().ServeHTTP(rec, req)
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json decode returned error: %v", err)
 	}
-	history := body["history"].([]interface{})
-	message := history[0].(map[string]interface{})
+	history := body["history"].([]any)
+	message := history[0].(map[string]any)
 	if message["content"] != "cached" {
 		t.Fatalf("body = %v", body)
 	}

@@ -67,7 +67,7 @@ func NewClient(reg *registry.Registry, opts ...ClientOption) (*Client, error) {
 
 func (c *Client) Close() {
 	c.limiter.Stop()
-	c.pools.Range(func(key, value interface{}) bool {
+	c.pools.Range(func(key, value any) bool {
 		pool := value.(*transport.ConnectionPool)
 		pool.Close()
 		return true

@@ -54,7 +54,7 @@ func NewServer(opts ...ServerOption) *Server {
 	return &Server{inner: inner}
 }
 
-func (s *Server) Register(name string, service interface{}) {
+func (s *Server) Register(name string, service any) {
 	s.inner.Register(name, service)
 }
 

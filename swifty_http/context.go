@@ -26,7 +26,7 @@ import (
 	"net/http"
 )
 
-type H map[string]interface{}
+type H map[string]any
 
 type Middleware func(ctx *Context, next func())
 
@@ -40,11 +40,11 @@ type Context struct {
 
 	// deferred response (Koa-style)
 	Status int
-	Body   interface{}
+	Body   any
 	Type   string
 
 	// middleware data sharing
-	State  map[string]interface{}
+	State  map[string]any
 	Params map[string]string
 
 	// response headers (deferred)
@@ -63,7 +63,7 @@ func newContext(w http.ResponseWriter, req *http.Request) *Context {
 		Path:    req.URL.Path,
 		Method:  req.Method,
 		Status:  http.StatusNotFound,
-		State:   make(map[string]interface{}),
+		State:   make(map[string]any),
 		headers: make(map[string]string),
 	}
 }
@@ -105,7 +105,7 @@ func (ctx *Context) PostForm(key string) string {
 	return ctx.Request.FormValue(key)
 }
 
-func (ctx *Context) BindJSON(out interface{}) error {
+func (ctx *Context) BindJSON(out any) error {
 	defer ctx.Request.Body.Close()
 	return json.NewDecoder(ctx.Request.Body).Decode(out)
 }

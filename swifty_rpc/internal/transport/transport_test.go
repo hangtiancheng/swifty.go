@@ -34,11 +34,11 @@ import (
 
 type testCodec struct{}
 
-func (testCodec) Marshal(v interface{}) ([]byte, error) {
+func (testCodec) Marshal(v any) ([]byte, error) {
 	return []byte("unused"), nil
 }
 
-func (testCodec) Unmarshal(data []byte, v interface{}) error {
+func (testCodec) Unmarshal(data []byte, v any) error {
 	out := v.(*string)
 	*out = "decoded:" + string(data)
 	return nil

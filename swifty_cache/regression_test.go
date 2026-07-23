@@ -137,7 +137,7 @@ func TestLRUStoreExpiredReadFiresOnEvicted(t *testing.T) {
 func TestSingleFlightPanicIsRecovered(t *testing.T) {
 	var g SingleFlightGroup
 
-	_, err := g.Do("boom", func() (interface{}, error) {
+	_, err := g.Do("boom", func() (any, error) {
 		panic("kaboom")
 	})
 	if err == nil || !strings.Contains(err.Error(), "kaboom") {
@@ -145,7 +145,7 @@ func TestSingleFlightPanicIsRecovered(t *testing.T) {
 	}
 
 	// The key must be released for subsequent calls.
-	v, err := g.Do("boom", func() (interface{}, error) { return "ok", nil })
+	v, err := g.Do("boom", func() (any, error) { return "ok", nil })
 	if err != nil || v != "ok" {
 		t.Fatalf("Do after panic = %v, %v", v, err)
 	}

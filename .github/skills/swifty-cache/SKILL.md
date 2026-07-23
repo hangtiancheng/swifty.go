@@ -233,15 +233,15 @@ Methods:
 
 | Method           | Signature                                               | Notes                                                             |
 | ---------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
-| Get              | `(ctx context.Context, key string) (ByteView, error)`   | Read-through; peer failure is not surfaced, only logged            |
-| Set              | `(ctx context.Context, key string, value []byte) error` | Local write + async peer sync (3s timeout); rejects empty value    |
-| Delete           | `(ctx context.Context, key string) error`               | Local delete + async peer sync (3s timeout)                        |
-| Clear            | `()`                                                    | Removes all local entries; does not propagate                      |
-| Close            | `() error`                                              | Idempotent (atomic CAS); removes the group from the registry       |
-| RegisterPeers    | `(PeerPicker)`                                          | At most once; panics on the second call (also counts `WithPeers`)  |
-| Stats            | `() map[string]interface{}`                             | See key list below                                                 |
-| DashboardEnabled | `() bool`                                               | True when mainCache has a non-empty DashboardAddr                  |
-| Entries          | `() []Entry`                                            | All live entries from the local cache; nil when closed             |
+| Get              | `(ctx context.Context, key string) (ByteView, error)`   | Read-through; peer failure is not surfaced, only logged           |
+| Set              | `(ctx context.Context, key string, value []byte) error` | Local write + async peer sync (3s timeout); rejects empty value   |
+| Delete           | `(ctx context.Context, key string) error`               | Local delete + async peer sync (3s timeout)                       |
+| Clear            | `()`                                                    | Removes all local entries; does not propagate                     |
+| Close            | `() error`                                              | Idempotent (atomic CAS); removes the group from the registry      |
+| RegisterPeers    | `(PeerPicker)`                                          | At most once; panics on the second call (also counts `WithPeers`) |
+| Stats            | `() map[string]any`                                     | See key list below                                                |
+| DashboardEnabled | `() bool`                                               | True when mainCache has a non-empty DashboardAddr                 |
+| Entries          | `() []Entry`                                            | All live entries from the local cache; nil when closed            |
 
 `Group.Stats` keys (always present unless noted):
 
@@ -289,17 +289,17 @@ func NewCache(opts CacheOptions) *Cache
 Cache methods:
 
 | Method            | Signature                                            | Notes                                                     |
-| ----------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
-| Add               | `(key string, value ByteView)`                       | No-op on a closed cache; lazily initializes the store       |
-| AddWithExpiration | `(key string, value ByteView, exp time.Time)`        | Silently drops entries whose `exp` is already in the past   |
-| Get               | `(ctx context.Context, key string) (ByteView, bool)` | Counts a miss when uninitialized                            |
-| Delete            | `(key string) bool`                                  | `false` if closed or uninitialized                          |
-| Clear             | `()`                                                 | Resets hits/misses; no-op if closed or uninitialized        |
-| Len               | `() int`                                             | Deduplicated count across both LRU levels                   |
-| Close             | `()`                                                 | Idempotent (atomic CAS); nils out and closes the store      |
-| DashboardEnabled  | `() bool`                                            | True when `DashboardAddr != ""`                             |
-| Entries           | `() []Entry`                                         | All live entries via Store.Walk; nil when closed            |
-| Stats             | `() map[string]any`                                  | See key list below                                          |
+| ----------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| Add               | `(key string, value ByteView)`                       | No-op on a closed cache; lazily initializes the store     |
+| AddWithExpiration | `(key string, value ByteView, exp time.Time)`        | Silently drops entries whose `exp` is already in the past |
+| Get               | `(ctx context.Context, key string) (ByteView, bool)` | Counts a miss when uninitialized                          |
+| Delete            | `(key string) bool`                                  | `false` if closed or uninitialized                        |
+| Clear             | `()`                                                 | Resets hits/misses; no-op if closed or uninitialized      |
+| Len               | `() int`                                             | Deduplicated count across both LRU levels                 |
+| Close             | `()`                                                 | Idempotent (atomic CAS); nils out and closes the store    |
+| DashboardEnabled  | `() bool`                                            | True when `DashboardAddr != ""`                           |
+| Entries           | `() []Entry`                                         | All live entries via Store.Walk; nil when closed          |
+| Stats             | `() map[string]any`                                  | See key list below                                        |
 
 `Cache.Stats` keys: `initialized`, `closed`, `hits`, `misses`, plus `size`,
 `hit_rate`, `bytes` (current live bytes, keys + values), and `evictions`
@@ -390,7 +390,7 @@ type SingleFlightGroup struct {
     m sync.Map  // unexported
 }
 
-func (g *SingleFlightGroup) Do(key string, fn func() (interface{}, error)) (interface{}, error)
+func (g *SingleFlightGroup) Do(key string, fn func() (any, error)) (any, error)
 ```
 
 Uses `sync.Map.LoadOrStore` for the lock-free fast path; duplicate concurrent
@@ -932,31 +932,31 @@ cd swifty_cache && go test ./...
 
 ## File map
 
-| File                   | Purpose                                                                                                          |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------|
-| `byte_view.go`         | Immutable `ByteView` value type and `cloneBytes`                                                                 |
-| `store.go`             | `Value` and `Store` interfaces, `StoreOptions`, `NewStoreOptions`                                                |
-| `lru.go`               | Bucketed two-level LRU (`lruStore`) with byte budget, `Entry`, `Now`, `HashBKRD`, `MaskOfNextPowOf2`, cleanup loop |
-| `cache.go`             | `Cache` wrapper: lazy init, lock-guarded store access, stats (incl. bytes/evictions), idempotent close           |
-| `group.go`             | `Group`: read-through with in-callback double-check, write propagation, peer-request marker, global registry     |
-| `single_flight.go`     | `SingleFlightGroup` with panic recovery                                                                          |
-| `con_hash.go`          | Consistent hash ring: fixed replicas, idempotent Add, collision-safe, atomic stats, no background goroutine      |
-| `config.go`            | `ConHashConfig` and `DefaultConHashConfig` (rebalancer fields deprecated/ignored)                                |
-| `peers.go`             | `PeerPicker`/`Peer` interfaces, `ClientPicker`: self-in-ring, key-based event parsing, resilient watch loop      |
-| `server.go`            | gRPC server, health checking, graceful stop with traffic draining, peer-marker injection                         |
-| `client.go`            | gRPC `Peer` implementation (insecure transport, 3s timeouts for Get/Delete)                                      |
-| `register.go`          | `RegisterConfig`, `Register`, etcd lease + keepalive, re-registration with backoff, IP rewrite                   |
-| `dashboard.go`         | WebSocket dashboard: `StartDashboard`, `DashboardHandler`, 2s snapshot push, delete command                      |
-| `utils.go`             | `ValidPeerAddr` (opt-in helper, not used internally)                                                             |
-| `regression_test.go`   | Regression tests pinning the refactor invariants (byte eviction, L2 invalidation, panic recovery, etc.)          |
-| `group_test.go`        | Group/Cache/Server tests plus `fakePeerPicker` / `fakePeer` helpers                                              |
-| `client_test.go`       | `Client` tests with `fakeSwiftyCacheClient`                                                                      |
-| `lru_test.go`          | LRU list and store tests, `testValue` helper                                                                     |
-| `con_hash_test.go`     | Hash ring add/get/remove/stats and concurrency tests                                                             |
-| `single_flight_test.go`| Singleflight value/error propagation and dedup tests                                                             |
-| `pb/swifty.proto`      | Protocol definition                                                                                              |
-| `pb/swifty.pb.go`      | Generated protobuf message types                                                                                 |
-| `pb/swifty_grpc.pb.go` | Generated gRPC client/server stubs and service descriptor                                                        |
+| File                    | Purpose                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `byte_view.go`          | Immutable `ByteView` value type and `cloneBytes`                                                                   |
+| `store.go`              | `Value` and `Store` interfaces, `StoreOptions`, `NewStoreOptions`                                                  |
+| `lru.go`                | Bucketed two-level LRU (`lruStore`) with byte budget, `Entry`, `Now`, `HashBKRD`, `MaskOfNextPowOf2`, cleanup loop |
+| `cache.go`              | `Cache` wrapper: lazy init, lock-guarded store access, stats (incl. bytes/evictions), idempotent close             |
+| `group.go`              | `Group`: read-through with in-callback double-check, write propagation, peer-request marker, global registry       |
+| `single_flight.go`      | `SingleFlightGroup` with panic recovery                                                                            |
+| `con_hash.go`           | Consistent hash ring: fixed replicas, idempotent Add, collision-safe, atomic stats, no background goroutine        |
+| `config.go`             | `ConHashConfig` and `DefaultConHashConfig` (rebalancer fields deprecated/ignored)                                  |
+| `peers.go`              | `PeerPicker`/`Peer` interfaces, `ClientPicker`: self-in-ring, key-based event parsing, resilient watch loop        |
+| `server.go`             | gRPC server, health checking, graceful stop with traffic draining, peer-marker injection                           |
+| `client.go`             | gRPC `Peer` implementation (insecure transport, 3s timeouts for Get/Delete)                                        |
+| `register.go`           | `RegisterConfig`, `Register`, etcd lease + keepalive, re-registration with backoff, IP rewrite                     |
+| `dashboard.go`          | WebSocket dashboard: `StartDashboard`, `DashboardHandler`, 2s snapshot push, delete command                        |
+| `utils.go`              | `ValidPeerAddr` (opt-in helper, not used internally)                                                               |
+| `regression_test.go`    | Regression tests pinning the refactor invariants (byte eviction, L2 invalidation, panic recovery, etc.)            |
+| `group_test.go`         | Group/Cache/Server tests plus `fakePeerPicker` / `fakePeer` helpers                                                |
+| `client_test.go`        | `Client` tests with `fakeSwiftyCacheClient`                                                                        |
+| `lru_test.go`           | LRU list and store tests, `testValue` helper                                                                       |
+| `con_hash_test.go`      | Hash ring add/get/remove/stats and concurrency tests                                                               |
+| `single_flight_test.go` | Singleflight value/error propagation and dedup tests                                                               |
+| `pb/swifty.proto`       | Protocol definition                                                                                                |
+| `pb/swifty.pb.go`       | Generated protobuf message types                                                                                   |
+| `pb/swifty_grpc.pb.go`  | Generated gRPC client/server stubs and service descriptor                                                          |
 
 ## Dependencies
 

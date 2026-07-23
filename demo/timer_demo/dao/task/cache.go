@@ -156,7 +156,7 @@ func (t *TaskCache) GetTableName(task *po.Task) string {
 // }
 
 type cacheClient interface {
-	Transaction(ctx context.Context, commands ...*redis.Command) ([]interface{}, error)
+	Transaction(ctx context.Context, commands ...*redis.Command) ([]any, error)
 	ZrangeByScore(ctx context.Context, table string, score1, score2 int64) ([]string, error)
 	Expire(ctx context.Context, key string, expireSeconds int64) error
 	MGet(ctx context.Context, keys ...string) ([]string, error)

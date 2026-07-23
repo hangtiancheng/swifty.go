@@ -35,9 +35,9 @@ type dashboardSnapshot struct {
 }
 
 type groupSnapshot struct {
-	Name    string                 `json:"name"`
-	Stats   map[string]interface{} `json:"stats"`
-	Entries []entrySnapshot        `json:"entries"`
+	Name    string          `json:"name"`
+	Stats   map[string]any  `json:"stats"`
+	Entries []entrySnapshot `json:"entries"`
 }
 
 type entrySnapshot struct {
