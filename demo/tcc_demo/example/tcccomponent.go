@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/demdxx/gocast"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/pkg"
@@ -37,14 +37,18 @@ const (
 )
 
 type MockComponent struct {
-	id     string
-	client *redis_lock.Client
+	id          string
+	client      RedisClient
+	lockFactory LockFactory
 }
 
 func NewMockComponent(id string, client *redis_lock.Client) *MockComponent {
 	return &MockComponent{
 		id:     id,
 		client: client,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return redis_lock.NewRedisLock(key, client, opts...)
+		},
 	}
 }
 
@@ -54,7 +58,7 @@ func (m *MockComponent) ID() string {
 
 func (m *MockComponent) Try(ctx context.Context, req *tcc_demo.TCCReq) (*tcc_demo.TCCResp, error) {
 	// 基于 txID 维度加锁
-	lock := redis_lock.NewRedisLock(pkg.BuildTXLockKey(m.id, req.TXID), m.client)
+	lock := m.lockFactory(pkg.BuildTXLockKey(m.id, req.TXID))
 	if err := lock.Lock(ctx); err != nil {
 		return nil, err
 	}
@@ -64,7 +68,7 @@ func (m *MockComponent) Try(ctx context.Context, req *tcc_demo.TCCReq) (*tcc_dem
 
 	// 基于 txID 幂等性去重
 	txStatus, err := m.client.Get(ctx, pkg.BuildTXKey(m.id, req.TXID))
-	if err != nil && !errors.Is(err, redis_lock.ErrNil) {
+	if err != nil && !errors.Is(err, goredis.Nil) {
 		return nil, err
 	}
 
@@ -82,7 +86,7 @@ func (m *MockComponent) Try(ctx context.Context, req *tcc_demo.TCCReq) (*tcc_dem
 	}
 
 	// 执行 try 操作，将数据状态置为 frozen，倘若这笔
-	bizID := gocast.ToString(req.Data["biz_id"])
+	bizID := fmt.Sprintf("%v", req.Data["biz_id"])
 	// 存储 bizID 和事务的关系
 	if _, err = m.client.Set(ctx, pkg.BuildTXDetailKey(m.id, req.TXID), bizID); err != nil {
 		return nil, err
@@ -109,7 +113,7 @@ func (m *MockComponent) Try(ctx context.Context, req *tcc_demo.TCCReq) (*tcc_dem
 
 func (m *MockComponent) Confirm(ctx context.Context, txID string) (*tcc_demo.TCCResp, error) {
 	// 基于 txID 维度加锁
-	lock := redis_lock.NewRedisLock(pkg.BuildTXLockKey(m.id, txID), m.client)
+	lock := m.lockFactory(pkg.BuildTXLockKey(m.id, txID))
 	if err := lock.Lock(ctx); err != nil {
 		return nil, err
 	}
@@ -167,7 +171,7 @@ func (m *MockComponent) Confirm(ctx context.Context, txID string) (*tcc_demo.TCC
 
 func (m *MockComponent) Cancel(ctx context.Context, txID string) (*tcc_demo.TCCResp, error) {
 	// 基于 txID 维度加锁
-	lock := redis_lock.NewRedisLock(pkg.BuildTXLockKey(m.id, txID), m.client)
+	lock := m.lockFactory(pkg.BuildTXLockKey(m.id, txID))
 	if err := lock.Lock(ctx); err != nil {
 		return nil, err
 	}
@@ -177,7 +181,7 @@ func (m *MockComponent) Cancel(ctx context.Context, txID string) (*tcc_demo.TCCR
 
 	// 查看事务的状态，只要不是 confirmed，就无脑置为 canceld
 	txStatus, err := m.client.Get(ctx, pkg.BuildTXKey(m.id, txID))
-	if err != nil && !errors.Is(err, redis_lock.ErrNil) {
+	if err != nil && !errors.Is(err, goredis.Nil) {
 		return nil, err
 	}
 	// 先 confirm 后 cancel，属于非法的状态扭转链路

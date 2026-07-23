@@ -29,7 +29,7 @@ func NewWorker(taskDAO *taskdao.TaskDAO, timerDAO *timerdao.TimerDAO, lockServic
 	}
 }
 
-// 每隔1分钟上报失败的定时器数量
+// Start reports the count of unexecuted timers every minute.
 func (w *Worker) Start(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -47,7 +47,7 @@ func (w *Worker) Start(ctx context.Context) {
 			continue
 		}
 
-		// 取上一分钟的定时器进行查询
+		// Query timers from the previous minute
 		minute := utils.GetMinute(now)
 		go w.reportUnexecedTasksCnt(ctx, minute)
 		go w.reportEnabledTimersCnt(ctx)

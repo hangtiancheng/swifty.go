@@ -10,19 +10,31 @@ import (
 
 const dsn = ""
 
+// DBFactory abstracts database creation for testability.
+type DBFactory interface {
+	Open(dsn string, opts ...gorm.Option) (*gorm.DB, error)
+}
+
+type defaultDBFactory struct{}
+
+func (defaultDBFactory) Open(dsn string, opts ...gorm.Option) (*gorm.DB, error) {
+	return gorm.Open(mysql.Open(dsn), opts...)
+}
+
 var (
-	db     *gorm.DB
-	dbonce sync.Once
+	dbFactory DBFactory = defaultDBFactory{}
+	db        *gorm.DB
+	dbonce    sync.Once
 )
 
 func NewDB(dsn string, opts ...gorm.Option) (*gorm.DB, error) {
-	return gorm.Open(mysql.Open(dsn), opts...)
+	return dbFactory.Open(dsn, opts...)
 }
 
 func GetDB() *gorm.DB {
 	dbonce.Do(func() {
 		var err error
-		if db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{}); err != nil {
+		if db, err = dbFactory.Open(dsn, &gorm.Config{}); err != nil {
 			panic(fmt.Errorf("failed to connect database, err: %w", err))
 		}
 	})

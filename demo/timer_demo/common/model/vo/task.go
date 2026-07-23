@@ -25,15 +25,15 @@ func NewGetTasksResp(tasks []*Task, total int64, codeMsg CodeMsg) *GetTasksResp 
 	}
 }
 
-// Task 运行流水记录
+// Task is an execution record for a timer run.
 type Task struct {
-	ID       uint      `json:"id"`       // 任务 ID
-	App      string    `json:"app"`      // 定义ID
-	TimerID  uint      `json:"timerID"`  // 定义ID
-	Output   string    `json:"output"`   // 执行结果
-	RunTimer time.Time `json:"runTimer"` // 执行时间
-	CostTime int       `json:"costTime"` // 执行耗时
-	Status   int       `json:"status"`   // 当前状态
+	ID       uint      `json:"id"`       // Task ID
+	App      string    `json:"app"`      // App name
+	TimerID  uint      `json:"timerID"`  // Timer ID
+	Output   string    `json:"output"`   // Execution result
+	RunTimer time.Time `json:"runTimer"` // Execution time
+	CostTime int       `json:"costTime"` // Execution cost
+	Status   int       `json:"status"`   // Current status
 }
 
 func NewTask(task *po.Task) *Task {

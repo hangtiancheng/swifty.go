@@ -8,7 +8,7 @@ import (
 	service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/migrator"
 )
 
-// 定期从 timer 表中加载一系列 task 记录添加到 task 表中
+// MigratorApp periodically loads task records from the timer table and adds them to the task table.
 type MigratorApp struct {
 	sync.Once
 	ctx    context.Context

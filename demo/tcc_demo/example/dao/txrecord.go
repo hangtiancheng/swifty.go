@@ -29,6 +29,11 @@ type TXRecordDAO struct {
 	db *gorm.DB
 }
 
+// TXRecordUpdater is the subset of TXRecordDAO used inside LockAndDo callbacks.
+type TXRecordUpdater interface {
+	UpdateTXRecord(ctx context.Context, record *TXRecordPO) error
+}
+
 func NewTXRecordDAO(db *gorm.DB) *TXRecordDAO {
 	return &TXRecordDAO{
 		db: db,
@@ -50,7 +55,7 @@ func (t *TXRecordDAO) CreateTXRecord(ctx context.Context, record *TXRecordPO) (u
 }
 
 func (t *TXRecordDAO) UpdateComponentStatus(ctx context.Context, id uint, componentID string, status string) error {
-	return t.LockAndDo(ctx, id, func(ctx context.Context, dao *TXRecordDAO, record *TXRecordPO) error {
+	return t.LockAndDo(ctx, id, func(ctx context.Context, dao TXRecordUpdater, record *TXRecordPO) error {
 		var statuses map[string]*ComponentTryStatus
 		if err := json.Unmarshal([]byte(record.ComponentTryStatuses), &statuses); err != nil {
 			return err
@@ -79,7 +84,7 @@ func (t *TXRecordDAO) UpdateTXRecord(ctx context.Context, record *TXRecordPO) er
 	return t.db.WithContext(ctx).Updates(record).Error
 }
 
-func (t *TXRecordDAO) LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao *TXRecordDAO, record *TXRecordPO) error) error {
+func (t *TXRecordDAO) LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao TXRecordUpdater, record *TXRecordPO) error) error {
 	return t.db.Transaction(func(tx *gorm.DB) error {
 		// 加写锁
 		var record TXRecordPO

@@ -64,18 +64,18 @@ func NewGetTimerResp(timer *Timer, codeMsg CodeMsg) *GetTimerResp {
 
 type Timer struct {
 	ID              uint               `json:"id,omitempty"`
-	App             string             `json:"app,omitempty" binding:"required"`             // 定时器定义名称
-	Name            string             `json:"name,omitempty" binding:"required"`            // 定时器定义名称
-	Status          consts.TimerStatus `json:"status"`                                       // 定时器定义状态，1:未激活, 2:已激活
-	Cron            string             `json:"cron,omitempty" binding:"required"`            // 定时器定时配置
-	NotifyHTTPParam *NotifyHTTPParam   `json:"notifyHTTPParam,omitempty" binding:"required"` // http 回调参数
+	App             string             `json:"app,omitempty" binding:"required"`             // App name
+	Name            string             `json:"name,omitempty" binding:"required"`            // Timer name
+	Status          consts.TimerStatus `json:"status"`                                       // Timer status: 1=disabled, 2=enabled
+	Cron            string             `json:"cron,omitempty" binding:"required"`            // Cron expression
+	NotifyHTTPParam *NotifyHTTPParam   `json:"notifyHTTPParam,omitempty" binding:"required"` // HTTP callback parameters
 }
 
 type NotifyHTTPParam struct {
-	Method string            `json:"method,omitempty" binding:"required"` // POST,GET 方法
-	URL    string            `json:"url,omitempty" binding:"required"`    // URL 路径
-	Header map[string]string `json:"header,omitempty"`                    // header 请求头
-	Body   string            `json:"body,omitempty"`                      // 请求参数体
+	Method string            `json:"method,omitempty" binding:"required"` // HTTP method: POST, GET, etc.
+	URL    string            `json:"url,omitempty" binding:"required"`    // URL path
+	Header map[string]string `json:"header,omitempty"`                    // Request headers
+	Body   string            `json:"body,omitempty"`                      // Request body
 }
 
 func NewTimer(timer *po.Timer) (*Timer, error) {

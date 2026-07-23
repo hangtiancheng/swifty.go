@@ -105,8 +105,8 @@ func NewLogger(options Options) Logger {
 	}
 }
 
-func (l *stdLogger) output(calldepth int, level, msg string) {
-	l.logger.Output(calldepth+1, fmt.Sprintf("[%s] %s", level, msg))
+func (l *stdLogger) output(callDepth int, level, msg string) {
+	l.logger.Output(callDepth+1, fmt.Sprintf("[%s] %s", level, msg))
 }
 
 func (l *stdLogger) Debugf(format string, v ...interface{}) {

@@ -2,35 +2,37 @@ package datastore
 
 import (
 	"math/rand"
+	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/database"
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/lib"
-	"github.com/spf13/cast"
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_list_crud(t *testing.T) {
 	list := newListEntity("")
 	l := make([][]byte, 0, 1000)
-	rander := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
+	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	for i := 0; i < 1000; i++ {
-		member1 := rander.Intn(1000)
-		member2 := rander.Intn(1000)
-		list.LPush([]byte(cast.ToString(member1)))
-		list.RPush([]byte(cast.ToString(member2)))
-		l = append([][]byte{[]byte(cast.ToString(member1))}, l...)
-		l = append(l, []byte(cast.ToString(member2)))
+		member1 := randInst.Intn(1000)
+		member2 := randInst.Intn(1000)
+		list.LPush([]byte(strconv.Itoa(member1)))
+		list.RPush([]byte(strconv.Itoa(member2)))
+		l = append([][]byte{[]byte(strconv.Itoa(member1))}, l...)
+		l = append(l, []byte(strconv.Itoa(member2)))
 	}
 
 	t.Run("range", func(t *testing.T) {
 		for i := 0; i < 1000; i++ {
-			start := rander.Intn(1001)
-			end := start + rander.Intn(1000)
+			start := randInst.Intn(1001)
+			end := start + randInst.Intn(1000)
 			actual := list.Range(int64(start), int64(end))
 			expect := l[start : end+1]
-			assert.Equal(t, expect, actual)
+			if !reflect.DeepEqual(expect, actual) {
+				t.Errorf("range [%d:%d], expect: %v, got: %v", start, end, expect, actual)
+			}
 		}
 	})
 
@@ -39,41 +41,52 @@ func Test_list_crud(t *testing.T) {
 			actual := list.LPop(2)
 			expect := l[:2]
 			l = l[2:]
-			assert.Equal(t, expect, actual)
+			if !reflect.DeepEqual(expect, actual) {
+				t.Errorf("lpop, expect: %v, got: %v", expect, actual)
+			}
 
 			actual = list.RPop(2)
 			expect = l[len(l)-2:]
 			l = l[:len(l)-2]
-			assert.Equal(t, expect, actual)
+			if !reflect.DeepEqual(expect, actual) {
+				t.Errorf("rpop, expect: %v, got: %v", expect, actual)
+			}
 		}
 	})
 }
 
 func Test_list_to_cmds(t *testing.T) {
 	list := newListEntity("")
-	rander := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
+	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	l := make([]int, 0, 1000)
-	// 插入1000条数据
+	// Insert 1000 entries.
 	for i := 0; i < 1000; i++ {
-		member := rander.Intn(1000)
-		list.LPush([]byte(cast.ToString(member)))
+		member := randInst.Intn(1000)
+		list.LPush([]byte(strconv.Itoa(member)))
 		l = append(l, member)
 	}
 
 	cmd := list.ToCmd()
 	t.Run("length", func(t *testing.T) {
-		assert.Equal(t, len(l)+2, len(cmd))
+		if len(l)+2 != len(cmd) {
+			t.Errorf("length, expect: %d, got: %d", len(l)+2, len(cmd))
+		}
 	})
 	t.Run("command", func(t *testing.T) {
-		assert.Equal(t, database.CmdTypeRPush, database.CmdType(cmd[0]))
+		if database.CmdTypeRPush != database.CmdType(cmd[0]) {
+			t.Errorf("command, expect: %s, got: %s", database.CmdTypeRPush, database.CmdType(cmd[0]))
+		}
 	})
 	t.Run("key", func(t *testing.T) {
-		assert.Equal(t, "", string(cmd[1]))
+		if "" != string(cmd[1]) {
+			t.Errorf("key, expect: empty, got: %s", string(cmd[1]))
+		}
 	})
 
 	actual := make([]int, 0, len(cmd)-2)
 	for i := 2; i < len(cmd); i++ {
-		actual = append(actual, cast.ToInt(string(cmd[i])))
+		v, _ := strconv.Atoi(string(cmd[i]))
+		actual = append(actual, v)
 	}
 	sort.Slice(actual, func(i, j int) bool {
 		return actual[i] < actual[j]
@@ -85,6 +98,8 @@ func Test_list_to_cmds(t *testing.T) {
 	})
 
 	t.Run("member", func(t *testing.T) {
-		assert.Equal(t, expect, actual)
+		if !reflect.DeepEqual(expect, actual) {
+			t.Errorf("member, expect: %v, got: %v", expect, actual)
+		}
 	})
 }

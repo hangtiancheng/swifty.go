@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// 单次读取限制 4M
+// Single read limit: 4M
 const (
 	defaultReadLimitBytes                = 4 * 1024 * 1024
 	defaultTimeoutDuration time.Duration = 5 * time.Second

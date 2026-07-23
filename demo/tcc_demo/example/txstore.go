@@ -5,25 +5,28 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
+	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo"
 	expdao "github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/dao"
 	"github.com/hangtiancheng/swifty.go/demo/tcc_demo/example/pkg"
-
-	"github.com/demdxx/gocast"
-	"github.com/hangtiancheng/swifty.go/demo/redis_lock"
 )
 
 type MockTXStore struct {
-	client *redis_lock.Client
-	dao    TXRecordDAO
+	client      RedisClient
+	dao         TXRecordDAO
+	lockFactory LockFactory
 }
 
 func NewMockTXStore(dao TXRecordDAO, client *redis_lock.Client) *MockTXStore {
 	return &MockTXStore{
 		dao:    dao,
 		client: client,
+		lockFactory: func(key string, opts ...redis_lock.LockOption) Lock {
+			return redis_lock.NewRedisLock(key, client, opts...)
+		},
 	}
 }
 
@@ -46,11 +49,15 @@ func (m *MockTXStore) CreateTX(ctx context.Context, components ...tcc_demo.TCCCo
 		return "", err
 	}
 
-	return gocast.ToString(txID), nil
+	return strconv.FormatUint(uint64(txID), 10), nil
 }
 
 func (m *MockTXStore) TXUpdate(ctx context.Context, txID string, componentID string, accept bool) error {
-	_txID := gocast.ToUint(txID)
+	parsedID, err := strconv.ParseUint(txID, 10, 64)
+	if err != nil {
+		return err
+	}
+	_txID := uint(parsedID)
 	status := tcc_demo.TXFailure.String()
 	if accept {
 		status = tcc_demo.TXSuccessful.String()
@@ -77,7 +84,7 @@ func (m *MockTXStore) GetHangingTXs(ctx context.Context) ([]*tcc_demo.Transactio
 		}
 
 		txs = append(txs, &tcc_demo.Transaction{
-			TXID:       gocast.ToString(record.ID),
+			TXID:       strconv.FormatUint(uint64(record.ID), 10),
 			Status:     tcc_demo.TXHanging,
 			CreatedAt:  record.CreatedAt,
 			Components: components,
@@ -88,18 +95,18 @@ func (m *MockTXStore) GetHangingTXs(ctx context.Context) ([]*tcc_demo.Transactio
 }
 
 func (m *MockTXStore) Lock(ctx context.Context, expireDuration time.Duration) error {
-	lock := redis_lock.NewRedisLock(pkg.BuildTXRecordLockKey(), m.client, redis_lock.WithExpireSeconds(int64(expireDuration.Seconds())))
+	lock := m.lockFactory(pkg.BuildTXRecordLockKey(), redis_lock.WithExpireSeconds(int64(expireDuration.Seconds())))
 	return lock.Lock(ctx)
 }
 
 func (m *MockTXStore) Unlock(ctx context.Context) error {
-	lock := redis_lock.NewRedisLock(pkg.BuildTXRecordLockKey(), m.client)
+	lock := m.lockFactory(pkg.BuildTXRecordLockKey())
 	return lock.Unlock(ctx)
 }
 
 // 提交事务的最终状态
 func (m *MockTXStore) TXSubmit(ctx context.Context, txID string, success bool) error {
-	do := func(ctx context.Context, dao *expdao.TXRecordDAO, record *expdao.TXRecordPO) error {
+	do := func(ctx context.Context, dao expdao.TXRecordUpdater, record *expdao.TXRecordPO) error {
 		if success {
 			if record.Status == tcc_demo.TXFailure.String() {
 				return fmt.Errorf("invalid tx status: %s, txid: %s", record.Status, txID)
@@ -113,12 +120,20 @@ func (m *MockTXStore) TXSubmit(ctx context.Context, txID string, success bool) e
 		}
 		return dao.UpdateTXRecord(ctx, record)
 	}
-	return m.dao.LockAndDo(ctx, gocast.ToUint(txID), do)
+	parsedID, err := strconv.ParseUint(txID, 10, 64)
+	if err != nil {
+		return err
+	}
+	return m.dao.LockAndDo(ctx, uint(parsedID), do)
 }
 
 // 获取指定的一笔事务
 func (m *MockTXStore) GetTX(ctx context.Context, txID string) (*tcc_demo.Transaction, error) {
-	records, err := m.dao.GetTXRecords(ctx, expdao.WithID(gocast.ToUint(txID)))
+	parsedID, err := strconv.ParseUint(txID, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	records, err := m.dao.GetTXRecords(ctx, expdao.WithID(uint(parsedID)))
 	if err != nil {
 		return nil, err
 	}
@@ -149,5 +164,5 @@ type TXRecordDAO interface {
 	CreateTXRecord(ctx context.Context, record *expdao.TXRecordPO) (uint, error)
 	UpdateComponentStatus(ctx context.Context, id uint, componentID string, status string) error
 	UpdateTXRecord(ctx context.Context, record *expdao.TXRecordPO) error
-	LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao *expdao.TXRecordDAO, record *expdao.TXRecordPO) error) error
+	LockAndDo(ctx context.Context, id uint, do func(ctx context.Context, dao expdao.TXRecordUpdater, record *expdao.TXRecordPO) error) error
 }

@@ -3,43 +3,42 @@ package webserver
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 
-	"github.com/gin-gonic/gin"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/conf"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	gs "github.com/swaggo/gin-swagger"
-	"github.com/swaggo/gin-swagger/swaggerFiles"
+
+	swifty "github.com/hangtiancheng/swifty.go/swifty_http"
 )
 
 type Server struct {
 	sync.Once
-	engine *gin.Engine
+	app *swifty.Application
 
 	timerApp *TimerApp
 	taskApp  *TaskApp
 
-	timerRouter *gin.RouterGroup
-	taskRouter  *gin.RouterGroup
-	mockRouter  *gin.RouterGroup
+	timerRouter *swifty.Router
+	taskRouter  *swifty.Router
+	mockRouter  *swifty.Router
 
 	confProvider *conf.WebServerAppConfProvider
 }
 
 func NewServer(timer *TimerApp, task *TaskApp, confProvider *conf.WebServerAppConfProvider) *Server {
 	s := Server{
-		engine:       gin.Default(),
+		app:          swifty.Default(),
 		timerApp:     timer,
 		taskApp:      task,
 		confProvider: confProvider,
 	}
 
-	s.engine.Use(CrosHandler())
+	s.app.Use(CorsHandler())
 
-	s.timerRouter = s.engine.Group("api/timer/v1")
-	s.taskRouter = s.engine.Group("api/task/v1")
-	s.mockRouter = s.engine.Group("api/mock/v1")
-	s.RegisterBaseRouter()
+	s.timerRouter = s.app.Router("/api/timer/v1")
+	s.taskRouter = s.app.Router("/api/task/v1")
+	s.mockRouter = s.app.Router("/api/mock/v1")
 	s.RegisterMockRouter()
 	s.RegisterTimerRouter()
 	s.RegisterTaskRouter()
@@ -54,36 +53,32 @@ func (s *Server) Start() {
 func (s *Server) start() {
 	conf := s.confProvider.Get()
 	go func() {
-		if err := s.engine.Run(fmt.Sprintf(":%d", conf.Port)); err != nil {
+		if err := s.app.Listen(fmt.Sprintf(":%d", conf.Port)); err != nil {
 			panic(err)
 		}
 	}()
 }
 
-func (s *Server) RegisterBaseRouter() {
-	s.engine.GET("/swagger/*any", gs.WrapHandler(swaggerFiles.Handler))
-}
-
 func (s *Server) RegisterTimerRouter() {
-	s.timerRouter.GET("/def", s.timerApp.GetTimer)
-	s.timerRouter.POST("/def", s.timerApp.CreateTimer)
-	s.timerRouter.DELETE("/def", s.timerApp.DeleteTimer)
-	s.timerRouter.PATCH("/def", s.timerApp.UpdateTimer)
+	s.timerRouter.Get("/def", s.timerApp.GetTimer)
+	s.timerRouter.Post("/def", s.timerApp.CreateTimer)
+	s.timerRouter.Delete("/def", s.timerApp.DeleteTimer)
+	s.timerRouter.Patch("/def", s.timerApp.UpdateTimer)
 
-	s.timerRouter.GET("/defs", s.timerApp.GetAppTimers)
-	s.timerRouter.GET("/defsByName", s.timerApp.GetTimersByName)
+	s.timerRouter.Get("/defs", s.timerApp.GetAppTimers)
+	s.timerRouter.Get("/defsByName", s.timerApp.GetTimersByName)
 
-	s.timerRouter.POST("/enable", s.timerApp.EnableTimer)
-	s.timerRouter.POST("/unable", s.timerApp.UnableTimer)
+	s.timerRouter.Post("/enable", s.timerApp.EnableTimer)
+	s.timerRouter.Post("/unable", s.timerApp.UnableTimer)
 }
 
 func (s *Server) RegisterTaskRouter() {
-	s.taskRouter.GET("/records", s.taskApp.GetTasks)
+	s.taskRouter.Get("/records", s.taskApp.GetTasks)
 }
 
 func (s *Server) RegisterMockRouter() {
-	s.mockRouter.Any("/mock", func(ctx *gin.Context) {
-		ctx.JSON(http.StatusOK, struct {
+	s.mockRouter.All("/mock", func(ctx *swifty.Context, next func()) {
+		ctx.JSON(struct {
 			Word string `json:"word"`
 		}{
 			Word: "hello world!",
@@ -92,7 +87,15 @@ func (s *Server) RegisterMockRouter() {
 }
 
 func (s *Server) RegisterMonitorRouter() {
-	s.engine.Any("/metrics", func(ctx *gin.Context) {
-		promhttp.Handler().ServeHTTP(ctx.Writer, ctx.Request)
+	s.app.All("/metrics", func(ctx *swifty.Context, next func()) {
+		rec := httptest.NewRecorder()
+		promhttp.Handler().ServeHTTP(rec, ctx.Request)
+		for k, vs := range rec.Header() {
+			for _, v := range vs {
+				ctx.Writer.Header().Add(k, v)
+			}
+		}
+		ctx.SetStatus(rec.Code)
+		ctx.Data(rec.Body.Bytes())
 	})
 }

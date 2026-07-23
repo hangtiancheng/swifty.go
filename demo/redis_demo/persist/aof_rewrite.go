@@ -13,20 +13,20 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/protocol"
 )
 
-// 重写 aof 文件
+// rewriteAOF rewrites the AOF file.
 func (a *aofPersister) rewriteAOF() error {
-	// 1 重写前处理. 需要短暂加锁
+	// 1. Pre-rewrite: briefly acquire the lock.
 	tmpFile, fileSize, err := a.startRewrite()
 	if err != nil {
 		return err
 	}
 
-	// 2 aof 指令重写. 与主流程并发执行
+	// 2. Rewrite AOF commands concurrently with the main loop.
 	if err = a.doRewrite(tmpFile, fileSize); err != nil {
 		return err
 	}
 
-	// 3 完成重写. 需要短暂加锁
+	// 3. Post-rewrite: briefly acquire the lock.
 	return a.endRewrite(tmpFile, fileSize)
 }
 
@@ -41,7 +41,7 @@ func (a *aofPersister) startRewrite() (*os.File, int64, error) {
 	fileInfo, _ := os.Stat(a.aofFileName)
 	fileSize := fileInfo.Size()
 
-	// 创建一个临时的 aof 文件
+	// Create a temporary AOF file.
 	tmpFile, err := os.CreateTemp("./", "*.aof")
 	if err != nil {
 		return nil, 0, err
@@ -56,7 +56,7 @@ func (a *aofPersister) doRewrite(tmpFile *os.File, fileSize int64) error {
 		return err
 	}
 
-	// 将 db 数据转为 aof cmd
+	// Convert db data to AOF commands.
 	forkedDB.ForEach(func(key string, adapter database.CmdAdapter, expireAt *time.Time) {
 		_, _ = tmpFile.Write(handler.NewMultiBulkReply(adapter.ToCmd()).ToBytes())
 
@@ -79,11 +79,11 @@ func (a *aofPersister) forkDB(fileSize int64) (database.DataStore, error) {
 	file.Seek(0, io.SeekStart)
 	logger := log.GetDefaultLogger()
 	reloader := readCloserAdapter(io.LimitReader(file, fileSize), file.Close)
-	fakePerisister := newFakePersister(reloader)
-	tmpKVStore := datastore.NewKVStore(fakePerisister)
+	fakePersister := newFakePersister(reloader)
+	tmpKVStore := datastore.NewKVStore(fakePersister)
 	executor := database.NewDBExecutor(tmpKVStore)
 	trigger := database.NewDBTrigger(executor)
-	h, err := handler.NewHandler(trigger, fakePerisister, protocol.NewParser(logger), logger)
+	h, err := handler.NewHandler(trigger, fakePersister, protocol.NewParser(logger), logger)
 	if err != nil {
 		return nil, err
 	}
@@ -112,19 +112,19 @@ func (a *aofPersister) endRewrite(tmpFile *os.File, fileSize int64) error {
 		return err
 	}
 
-	// 把老的 aof 文件中后续内容 copy 到 tmp 中
+	// Copy the tail of the old AOF file into the temp file.
 	if _, err = io.Copy(tmpFile, src); err != nil {
 		return err
 	}
 
-	// 关闭老的 aof 文件，准备废弃
+	// Close the old AOF file (about to be discarded).
 	_ = a.aofFile.Close()
-	// 重命名 tmp 文件，作为新的 aof 文件
+	// Rename the temp file to the new AOF file.
 	if err := os.Rename(tmpFile.Name(), a.aofFileName); err != nil {
 		// log
 	}
 
-	// 重新开启
+	// Reopen the AOF file.
 	aofFile, err := os.OpenFile(a.aofFileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		panic(err)

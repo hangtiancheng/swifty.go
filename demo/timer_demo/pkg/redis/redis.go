@@ -3,230 +3,121 @@ package redis
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/conf"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/pkg/log"
 
-	"github.com/gomodule/redigo/redis"
+	gredis "github.com/redis/go-redis/v9"
 )
 
-// Client Redis 客户端.
+// Client is a Redis client backed by go-redis/v9.
 type Client struct {
-	pool *redis.Pool
+	client *gredis.Client
 }
 
-// GetClient 获取客户端.
+// GetClient creates a new Redis client from configuration.
 func GetClient(confProvider *conf.RedisConfigProvider) *Client {
-	pool := getRedisPool(confProvider.Get())
-	return &Client{
-		pool: pool,
-	}
+	config := confProvider.Get()
+	client := gredis.NewClient(&gredis.Options{
+		Addr:         config.Address,
+		Password:     config.Password,
+		PoolSize:     config.MaxActive,
+		MinIdleConns: config.MaxIdle,
+		IdleTimeout:  time.Duration(config.IdleTimeoutSeconds) * time.Second,
+	})
+	return &Client{client: client}
 }
 
-func (c *Client) GetConn(ctx context.Context) (redis.Conn, error) {
-	return c.pool.GetContext(ctx)
-}
-
-func getRedisPool(config *conf.RedisConfig) *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     config.MaxIdle,
-		IdleTimeout: time.Duration(config.IdleTimeoutSeconds) * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := newRedisConn(config)
-			if err != nil {
-				return nil, err
-			}
-			return c, nil
-		},
-		MaxActive: config.MaxActive,
-		Wait:      config.Wait,
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			if err != nil {
-				log.Errorf("Failed to ping redis server, caused by %s", err)
-			}
-			return err
-		},
-	}
-}
-
-func newRedisConn(conf *conf.RedisConfig) (redis.Conn, error) {
-	if conf.Address == "" {
-		panic("Cannot get redis address from config")
-	}
-
-	conn, err := redis.DialContext(context.Background(),
-		conf.Network, conf.Address, redis.DialPassword(conf.Password))
-	if err != nil {
-		log.Errorf("Failed to connect to redis, caused by %s", err)
-		return nil, err
-	}
-	return conn, nil
-}
-
-// SetEx 执行 Redis SET 命令，expireTime 时间单位为秒.
+// SetEx executes the Redis SET command with an expiration in seconds.
 func (c *Client) SetEx(ctx context.Context, key, value string, expireSeconds int64) error {
 	if key == "" || value == "" {
 		return errors.New("redis SET key or value can't be empty")
 	}
-
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("SET", key, value, "EX", expireSeconds)
-	return err
+	return c.client.Set(ctx, key, value, time.Duration(expireSeconds)*time.Second).Err()
 }
 
+// SetNX executes the Redis SETNX command and sets expiration on success.
 func (c *Client) SetNX(ctx context.Context, key, value string, expireSeconds int64) (interface{}, error) {
 	if key == "" || value == "" {
 		return -1, errors.New("redis SET keyNX or value can't be empty")
 	}
-
-	conn, err := c.pool.GetContext(ctx)
+	ok, err := c.client.SetNX(ctx, key, value, time.Duration(expireSeconds)*time.Second).Result()
 	if err != nil {
 		return -1, err
 	}
-	defer conn.Close()
-
-	reply, err := conn.Do("SETNX", key, value)
-	if err != nil {
-		return -1, err
+	if ok {
+		return int64(1), nil
 	}
-
-	r, _ := reply.(int64)
-	if r == 1 {
-		_, _ = conn.Do("EXPIRE", key, expireSeconds)
-	}
-
-	return reply, nil
+	return int64(0), nil
 }
 
-// Eval 支持使用 lua 脚本.
+// Eval executes a Lua script.
 func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
-	args := make([]interface{}, 2+len(keysAndArgs))
-	args[0] = src
-	args[1] = keyCount
-	copy(args[2:], keysAndArgs)
-
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return -1, err
+	keys := make([]string, 0, keyCount)
+	args := make([]interface{}, 0, len(keysAndArgs)-keyCount)
+	for i, v := range keysAndArgs {
+		if i < keyCount {
+			keys = append(keys, v.(string))
+		} else {
+			args = append(args, v)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Do("EVAL", args...)
+	return c.client.Eval(ctx, src, keys, args...).Result()
 }
 
-// Get 执行 Redis GET 命令.
+// Get executes the Redis GET command.
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return "", err
+	val, err := c.client.Get(ctx, key).Result()
+	if err == gredis.Nil {
+		return "", gredis.Nil
 	}
-	defer conn.Close()
-	return redis.String(conn.Do("GET", key))
+	return val, err
 }
 
-// Exists 执行Redis Exists 命令.
+// Exists executes the Redis EXISTS command.
 func (c *Client) Exists(ctx context.Context, keys ...string) (bool, error) {
-	// redigo 对为 nil 或 empty 的参数报错信息很模糊，因此手动添加错误信息
 	if len(keys) == 0 {
 		return false, errors.New("redis Exists args can't be nil or empty")
 	}
-
-	conn, err := c.pool.GetContext(ctx)
+	n, err := c.client.Exists(ctx, keys...).Result()
 	if err != nil {
 		return false, err
 	}
-	defer conn.Close()
-
-	args := make([]interface{}, len(keys))
-	for i := range keys {
-		args[i] = keys[i]
-	}
-	return redis.Bool(conn.Do("exists", args...))
+	return n > 0, nil
 }
 
-// HGet 执行Redis HGet 命令.
+// HGet executes the Redis HGET command.
 func (c *Client) HGet(ctx context.Context, table, key string) (string, error) {
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer conn.Close()
-
-	reply, err := conn.Do("HGET", table, key)
-	if err != nil {
-		return "", err
-	}
-
-	if reply == nil {
+	val, err := c.client.HGet(ctx, table, key).Result()
+	if err == gredis.Nil {
 		return "", nil
 	}
-
-	return redis.String(reply, err)
+	return val, err
 }
 
-// HSet 执行Redis HSet 命令.
+// HSet executes the Redis HSET command.
 func (c *Client) HSet(ctx context.Context, table, key string, value interface{}) error {
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("HSET", table, key, value)
-	return err
+	return c.client.HSet(ctx, table, key, value).Err()
 }
 
+// ZrangeByScore executes the Redis ZRANGEBYSCORE command.
 func (c *Client) ZrangeByScore(ctx context.Context, table string, score1, score2 int64) ([]string, error) {
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-
-	raws, err := redis.Values(conn.Do("ZRANGEBYSCORE", table, score1, score2))
-	if err != nil {
-		return nil, err
-	}
-
-	var res []string
-	for _, raw := range raws {
-		tmp, ok := raw.([]byte)
-		if !ok {
-			continue
-		}
-		res = append(res, string(tmp))
-	}
-	return res, nil
+	return c.client.ZRangeByScore(ctx, table, &gredis.ZRangeBy{
+		Min: strconv.FormatInt(score1, 10),
+		Max: strconv.FormatInt(score2, 10),
+	}).Result()
 }
 
-// ZAdd 执行Redis ZAdd 命令.
+// ZAdd executes the Redis ZADD command.
 func (c *Client) ZAdd(ctx context.Context, table string, score int64, value interface{}) error {
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("ZADD", table, score, value)
-	return err
+	return c.client.ZAdd(ctx, table, gredis.Z{Score: float64(score), Member: value}).Err()
 }
 
+// Expire executes the Redis EXPIRE command.
 func (c *Client) Expire(ctx context.Context, key string, expireSeconds int64) error {
-	conn, err := c.pool.GetContext(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	_, err = conn.Do("EXPIRE", key, expireSeconds)
-	return err
+	return c.client.Expire(ctx, key, time.Duration(expireSeconds)*time.Second).Err()
 }
 
 func NewSetCommand(args ...interface{}) *Command {
@@ -262,67 +153,103 @@ type Command struct {
 	Args []interface{}
 }
 
+// Transaction executes a pipeline of commands atomically.
 func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]interface{}, error) {
 	if len(commands) == 0 {
 		return nil, nil
 	}
 
-	conn, err := c.pool.GetContext(ctx)
+	results, err := c.client.TxPipelined(ctx, func(pipe gredis.Pipeliner) error {
+		for _, cmd := range commands {
+			switch cmd.Name {
+			case "SET":
+				key := cmd.Args[0].(string)
+				pipe.Set(ctx, key, cmd.Args[1], 0)
+			case "ZADD":
+				key := cmd.Args[0].(string)
+				score := toInt64(cmd.Args[1])
+				pipe.ZAdd(ctx, key, gredis.Z{Score: float64(score), Member: cmd.Args[2]})
+			case "SETBIT":
+				key := cmd.Args[0].(string)
+				offset := toInt64(cmd.Args[1])
+				pipe.SetBit(ctx, key, offset, 1)
+			case "EXPIRE":
+				key := cmd.Args[0].(string)
+				seconds := toInt64(cmd.Args[1])
+				pipe.Expire(ctx, key, time.Duration(seconds)*time.Second)
+			}
+		}
+		return nil
+	})
 	if err != nil {
+		log.Errorf("redis transaction failed, err: %v", err)
 		return nil, err
 	}
-	defer conn.Close()
 
-	_ = conn.Send("MULTI")
-	for _, command := range commands {
-		_ = conn.Send(command.Name, command.Args...)
+	res := make([]interface{}, len(results))
+	for i, r := range results {
+		res[i] = r
 	}
-
-	return redis.Values(conn.Do("EXEC"))
+	return res, nil
 }
 
+// SetBit executes the Redis SETBIT command, setting the bit at offset to 1.
 func (c *Client) SetBit(ctx context.Context, key string, offset int32) (bool, error) {
-	conn, err := c.pool.GetContext(ctx)
+	prev, err := c.client.SetBit(ctx, key, int64(offset), 1).Result()
 	if err != nil {
 		return false, err
 	}
-	defer conn.Close()
-
-	reply, err := redis.Int(conn.Do("SETBIT", key, offset, 1))
-	return reply == 1, err
+	return prev == 1, nil
 }
 
+// GetBit executes the Redis GETBIT command.
 func (c *Client) GetBit(ctx context.Context, key string, offset int32) (bool, error) {
-	conn, err := c.pool.GetContext(ctx)
+	val, err := c.client.GetBit(ctx, key, int64(offset)).Result()
 	if err != nil {
 		return false, err
 	}
-	defer conn.Close()
-
-	reply, err := redis.Int(conn.Do("GETBIT", key, offset))
-	return reply == 1, err
+	return val == 1, nil
 }
 
-// MGet 执行 Redis MGET 命令.
+// MGet executes the Redis MGET command.
 func (c *Client) MGet(ctx context.Context, keys ...string) ([]string, error) {
-	// redigo 对为 nil 或 empty 的参数报错信息很模糊，因此手动添加错误信息
 	if len(keys) == 0 {
-		return nil, errors.New("redis MSET args can't be nil or empty")
+		return nil, errors.New("redis MGET args can't be nil or empty")
 	}
-
-	conn, err := c.pool.GetContext(ctx)
+	results, err := c.client.MGet(ctx, keys...).Result()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 
-	args := make([]interface{}, len(keys))
-	for i := range keys {
-		args[i] = keys[i]
+	res := make([]string, 0, len(results))
+	for _, r := range results {
+		if r == nil {
+			res = append(res, "")
+			continue
+		}
+		s, ok := r.(string)
+		if !ok {
+			res = append(res, "")
+			continue
+		}
+		res = append(res, s)
 	}
-	return redis.Strings(conn.Do("MGET", args...))
+	return res, nil
 }
 
 func (c *Client) GetDistributionLock(key string) DistributeLocker {
 	return NewReentrantDistributeLock(key, c)
+}
+
+func toInt64(v interface{}) int64 {
+	switch val := v.(type) {
+	case int:
+		return int64(val)
+	case int32:
+		return int64(val)
+	case int64:
+		return val
+	default:
+		return 0
+	}
 }

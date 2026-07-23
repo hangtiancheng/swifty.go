@@ -37,19 +37,19 @@ type SortedSet interface {
 
 type skiplist struct {
 	key           string
-	scoreToNode   map[int64]*skipnode
+	scoreToNode   map[int64]*skipNode
 	memberToScore map[string]int64
-	head          *skipnode
-	rander        *rand.Rand
+	head          *skipNode
+	randInst        *rand.Rand
 }
 
 func newSkiplist(key string) SortedSet {
 	return &skiplist{
 		key:           key,
 		memberToScore: make(map[string]int64),
-		scoreToNode:   make(map[int64]*skipnode),
-		head:          newSkipnode(0, 0),
-		rander:        rand.New((rand.NewSource(lib.TimeNow().UnixNano()))),
+		scoreToNode:   make(map[int64]*skipNode),
+		head:          newSkipNode(0, 0),
+		randInst:        rand.New((rand.NewSource(lib.TimeNow().UnixNano()))),
 	}
 }
 
@@ -76,7 +76,7 @@ func (s *skiplist) Add(score int64, member string) {
 		s.head.nexts = append(s.head.nexts, nil)
 	}
 
-	inserted := newSkipnode(score, height+1)
+	inserted := newSkipNode(score, height+1)
 	inserted.members[member] = struct{}{}
 	s.scoreToNode[score] = inserted
 
@@ -136,7 +136,7 @@ func (s *skiplist) Range(score1, score2 int64) []string {
 
 func (s *skiplist) roll() int64 {
 	var level int64
-	for s.rander.Intn(2) > 0 {
+	for s.randInst.Intn(2) > 0 {
 		level++
 	}
 	return level
@@ -144,10 +144,10 @@ func (s *skiplist) roll() int64 {
 
 func (s *skiplist) rem(score int64, member string) {
 	delete(s.memberToScore, member)
-	skipnode := s.scoreToNode[score]
+	node := s.scoreToNode[score]
 
-	delete(skipnode.members, member)
-	if len(skipnode.members) > 0 {
+	delete(node.members, member)
+	if len(node.members) > 0 {
 		return
 	}
 
@@ -162,9 +162,9 @@ func (s *skiplist) rem(score int64, member string) {
 			continue
 		}
 
-		remed := move.nexts[i]
+		remVal := move.nexts[i]
 		move.nexts[i] = move.nexts[i].nexts[i]
-		remed.nexts[i] = nil
+		remVal.nexts[i] = nil
 	}
 }
 
@@ -178,16 +178,16 @@ func (s *skiplist) ToCmd() [][]byte {
 	return args
 }
 
-type skipnode struct {
+type skipNode struct {
 	score   int64
 	members map[string]struct{}
-	nexts   []*skipnode
+	nexts   []*skipNode
 }
 
-func newSkipnode(score, height int64) *skipnode {
-	return &skipnode{
+func newSkipNode(score, height int64) *skipNode {
+	return &skipNode{
 		score:   score,
 		members: make(map[string]struct{}),
-		nexts:   make([]*skipnode, height),
+		nexts:   make([]*skipNode, height),
 	}
 }

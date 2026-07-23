@@ -227,18 +227,18 @@ func (k *KVStore) LPop(cmd *database.Command) handler.Reply {
 		cnt = 1
 	}
 
-	poped := list.LPop(cnt)
-	if poped == nil {
+	popped := list.LPop(cnt)
+	if popped == nil {
 		return handler.NewNillReply()
 	}
 
 	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 
-	if len(poped) == 1 {
-		return handler.NewBulkReply(poped[0])
+	if len(popped) == 1 {
+		return handler.NewBulkReply(popped[0])
 	}
 
-	return handler.NewMultiBulkReply(poped)
+	return handler.NewMultiBulkReply(popped)
 }
 
 func (k *KVStore) RPush(cmd *database.Command) handler.Reply {
@@ -291,17 +291,17 @@ func (k *KVStore) RPop(cmd *database.Command) handler.Reply {
 		cnt = 1
 	}
 
-	poped := list.RPop(cnt)
-	if poped == nil {
+	popped := list.RPop(cnt)
+	if popped == nil {
 		return handler.NewNillReply()
 	}
 
 	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
-	if len(poped) == 1 {
-		return handler.NewBulkReply(poped[0])
+	if len(popped) == 1 {
+		return handler.NewBulkReply(popped[0])
 	}
 
-	return handler.NewMultiBulkReply(poped)
+	return handler.NewMultiBulkReply(popped)
 }
 
 func (k *KVStore) LRange(cmd *database.Command) handler.Reply {
@@ -391,15 +391,15 @@ func (k *KVStore) SRem(cmd *database.Command) handler.Reply {
 		return handler.NewIntReply(0)
 	}
 
-	var remed int64
+	var remVal int64
 	for _, arg := range args[1:] {
-		remed += set.Rem(string(arg))
+		remVal += set.Rem(string(arg))
 	}
 
-	if remed > 0 {
+	if remVal > 0 {
 		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	}
-	return handler.NewIntReply(remed)
+	return handler.NewIntReply(remVal)
 }
 
 // hash
@@ -410,20 +410,20 @@ func (k *KVStore) HSet(cmd *database.Command) handler.Reply {
 	}
 
 	key := string(args[0])
-	hmap, err := k.getAsHashMap(key)
+	hashmap, err := k.getAsHashMap(key)
 	if err != nil {
 		return handler.NewErrReply(err.Error())
 	}
 
-	if hmap == nil {
-		hmap = newHashMapEntity(key)
-		k.putAsHashMap(key, hmap)
+	if hashmap == nil {
+		hashmap = newHashMapEntity(key)
+		k.putAsHashMap(key, hashmap)
 	}
 
 	for i := 0; i < len(args)-1; i += 2 {
-		hkey := string(args[i+1])
-		hvalue := args[i+2]
-		hmap.Put(hkey, hvalue)
+		hKey := string(args[i+1])
+		hVal := args[i+2]
+		hashmap.Put(hKey, hVal)
 	}
 
 	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
@@ -433,16 +433,16 @@ func (k *KVStore) HSet(cmd *database.Command) handler.Reply {
 func (k *KVStore) HGet(cmd *database.Command) handler.Reply {
 	args := cmd.Args()
 	key := string(args[0])
-	hmap, err := k.getAsHashMap(key)
+	hashmap, err := k.getAsHashMap(key)
 	if err != nil {
 		return handler.NewErrReply(err.Error())
 	}
 
-	if hmap == nil {
+	if hashmap == nil {
 		return handler.NewNillReply()
 	}
 
-	if v := hmap.Get(string(args[1])); v != nil {
+	if v := hashmap.Get(string(args[1])); v != nil {
 		return handler.NewBulkReply(v)
 	}
 
@@ -452,24 +452,24 @@ func (k *KVStore) HGet(cmd *database.Command) handler.Reply {
 func (k *KVStore) HDel(cmd *database.Command) handler.Reply {
 	args := cmd.Args()
 	key := string(args[0])
-	hmap, err := k.getAsHashMap(key)
+	hashmap, err := k.getAsHashMap(key)
 	if err != nil {
 		return handler.NewErrReply(err.Error())
 	}
 
-	if hmap == nil {
+	if hashmap == nil {
 		return handler.NewIntReply(0)
 	}
 
-	var remed int64
+	var remVal int64
 	for _, arg := range args[1:] {
-		remed += hmap.Del(string(arg))
+		remVal += hashmap.Del(string(arg))
 	}
 
-	if remed > 0 {
+	if remVal > 0 {
 		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	}
-	return handler.NewIntReply(remed)
+	return handler.NewIntReply(remVal)
 }
 
 // sorted set
@@ -563,13 +563,13 @@ func (k *KVStore) ZRem(cmd *database.Command) handler.Reply {
 		return handler.NewIntReply(0)
 	}
 
-	var remed int64
+	var remVal int64
 	for _, arg := range args {
-		remed += zset.Rem(string(arg))
+		remVal += zset.Rem(string(arg))
 	}
 
-	if remed > 0 {
+	if remVal > 0 {
 		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	}
-	return handler.NewIntReply(remed)
+	return handler.NewIntReply(remVal)
 }

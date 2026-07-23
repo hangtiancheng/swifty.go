@@ -27,14 +27,14 @@ type Server struct {
 	stopOnce sync.Once
 	handler  Handler
 	logger   log.Logger
-	stopc    chan struct{}
+	stopChan    chan struct{}
 }
 
 func NewServer(handler Handler, logger log.Logger) *Server {
 	return &Server{
 		handler: handler,
 		logger:  logger,
-		stopc:   make(chan struct{}),
+		stopChan:   make(chan struct{}),
 	}
 }
 
@@ -47,21 +47,21 @@ func (s *Server) Serve(address string) error {
 		// Listen for process signals.
 		exitWords := []os.Signal{syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT}
 
-		sigc := make(chan os.Signal, 1)
-		signal.Notify(sigc, exitWords...)
-		closec := make(chan struct{}, 4)
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, exitWords...)
+		closeChan := make(chan struct{}, 4)
 		pool.Submit(func() {
 			for {
 				select {
-				case signal := <-sigc:
+				case signal := <-sigChan:
 					switch signal {
 					case exitWords[0], exitWords[1], exitWords[2], exitWords[3]:
-						closec <- struct{}{}
+						closeChan <- struct{}{}
 						return
 					default:
 					}
-				case <-s.stopc:
-					closec <- struct{}{}
+				case <-s.stopChan:
+					closeChan <- struct{}{}
 					return
 				}
 			}
@@ -73,7 +73,7 @@ func (s *Server) Serve(address string) error {
 			return
 		}
 
-		s.listenAndServe(listener, closec)
+		s.listenAndServe(listener, closeChan)
 	})
 
 	return _err
@@ -81,33 +81,33 @@ func (s *Server) Serve(address string) error {
 
 func (s *Server) Stop() {
 	s.stopOnce.Do(func() {
-		close(s.stopc)
+		close(s.stopChan)
 	})
 }
 
-func (s *Server) listenAndServe(listener net.Listener, closec chan struct{}) {
-	errc := make(chan error, 1)
-	defer close(errc)
+func (s *Server) listenAndServe(listener net.Listener, closeChan chan struct{}) {
+	errChan := make(chan error, 1)
+	defer close(errChan)
 
 	// On unexpected error, terminate.
 	ctx, cancel := context.WithCancel(context.Background())
 	pool.Submit(
 		func() {
 			select {
-			case <-closec:
-				s.logger.Errorf("[server]server closing...")
-			case err := <-errc:
-				s.logger.Errorf("[server]server err: %s", err.Error())
+			case <-closeChan:
+				s.logger.Errorf("[server] server closing...")
+			case err := <-errChan:
+				s.logger.Errorf("[server] server err: %s", err.Error())
 			}
 			cancel()
-			s.logger.Warnf("[server]server closeing...")
+			s.logger.Warnf("[server] server closing...")
 			s.handler.Close()
 			if err := listener.Close(); err != nil {
-				s.logger.Errorf("[server]server close listener err: %s", err.Error())
+				s.logger.Errorf("[server] server close listener err: %s", err.Error())
 			}
 		})
 
-	s.logger.Warnf("[server]server starting...")
+	s.logger.Warnf("[server] server starting...")
 	var wg sync.WaitGroup
 	// I/O multiplexing: one goroutine per connection.
 	for {
@@ -120,7 +120,7 @@ func (s *Server) listenAndServe(listener net.Listener, closec chan struct{}) {
 			}
 
 			// Unexpected error: stop.
-			errc <- err
+			errChan <- err
 			break
 		}
 

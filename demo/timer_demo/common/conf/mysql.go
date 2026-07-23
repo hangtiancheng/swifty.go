@@ -1,11 +1,11 @@
 package conf
 
-// MySQLConfig 数据库配置
+// MySQLConfig holds database configuration.
 type MySQLConfig struct {
 	DSN string `yaml:"dsn"`
-	// 最大连接数
+	// Maximum number of open connections
 	MaxOpenConns int `yaml:"maxOpenConns"`
-	// 最大空闲连接数
+	// Maximum number of idle connections
 	MaxIdleConns int `yaml:"maxIdleConns"`
 }
 

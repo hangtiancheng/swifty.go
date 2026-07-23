@@ -2,10 +2,9 @@ package log
 
 import (
 	"context"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
+	"fmt"
+	"log"
+	"os"
 )
 
 type Logger interface {
@@ -73,48 +72,78 @@ func WithFileName(filename string) Option {
 	}
 }
 
-// Levels zapcore level
-var Levels = map[string]zapcore.Level{
-	"":      zapcore.DebugLevel,
-	"debug": zapcore.DebugLevel,
-	"info":  zapcore.InfoLevel,
-	"warn":  zapcore.WarnLevel,
-	"error": zapcore.ErrorLevel,
-	"fatal": zapcore.FatalLevel,
+// Levels log level
+var Levels = map[string]int{
+	"":      0,
+	"debug": 0,
+	"info":  1,
+	"warn":  2,
+	"error": 3,
+	"fatal": 4,
 }
 
-type zapLoggerWrapper struct {
-	*zap.SugaredLogger
-	options Options
+type stdLoggerWrapper struct {
+	logger *log.Logger
+	level  int
 }
 
-func NewSugarLogger(options Options) *zapLoggerWrapper {
-	w := &zapLoggerWrapper{options: options}
-	encoder := w.getEncoder()
-	writeSyncer := w.getLogWriter()
-	core := zapcore.NewCore(encoder, writeSyncer, Levels[options.LogLevel])
-	w.SugaredLogger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	return w
+func NewSugarLogger(options Options) *stdLoggerWrapper {
+	file, err := os.OpenFile(options.FileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		file = os.Stderr
+	}
+	return &stdLoggerWrapper{
+		logger: log.New(file, "", log.LstdFlags|log.Lshortfile),
+		level:  Levels[options.LogLevel],
+	}
 }
 
-func (w *zapLoggerWrapper) getEncoder() zapcore.Encoder {
-	encoderConfig := zap.NewProductionEncoderConfig()
-	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-	// 在日志文件中使用大写字母记录日志级别
-	encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
-	// NewConsoleEncoder 打印更符合人们观察的方式
-	return zapcore.NewConsoleEncoder(encoderConfig)
+func (w *stdLoggerWrapper) Debug(v ...interface{}) {
+	if w.level <= 0 {
+		w.logger.Output(2, fmt.Sprint(v...))
+	}
 }
 
-func (w *zapLoggerWrapper) getLogWriter() zapcore.WriteSyncer {
-	return zapcore.AddSync(&lumberjack.Logger{
-		Filename:   w.options.FileName,
-		MaxAge:     w.options.MaxAge,
-		MaxSize:    w.options.MaxSize,
-		MaxBackups: w.options.MaxBackups,
-		Compress:   w.options.Compress,
-	})
+func (w *stdLoggerWrapper) Info(v ...interface{}) {
+	if w.level <= 1 {
+		w.logger.Output(2, fmt.Sprint(v...))
+	}
+}
+
+func (w *stdLoggerWrapper) Warn(v ...interface{}) {
+	if w.level <= 2 {
+		w.logger.Output(2, fmt.Sprint(v...))
+	}
+}
+
+func (w *stdLoggerWrapper) Error(v ...interface{}) {
+	if w.level <= 3 {
+		w.logger.Output(2, fmt.Sprint(v...))
+	}
+}
+
+func (w *stdLoggerWrapper) Debugf(format string, v ...interface{}) {
+	if w.level <= 0 {
+		w.logger.Output(2, fmt.Sprintf(format, v...))
+	}
+}
+
+func (w *stdLoggerWrapper) Infof(format string, v ...interface{}) {
+	if w.level <= 1 {
+		w.logger.Output(2, fmt.Sprintf(format, v...))
+	}
+}
+
+func (w *stdLoggerWrapper) Warnf(format string, v ...interface{}) {
+	if w.level <= 2 {
+		w.logger.Output(2, fmt.Sprintf(format, v...))
+	}
+}
+
+func (w *stdLoggerWrapper) Errorf(format string, v ...interface{}) {
+	if w.level <= 3 {
+		w.logger.Output(2, fmt.Sprintf(format, v...))
+	}
 }
 
 // GetDefaultLogger 获取默认日志实现

@@ -76,7 +76,7 @@ func (w *Worker) migrate(ctx context.Context) error {
 	conf := w.appConfigProvider.Get()
 	now := time.Now()
 	start, end := utils.GetStartHour(now.Add(time.Duration(conf.MigrateStepMinutes)*time.Minute)), utils.GetStartHour(now.Add(2*time.Duration(conf.MigrateStepMinutes)*time.Minute))
-	// 迁移可以慢慢来，不着急
+	// Migration can proceed gradually
 	for _, timer := range timers {
 		nexts, _ := w.cronParser.NextsBetween(timer.Cron, start, end)
 		if err := w.timerDAO.BatchCreateRecords(ctx, timer.BatchTasksFromTimer(nexts)); err != nil {
@@ -104,7 +104,7 @@ func (w *Worker) migrate(ctx context.Context) error {
 // }
 
 func (w *Worker) migrateToCache(ctx context.Context, start, end time.Time) error {
-	// 迁移完成后，将所有添加的 task 取出，添加到 redis 当中
+	// After migration, retrieve all added tasks and add them to Redis
 	tasks, err := w.taskDAO.GetTasks(ctx, taskdao.WithStartTime(start), taskdao.WithEndTime(end))
 	if err != nil {
 		log.ErrorContextf(ctx, "migrator batch get tasks failed, err: %v", err)

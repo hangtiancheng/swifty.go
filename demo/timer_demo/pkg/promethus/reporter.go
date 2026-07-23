@@ -5,43 +5,38 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// monitorComponent 监控指标类型.
 type monitorComponentType string
 
 const (
-	// 计数器.
 	counter monitorComponentType = "counter"
-	// 摘要.
 	summary monitorComponentType = "summary"
-	// 仪表盘.
-	gauge monitorComponentType = "gauge"
+	gauge   monitorComponentType = "gauge"
 
-	// 定时器触发记录总数.
+	// Total count of timer executions.
 	timerExecTotalCnt        = "timer_exec_total_cnt"
-	timerExecTotalCntSummary = "定时器触发记录总数"
+	timerExecTotalCntSummary = "Total count of timer executions"
 
-	// 定时器触发延时
+	// Timer execution delay.
 	timerDelayCnt        = "timer_delay_cnt"
-	timerDelayCntSummary = "定时器触发延时"
+	timerDelayCntSummary = "Timer execution delay"
 
-	// 处于激活态的定时器总数.
+	// Total number of enabled timers.
 	timerEnabledCnt        = "timer_enabled_cnt"
-	timerEnabledCntSummary = "激活态定时器总数"
+	timerEnabledCntSummary = "Total number of enabled timers"
 
-	// 未触发定时器数量.
+	// Number of unexecuted timers.
 	timerUnexecedCnt        = "timer_unexeced_cnt"
-	timerUnexecedCntSummary = "未按时执行的定时器数量"
+	timerUnexecedCntSummary = "Number of unexecuted timers"
 
 	reportName = "_name"
 	reportType = "_type"
 	timerApp   = "timer_demoApp"
 
-	// 通用标签.
 	label = "label"
 	timer = "timer"
 )
 
-// Reporter 监控上报服务.
+// Reporter is the monitoring metrics reporter.
 type Reporter struct {
 	timerExecRecorder     *prometheus.CounterVec
 	timeDelayRecorder     prometheus.ObserverVec
@@ -51,15 +46,13 @@ type Reporter struct {
 
 var reporter = newReporter()
 
-// GetReporter 获取单例上报服务.
+// GetReporter returns the singleton reporter instance.
 func GetReporter() *Reporter {
 	return reporter
 }
 
-// newReporter 监控上报服务构造器.
 func newReporter() *Reporter {
 	r := Reporter{
-		// 定时器触发记录.
 		timerExecRecorder: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: timerExecTotalCnt,
 			Help: timerExecTotalCntSummary,
@@ -70,7 +63,6 @@ func newReporter() *Reporter {
 		}).MustCurryWith(prometheus.Labels{reportName: timerExecTotalCntSummary,
 			reportType: string(counter)}),
 
-		// 定时器延时记录.
 		timeDelayRecorder: promauto.NewSummaryVec(prometheus.SummaryOpts{
 			Name:       timerDelayCnt,
 			Help:       timerDelayCntSummary,
@@ -82,7 +74,6 @@ func newReporter() *Reporter {
 		}).MustCurryWith(prometheus.Labels{reportName: timerDelayCntSummary,
 			reportType: string(summary)}),
 
-		// 处于激活态的定时器总数.
 		timerEnabledRecorder: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: timerEnabledCnt,
 			Help: timerEnabledCntSummary,
@@ -93,7 +84,6 @@ func newReporter() *Reporter {
 		}).MustCurryWith(prometheus.Labels{reportName: timerEnabledCntSummary,
 			reportType: string(gauge)}),
 
-		// 未触发定时器数量.
 		timerUnexecedRecorder: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: timerUnexecedCnt,
 			Help: timerUnexecedCntSummary,
@@ -105,7 +95,6 @@ func newReporter() *Reporter {
 			reportType: string(gauge)}),
 	}
 
-	// prometheus.MustRegister(r.timerExecRecorder, r.timeDelayRecorder, r.timerEnabledRecorder, r.timerUnexecedRecorder)
 	return &r
 }
 

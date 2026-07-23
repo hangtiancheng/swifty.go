@@ -16,8 +16,8 @@
 #   migrateSuccessExpireMinutes: 120
 #   timerDetailCacheMinutes: 2
 mysql:
-  ### 必填
-  dsn:  请输入 mysql dsn
+  ### Required
+  dsn:  please enter mysql dsn
   # maxOpenConns: 100
   # maxIdleConns: 50
 # pool:
@@ -26,10 +26,10 @@ mysql:
 #   nonBlocking: false
 
 redis:
-  # network: tcp 
-  ## 必填
-  address: 请输入 redis 地址
-  password: 请输入 redis 密码
+  # network: tcp
+  ## Required
+  address: please enter redis address
+  password: please enter redis password
   # maxIdle: 2000
   # idleTimeout: 10
   # maxActive: 5000

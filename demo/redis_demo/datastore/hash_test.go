@@ -2,45 +2,52 @@ package datastore
 
 import (
 	"math/rand"
+	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/database"
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/lib"
-	"github.com/spf13/cast"
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_hashmap_crud(t *testing.T) {
 	hashmap := newHashMapEntity("")
 	mp := make(map[int]int, 1000)
 
-	rander := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
+	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	for i := 0; i < 1000; i++ {
-		k := rander.Intn(1000)
-		v := rander.Intn(1000)
-		hashmap.Put(cast.ToString(k), []byte(cast.ToString(v)))
+		k := randInst.Intn(1000)
+		v := randInst.Intn(1000)
+		hashmap.Put(strconv.Itoa(k), []byte(strconv.Itoa(v)))
 		mp[k] = v
 	}
 
 	t.Run("delete", func(t *testing.T) {
 		for i := 0; i < 1000; i++ {
-			k := rander.Intn(1000)
+			k := randInst.Intn(1000)
 			_, ok := mp[k]
-			exist := hashmap.Del(cast.ToString(k))
-			assert.Equal(t, ok, exist == 1)
+			exist := hashmap.Del(strconv.Itoa(k))
+			if ok != (exist == 1) {
+				t.Errorf("key: %d, expect exist: %v, got: %d", k, ok, exist)
+			}
 			delete(mp, k)
 		}
 	})
 
 	t.Run("get", func(t *testing.T) {
 		for i := 0; i < 1000; i++ {
-			k := rander.Intn(1000)
-			value := hashmap.Get(cast.ToString(k))
+			k := randInst.Intn(1000)
+			value := hashmap.Get(strconv.Itoa(k))
 			v, ok := mp[k]
-			assert.Equal(t, ok, value != nil)
+			if ok != (value != nil) {
+				t.Errorf("key: %d, expect exist: %v, got: %v", k, ok, value != nil)
+			}
 			if ok {
-				assert.Equal(t, v, cast.ToInt(string(value)))
+				got, _ := strconv.Atoi(string(value))
+				if v != got {
+					t.Errorf("key: %d, expect: %d, got: %d", k, v, got)
+				}
 			}
 		}
 	})
@@ -48,25 +55,31 @@ func Test_hashmap_crud(t *testing.T) {
 
 func Test_hashmap_to_cmd(t *testing.T) {
 	hashmap := newHashMapEntity("")
-	rander := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
+	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	mp := make(map[int]int, 1000)
-	// 插入1000条数据
+	// Insert 1000 entries.
 	for i := 0; i < 1000; i++ {
-		k := rander.Intn(1000)
-		v := rander.Intn(1000)
-		hashmap.Put(cast.ToString(k), []byte(cast.ToString(v)))
+		k := randInst.Intn(1000)
+		v := randInst.Intn(1000)
+		hashmap.Put(strconv.Itoa(k), []byte(strconv.Itoa(v)))
 		mp[k] = v
 	}
 
 	cmd := hashmap.ToCmd()
 	t.Run("length", func(t *testing.T) {
-		assert.Equal(t, 2*len(mp)+2, len(cmd))
+		if 2*len(mp)+2 != len(cmd) {
+			t.Errorf("length, expect: %d, got: %d", 2*len(mp)+2, len(cmd))
+		}
 	})
 	t.Run("command", func(t *testing.T) {
-		assert.Equal(t, database.CmdTypeHSet, database.CmdType(cmd[0]))
+		if database.CmdTypeHSet != database.CmdType(cmd[0]) {
+			t.Errorf("command, expect: %s, got: %s", database.CmdTypeHSet, database.CmdType(cmd[0]))
+		}
 	})
 	t.Run("key", func(t *testing.T) {
-		assert.Equal(t, "", string(cmd[1]))
+		if "" != string(cmd[1]) {
+			t.Errorf("key, expect: empty, got: %s", string(cmd[1]))
+		}
 	})
 
 	type kv struct {
@@ -74,10 +87,9 @@ func Test_hashmap_to_cmd(t *testing.T) {
 	}
 	actual := make([]kv, 0, 1000)
 	for i := 2; i < len(cmd); i += 2 {
-		actual = append(actual, kv{
-			k: cast.ToInt(string(cmd[i])),
-			v: cast.ToInt(string(cmd[i+1])),
-		})
+		k, _ := strconv.Atoi(string(cmd[i]))
+		v, _ := strconv.Atoi(string(cmd[i+1]))
+		actual = append(actual, kv{k: k, v: v})
 	}
 
 	sort.Slice(actual, func(i, j int) bool {
@@ -89,10 +101,7 @@ func Test_hashmap_to_cmd(t *testing.T) {
 
 	expect := make([]kv, 0, 2*len(mp))
 	for k, v := range mp {
-		expect = append(expect, kv{
-			k: k,
-			v: v,
-		})
+		expect = append(expect, kv{k: k, v: v})
 	}
 	sort.Slice(expect, func(i, j int) bool {
 		if expect[i].k == expect[j].k {
@@ -102,6 +111,8 @@ func Test_hashmap_to_cmd(t *testing.T) {
 	})
 
 	t.Run("member", func(t *testing.T) {
-		assert.Equal(t, expect, actual)
+		if !reflect.DeepEqual(expect, actual) {
+			t.Errorf("member, expect: %v, got: %v", expect, actual)
+		}
 	})
 }

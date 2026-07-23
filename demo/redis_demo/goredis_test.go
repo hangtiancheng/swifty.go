@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -14,38 +15,36 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/app"
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/lib"
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/lib/pool"
-	"github.com/spf13/cast"
-	"github.com/stretchr/testify/assert"
 )
 
-// redis_demo 质检员
+// QualityInspector is the redis_demo test driver.
 type QualityInspector struct {
 	times  int
 	app    *app.Application
 	t      *testing.T
-	rander *rand.Rand
+	randInst *rand.Rand
 }
 
 func NewQualityInspector(t *testing.T, times int) *QualityInspector {
 	return &QualityInspector{
 		t:      t,
 		times:  times,
-		rander: rand.New(rand.NewSource(lib.TimeNow().UnixNano())),
+		randInst: rand.New(rand.NewSource(lib.TimeNow().UnixNano())),
 	}
 }
 
 func (q *QualityInspector) prepareApp(clean bool) error {
-	// 1 移除 aof 文件，避免读取脏数据
+	// 1. Remove the AOF file to avoid stale data.
 	if clean {
 		_ = os.Remove("./appendonly.aof")
 	}
-	// 1 创建应用
+	// 1. Create the application.
 	server, err := app.ConstructServer()
 	if err != nil {
 		return err
 	}
 	q.app = app.NewApplication(server, app.SetUpConfig())
-	// 2 异步启动应用
+	// 2. Start the application asynchronously.
 	pool.Submit(func() {
 		if err := q.app.Run(); err != nil {
 			q.t.Error(err)
@@ -56,7 +55,7 @@ func (q *QualityInspector) prepareApp(clean bool) error {
 
 func (q *QualityInspector) connApp() (*net.TCPConn, error) {
 	<-time.After(100 * time.Millisecond)
-	// 建立 tcp 连接
+	// Establish a tcp connection.
 	return net.DialTCP("tcp", nil, &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
 		Port: 6379,
@@ -66,8 +65,8 @@ func (q *QualityInspector) connApp() (*net.TCPConn, error) {
 func (q *QualityInspector) execSet(w io.Writer) {
 	writer := bufio.NewWriter(w)
 	for i := 0; i < 2*q.times; i++ {
-		k := cast.ToString(i % q.times)
-		v := cast.ToString(i % q.times)
+		k := strconv.Itoa(i % q.times)
+		v := strconv.Itoa(i % q.times)
 		_, _ = writer.WriteString("*3\r\n")
 		_, _ = writer.WriteString("$3\r\n")
 		_, _ = writer.WriteString("set\r\n")
@@ -93,7 +92,7 @@ func (q *QualityInspector) readSetResp(r io.Reader) {
 func (q *QualityInspector) execGet(w io.Writer) {
 	writer := bufio.NewWriter(w)
 	for i := 0; i < q.times; i++ {
-		k := cast.ToString(i)
+		k := strconv.Itoa(i)
 		_, _ = writer.WriteString("*2\r\n")
 		_, _ = writer.WriteString("$3\r\n")
 		_, _ = writer.WriteString("get\r\n")
@@ -112,21 +111,24 @@ func (q *QualityInspector) readGetResp(r io.Reader) {
 		_, _, _ = reader.ReadLine() // $n
 		line, _, _ := reader.ReadLine()
 		q.t.Logf("get resp: %s\n", line)
-		assert.Equal(q.t, cast.ToString(i), string(line))
+		expected := strconv.Itoa(i)
+		if string(line) != expected {
+			q.t.Errorf("get resp, expect: %s, got: %s", expected, string(line))
+		}
 	}
 }
 
-func Test_Goredis_Set_Get(t *testing.T) {
+func Test_GoRedis_Set_Get(t *testing.T) {
 	q := NewQualityInspector(t, 100)
 
-	// 1 启动 go redis. 保证全局唯一
+	// 1. Start go redis. Ensure global uniqueness.
 	if err := q.prepareApp(true); err != nil {
 		t.Error(err)
 		return
 	}
 	defer q.app.Stop()
 
-	// 2 连接到 go redis
+	// 2. Connect to go redis.
 	conn, err := q.connApp()
 	if err != nil {
 		t.Error(err)
@@ -135,14 +137,14 @@ func Test_Goredis_Set_Get(t *testing.T) {
 	defer conn.Close()
 
 	var wg sync.WaitGroup
-	// 3 读取set结果
+	// 3. Read set responses.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()
 		q.readSetResp(conn)
 	})
 
-	// 4 发送set指令
+	// 4. Send set commands.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()
@@ -151,14 +153,14 @@ func Test_Goredis_Set_Get(t *testing.T) {
 
 	wg.Wait()
 
-	// 5 读取get结果
+	// 5. Read get responses.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()
 		q.readGetResp(conn)
 	})
 
-	// 6 发送get指令
+	// 6. Send get commands.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()
@@ -169,21 +171,21 @@ func Test_Goredis_Set_Get(t *testing.T) {
 	<-time.After(time.Second)
 }
 
-func Test_Goredis_Set(t *testing.T) {
-	test_redis_demo_set(t) // 1 启动 redis_demo  2 set 数据 3 停止 redis_demo
+func Test_GoRedis_Set(t *testing.T) {
+	test_redis_demo_set(t) // 1. start redis_demo  2. set data 3. stop redis_demo
 }
 
 func test_redis_demo_set(t *testing.T) {
 	q := NewQualityInspector(t, 100)
 
-	// 1 启动 go redis. 保证全局唯一
+	// 1. Start go redis. Ensure global uniqueness.
 	if err := q.prepareApp(true); err != nil {
 		t.Error(err)
 		return
 	}
 	defer q.app.Stop()
 
-	// 2 连接到 go redis
+	// 2. Connect to go redis.
 	conn, err := q.connApp()
 	if err != nil {
 		t.Error(err)
@@ -192,14 +194,14 @@ func test_redis_demo_set(t *testing.T) {
 	defer conn.Close()
 
 	var wg sync.WaitGroup
-	// 3 读取set结果
+	// 3. Read set responses.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()
 		q.readSetResp(conn)
 	})
 
-	// 4 发送set指令
+	// 4. Send set commands.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()
@@ -211,21 +213,21 @@ func test_redis_demo_set(t *testing.T) {
 }
 
 func Test_Aof_Get(t *testing.T) {
-	test_redis_demo_aof_get(t) // 1 启动 redis_demo（通过 aof 恢复数据）2 get 数据 3 停止 redis_demo
+	test_redis_demo_aof_get(t) // 1. start redis_demo (restore via AOF) 2. get data 3. stop redis_demo
 }
 
 func test_redis_demo_aof_get(t *testing.T) {
 	q := NewQualityInspector(t, 100)
 
 	<-time.After(time.Second)
-	// 1 启动 go redis. 不删除 aof 文件
+	// 1. Start go redis. Do NOT delete the AOF file.
 	if err := q.prepareApp(false); err != nil {
 		t.Error(err)
 		return
 	}
 	defer q.app.Stop()
 
-	// 2 连接到 go redis
+	// 2. Connect to go redis.
 	<-time.After(time.Second)
 	conn, err := q.connApp()
 	if err != nil {
@@ -235,14 +237,14 @@ func test_redis_demo_aof_get(t *testing.T) {
 	defer conn.Close()
 
 	var wg sync.WaitGroup
-	// 5 读取get结果
+	// 5. Read get responses.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()
 		q.readGetResp(conn)
 	})
 
-	// 6 发送get指令
+	// 6. Send get commands.
 	wg.Add(1)
 	pool.Submit(func() {
 		defer wg.Done()

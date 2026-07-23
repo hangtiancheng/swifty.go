@@ -46,7 +46,7 @@ func (w *Worker) Work(ctx context.Context, minuteBucketKey string, ack func()) e
 	// 	log.InfoContextf(ctx, "trigger_1 end: %v", time.Now())
 	// }()
 
-	// 进行为时一分钟的 zrange 处理
+	// Process zrange for a one-minute window
 	startTime, err := getStartMinute(minuteBucketKey)
 	if err != nil {
 		return err

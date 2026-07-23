@@ -1,6 +1,6 @@
 package redis
 
-// LuaCheckAndDeleteDistributionLock 判断是否拥有分布式锁的归属权，是则删除
+// LuaCheckAndDeleteDistributionLock checks ownership of the distributed lock and deletes it if owned.
 const LuaCheckAndDeleteDistributionLock = `
   local lockerKey = KEYS[1]
   local targetToken = ARGV[1]

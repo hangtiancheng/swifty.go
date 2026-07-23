@@ -26,12 +26,12 @@ func NewTaskService(dao *dao.TaskDAO, cache *dao.TaskCache, confPrivder *conf.Sc
 }
 
 func (t *TaskService) GetTasksByTime(ctx context.Context, key string, bucket int, start, end time.Time) ([]*vo.Task, error) {
-	// 先走缓存
+	// Try cache first
 	if tasks, err := t.cache.GetTasksByTime(ctx, key, start.UnixMilli(), end.UnixMilli()); err == nil && len(tasks) > 0 {
 		return vo.NewTasks(tasks), nil
 	}
 
-	// 倘若缓存 miss 再走 db
+	// Fall back to database on cache miss
 	tasks, err := t.dao.GetTasks(ctx, dao.WithStartTime(start), dao.WithEndTime(end), dao.WithStatus(int32(consts.NotRunned.ToInt())))
 	if err != nil {
 		return nil, err

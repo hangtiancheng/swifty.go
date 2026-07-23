@@ -1,16 +1,18 @@
 package hash
 
 import (
-	"github.com/spaolacci/murmur3"
+	"hash/fnv"
 )
 
-type Murmur3Encyptor struct {
+type FNVEncryptor struct {
 }
 
-func NewMurmur3Encryptor() *Murmur3Encyptor {
-	return &Murmur3Encyptor{}
+func NewMurmur3Encryptor() *FNVEncryptor {
+	return &FNVEncryptor{}
 }
 
-func (m *Murmur3Encyptor) Encrypt(origin string) uint64 {
-	return uint64(murmur3.Sum32([]byte(origin)))
+func (m *FNVEncryptor) Encrypt(origin string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(origin))
+	return h.Sum64()
 }

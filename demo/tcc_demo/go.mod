@@ -1,6 +1,6 @@
 module github.com/hangtiancheng/swifty.go/demo/tcc_demo
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -8,13 +8,13 @@ require (
 	github.com/demdxx/gocast v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hangtiancheng/swifty.go/demo/redis_lock v0.0.0
+	github.com/hangtiancheng/swifty.go/swifty_http v0.0.2
 	github.com/spf13/cast v1.10.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.28.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.2
-	github.com/hangtiancheng/swifty.go/swifty_http v0.0.2
 )
 
 require (
@@ -30,6 +30,7 @@ require (
 	github.com/redis/go-redis/v9 v9.21.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
@@ -37,4 +38,5 @@ require (
 )
 
 replace github.com/hangtiancheng/swifty.go/demo/redis_lock => ../redis_lock
-replace 	github.com/hangtiancheng/swifty.go/swifty_http => ../../swifty_http
+
+replace github.com/hangtiancheng/swifty.go/swifty_http => ../../swifty_http

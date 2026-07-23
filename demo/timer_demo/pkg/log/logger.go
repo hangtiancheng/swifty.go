@@ -2,10 +2,9 @@ package log
 
 import (
 	"context"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
+	"fmt"
+	"log"
+	"os"
 )
 
 type Logger interface {
@@ -24,26 +23,25 @@ var (
 )
 
 func init() {
-	defaultLogger = newSugarLogger(NewOptions())
+	defaultLogger = newStandardLogger(NewOptions())
 }
 
-// Options 选项配置
+// Options holds logger configuration.
 type Options struct {
-	LogName    string // 日志名称
-	LogLevel   string // 日志级别
-	FileName   string // 文件名称
-	MaxAge     int    // 日志保留时间，以天为单位
-	MaxSize    int    // 日志保留大小，以 M 为单位
-	MaxBackups int    // 保留文件个数
-	Compress   bool   // 是否压缩
+	LogName    string
+	LogLevel   string
+	FileName   string
+	MaxAge     int
+	MaxSize    int
+	MaxBackups int
+	Compress   bool
 }
 
-// Option 选项方法
+// Option is a functional option for the logger.
 type Option func(*Options)
 
-// NewOptions 初始化
+// NewOptions creates default logger options.
 func NewOptions(opts ...Option) Options {
-
 	options := Options{
 		LogName:    "app",
 		LogLevel:   "info",
@@ -59,128 +57,149 @@ func NewOptions(opts ...Option) Options {
 	return options
 }
 
-// WithLogLevel 日志级别
+// WithLogLevel sets the log level.
 func WithLogLevel(level string) Option {
 	return func(o *Options) {
 		o.LogLevel = level
 	}
 }
 
-// WithFileName 日志文件
+// WithFileName sets the log file name.
 func WithFileName(filename string) Option {
 	return func(o *Options) {
 		o.FileName = filename
 	}
 }
 
-// Levels zapcore level
-var Levels = map[string]zapcore.Level{
-	"":      zapcore.DebugLevel,
-	"debug": zapcore.DebugLevel,
-	"info":  zapcore.InfoLevel,
-	"warn":  zapcore.WarnLevel,
-	"error": zapcore.ErrorLevel,
-	"fatal": zapcore.FatalLevel,
+type logLevel int
+
+const (
+	levelDebug logLevel = iota
+	levelInfo
+	levelWarn
+	levelError
+)
+
+// Levels maps level names to logLevel values.
+var Levels = map[string]logLevel{
+	"":      levelDebug,
+	"debug": levelDebug,
+	"info":  levelInfo,
+	"warn":  levelWarn,
+	"error": levelError,
+	"fatal": levelError,
 }
 
-type zapLoggerWrapper struct {
-	*zap.SugaredLogger
-	options Options
+type standardLogger struct {
+	logger *log.Logger
+	level  logLevel
 }
 
-func newSugarLogger(options Options) *zapLoggerWrapper {
-	w := &zapLoggerWrapper{options: options}
-	encoder := w.getEncoder()
-	writeSyncer := w.getLogWriter()
-	core := zapcore.NewCore(encoder, writeSyncer, Levels[options.LogLevel])
-	w.SugaredLogger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
-	return w
+func newStandardLogger(options Options) *standardLogger {
+	return &standardLogger{
+		logger: log.New(os.Stdout, "", log.LstdFlags),
+		level:  Levels[options.LogLevel],
+	}
 }
 
-func (w *zapLoggerWrapper) getEncoder() zapcore.Encoder {
-	encoderConfig := zap.NewProductionEncoderConfig()
-	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-	// 在日志文件中使用大写字母记录日志级别
-	encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
-	// NewConsoleEncoder 打印更符合人们观察的方式
-	return zapcore.NewConsoleEncoder(encoderConfig)
+func (l *standardLogger) output(level logLevel, levelStr string, calldepth int, v ...interface{}) {
+	if level < l.level {
+		return
+	}
+	_ = l.logger.Output(calldepth, fmt.Sprintf("[%s] %s", levelStr, fmt.Sprint(v...)))
 }
 
-func (w *zapLoggerWrapper) getLogWriter() zapcore.WriteSyncer {
-	return zapcore.AddSync(&lumberjack.Logger{
-		Filename:   w.options.FileName,
-		MaxAge:     w.options.MaxAge,
-		MaxSize:    w.options.MaxSize,
-		MaxBackups: w.options.MaxBackups,
-		Compress:   w.options.Compress,
-	})
+func (l *standardLogger) outputf(level logLevel, levelStr string, calldepth int, format string, v ...interface{}) {
+	if level < l.level {
+		return
+	}
+	_ = l.logger.Output(calldepth, fmt.Sprintf("[%s] %s", levelStr, fmt.Sprintf(format, v...)))
 }
 
-// GetDefaultLogger 获取默认日志实现
+func (l *standardLogger) Error(v ...interface{}) { l.output(levelError, "ERROR", 3, v...) }
+func (l *standardLogger) Warn(v ...interface{})  { l.output(levelWarn, "WARN", 3, v...) }
+func (l *standardLogger) Info(v ...interface{})  { l.output(levelInfo, "INFO", 3, v...) }
+func (l *standardLogger) Debug(v ...interface{}) { l.output(levelDebug, "DEBUG", 3, v...) }
+
+func (l *standardLogger) Errorf(format string, v ...interface{}) {
+	l.outputf(levelError, "ERROR", 3, format, v...)
+}
+func (l *standardLogger) Warnf(format string, v ...interface{}) {
+	l.outputf(levelWarn, "WARN", 3, format, v...)
+}
+func (l *standardLogger) Infof(format string, v ...interface{}) {
+	l.outputf(levelInfo, "INFO", 3, format, v...)
+}
+func (l *standardLogger) Debugf(format string, v ...interface{}) {
+	l.outputf(levelDebug, "DEBUG", 3, format, v...)
+}
+
+// GetDefaultLogger returns the default logger instance.
 func GetDefaultLogger() Logger {
 	return defaultLogger
 }
 
-// Debugf 打印 Debug 日志
+// Debugf logs a message at debug level.
 func Debugf(format string, args ...interface{}) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
-// Infof 打印 Info 日志
+// Infof logs a message at info level.
 func Infof(format string, args ...interface{}) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
-// Warnf 打印 Warn 日志
+// Warnf logs a message at warn level.
 func Warnf(format string, args ...interface{}) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
-// Errorf 打印 Error 日志
+// Errorf logs a message at error level.
 func Errorf(format string, args ...interface{}) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
-// DebugContext 打印 Debug 日志
+// DebugContext logs a message at debug level with context.
 func DebugContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Debug(args...)
 }
 
-// DebugContextf 打印 Debug 日志
+// DebugContextf logs a formatted message at debug level with context.
 func DebugContextf(ctx context.Context, format string, args ...interface{}) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
-// InfoContext 打印 Info 日志
+// InfoContext logs a message at info level with context.
 func InfoContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Info(args...)
 }
 
-// InfoContextf 打印 Info 日志
+// InfoContextf logs a formatted message at info level with context.
 func InfoContextf(ctx context.Context, format string, args ...interface{}) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
-// WarnContext 打印 Warn 日志
+// WarnContext logs a message at warn level with context.
 func WarnContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Warn(args...)
 }
 
-// WarnContextf 打印 Warn 日志
+// WarnContextf logs a formatted message at warn level with context.
 func WarnContextf(ctx context.Context, format string, args ...interface{}) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
-// ErrorContext 打印 Error 日志
+// ErrorContext logs a message at error level with context.
 func ErrorContext(ctx context.Context, args ...interface{}) {
 	GetDefaultLogger().Error(args...)
 }
 
+// ErrorContextf logs a formatted message at error level with context.
 func ErrorContextf(ctx context.Context, format string, args ...interface{}) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
+// Fatalf logs a message at error level and is kept for compatibility.
 func Fatalf(format string, args ...interface{}) {
 	Errorf(format, args...)
 }

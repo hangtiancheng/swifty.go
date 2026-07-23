@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/gomodule/redigo/redis"
+	gredis "github.com/redis/go-redis/v9"
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/utils"
 )
 
@@ -16,7 +16,7 @@ type DistributeLocker interface {
 	ExpireLock(ctx context.Context, expireSeconds int64) error
 }
 
-// ReentrantDistributeLock 可重入分布式锁.
+// ReentrantDistributeLock is a reentrant distributed lock.
 type ReentrantDistributeLock struct {
 	key    string
 	token  string
@@ -31,11 +31,10 @@ func NewReentrantDistributeLock(key string, client *Client) *ReentrantDistribute
 	}
 }
 
-// Lock 加锁.
+// Lock acquires the distributed lock.
 func (r *ReentrantDistributeLock) Lock(ctx context.Context, expireSeconds int64) error {
-	// 首先查询锁是否属于自己
 	res, err := r.client.Get(ctx, r.key)
-	if err != nil && !errors.Is(err, redis.ErrNil) {
+	if err != nil && !errors.Is(err, gredis.Nil) {
 		return err
 	}
 
@@ -43,7 +42,6 @@ func (r *ReentrantDistributeLock) Lock(ctx context.Context, expireSeconds int64)
 		return nil
 	}
 
-	// 锁一定不属于自己
 	reply, err := r.client.SetNX(ctx, r.getLockKey(), r.token, expireSeconds)
 	if err != nil {
 		return err
@@ -57,7 +55,7 @@ func (r *ReentrantDistributeLock) Lock(ctx context.Context, expireSeconds int64)
 	return nil
 }
 
-// Unlock 解锁. 基于 lua 脚本实现操作原子性.
+// Unlock releases the lock using a Lua script for atomicity.
 func (r *ReentrantDistributeLock) Unlock(ctx context.Context) error {
 	keysAndArgs := []interface{}{r.getLockKey(), r.token}
 	reply, err := r.client.Eval(ctx, LuaCheckAndDeleteDistributionLock, 1, keysAndArgs)
@@ -71,7 +69,7 @@ func (r *ReentrantDistributeLock) Unlock(ctx context.Context) error {
 	return nil
 }
 
-// ExpireLock 更新锁的过期时间，基于 lua 脚本实现操作原子性
+// ExpireLock updates the lock expiration using a Lua script for atomicity.
 func (r *ReentrantDistributeLock) ExpireLock(ctx context.Context, expireSeconds int64) error {
 	keysAndArgs := []interface{}{r.getLockKey(), r.token, expireSeconds}
 	reply, err := r.client.Eval(ctx, LuaCheckAndExpireDistributionLock, 1, keysAndArgs)

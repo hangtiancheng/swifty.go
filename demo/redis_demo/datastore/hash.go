@@ -11,16 +11,16 @@ func (k *KVStore) getAsHashMap(key string) (HashMap, error) {
 		return nil, nil
 	}
 
-	hmap, ok := v.(HashMap)
+	hashmap, ok := v.(HashMap)
 	if !ok {
 		return nil, handler.NewWrongTypeErrReply()
 	}
 
-	return hmap, nil
+	return hashmap, nil
 }
 
-func (k *KVStore) putAsHashMap(key string, hmap HashMap) {
-	k.data[key] = hmap
+func (k *KVStore) putAsHashMap(key string, hashmap HashMap) {
+	k.data[key] = hashmap
 }
 
 type HashMap interface {

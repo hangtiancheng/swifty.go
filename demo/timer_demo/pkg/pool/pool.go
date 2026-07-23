@@ -1,33 +1,27 @@
 package pool
 
 import (
-	"time"
-
-	"github.com/panjf2000/ants/v2"
+	"github.com/bytedance/gopkg/util/gopool"
 )
 
-// WorkerPool 协程工作池.
+// WorkerPool is the interface for goroutine worker pools.
 type WorkerPool interface {
 	Submit(func()) error
 }
 
-// GoWorkerPool golang 协程工作池.
+// GoWorkerPool is a goroutine worker pool backed by gopool.
 type GoWorkerPool struct {
-	pool *ants.Pool
+	pool *gopool.Pool
 }
 
-// Submit 提交任务.
+// Submit submits a task to the pool.
 func (g *GoWorkerPool) Submit(f func()) error {
-	return g.pool.Submit(f)
+	g.pool.Go(f)
+	return nil
 }
 
 func NewGoWorkerPool(size int) *GoWorkerPool {
-	pool, err := ants.NewPool(
-		size,
-		ants.WithExpiryDuration(time.Minute),
-	)
-	if err != nil {
-		panic(err)
+	return &GoWorkerPool{
+		pool: gopool.NewPool("timer_demo", int32(size), nil),
 	}
-	return &GoWorkerPool{pool: pool}
 }

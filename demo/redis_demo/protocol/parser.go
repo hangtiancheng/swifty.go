@@ -61,7 +61,7 @@ func (p *Parser) parse(rawReader io.Reader, ch chan<- *handler.Droplet) {
 		firstLine = bytes.TrimSuffix(firstLine, []byte{'\r', '\n'})
 		lineParseFunc, ok := p.lineParsers[firstLine[0]]
 		if !ok {
-			p.logger.Errorf("[parser] invalid line handler: %s", firstLine[0])
+			p.logger.Errorf("[parser] invalid line handler: %c", firstLine[0])
 			continue
 		}
 

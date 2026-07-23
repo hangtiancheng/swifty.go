@@ -54,9 +54,9 @@ func (l *listEntity) LPop(cnt int64) [][]byte {
 		return nil
 	}
 
-	poped := l.data[:cnt]
+	popped := l.data[:cnt]
 	l.data = l.data[cnt:]
-	return poped
+	return popped
 }
 
 func (l *listEntity) RPush(value []byte) {
@@ -68,9 +68,9 @@ func (l *listEntity) RPop(cnt int64) [][]byte {
 		return nil
 	}
 
-	poped := l.data[int64(len(l.data))-cnt:]
+	popped := l.data[int64(len(l.data))-cnt:]
 	l.data = l.data[:int64(len(l.data))-cnt]
-	return poped
+	return popped
 }
 
 func (l *listEntity) Len() int64 {

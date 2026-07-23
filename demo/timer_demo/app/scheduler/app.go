@@ -9,7 +9,7 @@ import (
 	service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/scheduler"
 )
 
-// 读取配置启动多个协程进行
+// WorkerApp reads configuration and launches multiple goroutines for scheduling.
 type WorkerApp struct {
 	sync.Once
 	service workerService

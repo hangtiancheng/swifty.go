@@ -46,11 +46,11 @@ func NewTimerService(dao *timerdao.TimerDAO, taskCache *taskdao.TaskCache, lockS
 func (t *TimerService) CreateTimer(ctx context.Context, timer *vo.Timer) (uint, error) {
 	lock := t.lockService.GetDistributionLock(utils.GetCreateLockKey(timer.App))
 	if err := lock.Lock(ctx, defaultEnableGapSeconds); err != nil {
-		return 0, errors.New("创建/删除操作过于频繁，请稍后再试！")
+		return 0, errors.New("create/delete operations too frequent, please try again later")
 	}
-	// 校验 cron 表达式
+	// Validate the cron expression
 	if !t.cronParser.IsValidCronExpr(timer.Cron) {
-		return 0, fmt.Errorf("非法的 cron 表达式: %s", timer.Cron)
+		return 0, fmt.Errorf("invalid cron expression: %s", timer.Cron)
 	}
 
 	pTimer, err := timer.ToPO()
@@ -63,7 +63,7 @@ func (t *TimerService) CreateTimer(ctx context.Context, timer *vo.Timer) (uint, 
 func (t *TimerService) DeleteTimer(ctx context.Context, app string, id uint) error {
 	lock := t.lockService.GetDistributionLock(utils.GetCreateLockKey(app))
 	if err := lock.Lock(ctx, defaultEnableGapSeconds); err != nil {
-		return errors.New("创建/删除操作过于频繁，请稍后再试！")
+		return errors.New("create/delete operations too frequent, please try again later")
 	}
 	return t.dao.DeleteTimer(ctx, id)
 }
@@ -86,20 +86,20 @@ func (t *TimerService) GetTimer(ctx context.Context, id uint) (*vo.Timer, error)
 }
 
 func (t *TimerService) EnableTimer(ctx context.Context, app string, id uint) error {
-	// 限制激活和去激活频次
+	// Rate limit enable/disable operations
 	lock := t.lockService.GetDistributionLock(utils.GetEnableLockKey(app))
 	if err := lock.Lock(ctx, defaultEnableGapSeconds); err != nil {
-		return errors.New("激活/去激活操作过于频繁，请稍后再试！")
+		return errors.New("enable/disable operations too frequent, please try again later")
 	}
 
 	do := func(ctx context.Context, dao *timerdao.TimerDAO, timer *po.Timer) error {
-		// 状态校验
+		// Status validation
 		if timer.Status != consts.Unabled.ToInt() {
 			return fmt.Errorf("not unabled status, enable failed, timer id: %d", id)
 		}
 
-		// 取得批量的执行时机
-		// end 为下两个切片的右边界
+		// Get batch execution times
+		// end is the right boundary of the next two migration slices
 		start := time.Now()
 		end := utils.GetForwardTwoMigrateStepEnd(start, 2*time.Duration(t.migrateConfProvider.Get().MigrateStepMinutes)*time.Minute)
 		executeTimes, err := t.cronParser.NextsBefore(timer.Cron, end)
@@ -108,19 +108,19 @@ func (t *TimerService) EnableTimer(ctx context.Context, app string, id uint) err
 			return err
 		}
 
-		// 执行时机加入数据库
+		// Add execution times to the database
 		tasks := timer.BatchTasksFromTimer(executeTimes)
-		// 基于 timer_id + run_timer 唯一键，保证任务不被重复插入
+		// Use timer_id + run_timer unique key to prevent duplicate task insertion
 		if err := dao.BatchCreateRecords(ctx, tasks); err != nil && !mysql.IsDuplicateEntryErr(err) {
 			return err
 		}
 
-		// 执行时机加入 redis 跳表
+		// Add execution times to the Redis sorted set
 		if err := t.taskCache.BatchCreateTasks(ctx, tasks, start, end); err != nil {
 			return err
 		}
 
-		// 修改 timer 状态为激活态
+		// Update timer status to enabled
 		timer.Status = consts.Enabled.ToInt()
 		return dao.UpdateTimer(ctx, timer)
 	}
@@ -129,19 +129,19 @@ func (t *TimerService) EnableTimer(ctx context.Context, app string, id uint) err
 }
 
 func (t *TimerService) UnableTimer(ctx context.Context, app string, id uint) error {
-	// 限制激活和去激活频次
+	// Rate limit enable/disable operations
 	lock := t.lockService.GetDistributionLock(utils.GetEnableLockKey(app))
 	if err := lock.Lock(ctx, defaultEnableGapSeconds); err != nil {
-		return errors.New("激活/去激活操作过于频繁，请稍后再试！")
+		return errors.New("enable/disable operations too frequent, please try again later")
 	}
 
 	do := func(ctx context.Context, dao *timerdao.TimerDAO, timer *po.Timer) error {
-		// 状态校验
+		// Status validation
 		if timer.Status != consts.Enabled.ToInt() {
 			return fmt.Errorf("not enabled status, unable failed, timer id: %d", id)
 		}
 
-		// 修改 timer 状态为激活态
+		// Update timer status to disabled
 		timer.Status = consts.Unabled.ToInt()
 		return dao.UpdateTimer(ctx, timer)
 	}

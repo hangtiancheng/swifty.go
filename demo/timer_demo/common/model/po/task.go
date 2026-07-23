@@ -6,15 +6,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// Task 运行流水记录
+// Task is an execution record for a timer run.
 type Task struct {
 	gorm.Model
-	App      string    `gorm:"column:app;NOT NULL"`           // 定义ID
-	TimerID  uint      `gorm:"column:timer_id;NOT NULL"`      // 定义ID
-	Output   string    `gorm:"column:output;default:null"`    // 执行结果
-	RunTimer time.Time `gorm:"column:run_timer;default:null"` // 执行时间
-	CostTime int       `gorm:"column:cost_time"`              // 执行耗时
-	Status   int       `gorm:"column:status;NOT NULL"`        // 当前状态
+	App      string    `gorm:"column:app;NOT NULL"`           // App name
+	TimerID  uint      `gorm:"column:timer_id;NOT NULL"`      // Timer ID
+	Output   string    `gorm:"column:output;default:null"`    // Execution result
+	RunTimer time.Time `gorm:"column:run_timer;default:null"` // Execution time
+	CostTime int       `gorm:"column:cost_time"`              // Execution cost in milliseconds
+	Status   int       `gorm:"column:status;NOT NULL"`        // Current status
 }
 
 func (t *Task) TableName() string {

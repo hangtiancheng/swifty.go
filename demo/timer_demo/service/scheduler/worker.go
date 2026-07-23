@@ -57,20 +57,20 @@ func (w *Worker) handleSlices(ctx context.Context) {
 	}
 }
 
-// 禁用动态分桶能力
+// Dynamic bucketing is disabled.
 func (w *Worker) getValidBucket(ctx context.Context) int {
 	return w.appConfProvider.Get().BucketsNum
 	// now := time.Now()
-	// // 删除上一分钟的数据
+	// // Delete data from the previous minute
 	// delete(w.minuteBuckets, now.Add(-time.Minute).Format(consts.MinuteFormat))
 
-	// // 复用一分钟内的数据
+	// // Reuse data within the same minute
 	// bucket, ok := w.minuteBuckets[now.Format(consts.MinuteFormat)]
 	// if ok {
 	// 	return bucket
 	// }
 
-	// // 更新入map进行复用
+	// // Store in map for reuse
 	// defer func() {
 	// 	w.minuteBuckets[now.Format(consts.MinuteFormat)] = bucket
 	// }()

@@ -12,7 +12,7 @@ func GetCurrentProcessID() string {
 	return strconv.Itoa(os.Getpid())
 }
 
-// GetCurrentGoroutineID 获取当前的协程ID
+// GetCurrentGoroutineID returns the current goroutine ID.
 func GetCurrentGoroutineID() string {
 	buf := make([]byte, 128)
 	buf = buf[:runtime.Stack(buf, false)]

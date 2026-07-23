@@ -24,15 +24,15 @@ func NewPersister(thinker Thinker) (handler.Persister, error) {
 
 type fakeReadCloser struct {
 	io.Reader
-	closef func() error
+	closeCb func() error
 }
 
-func readCloserAdapter(reader io.Reader, closef func() error) io.ReadCloser {
-	return &fakeReadCloser{Reader: reader, closef: closef}
+func readCloserAdapter(reader io.Reader, closeCb func() error) io.ReadCloser {
+	return &fakeReadCloser{Reader: reader, closeCb: closeCb}
 }
 
 func (f *fakeReadCloser) Close() error {
-	return f.closef()
+	return f.closeCb()
 }
 
 func newFakePersister(readCloser io.ReadCloser) handler.Persister {

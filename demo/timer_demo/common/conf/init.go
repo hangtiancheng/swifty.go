@@ -2,27 +2,31 @@ package conf
 
 import (
 	"os"
+	"sync"
 
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
+)
+
+var (
+	configOnce sync.Once
 )
 
 func init() {
-	// 获取项目的执行路径
+	configOnce.Do(loadConfig)
+}
+
+func loadConfig() {
 	path, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
 
-	config := viper.New()
-	config.AddConfigPath(path)   //设置读取的文件路径
-	config.SetConfigName("conf") //设置读取的文件名
-	config.SetConfigType("yaml") //设置文件的类型
-	// 尝试进行配置读取
-	if err := config.ReadInConfig(); err != nil {
+	data, err := os.ReadFile(path + "/conf.yml")
+	if err != nil {
 		panic(err)
 	}
 
-	if err := config.Unmarshal(&gConf); err != nil {
+	if err := yaml.Unmarshal(data, &gConf); err != nil {
 		panic(err)
 	}
 
@@ -34,38 +38,38 @@ func init() {
 	defaultWebServerAppConfProvider = NewWebServerAppConfProvider(gConf.WebServer)
 }
 
-// 兜底配置
+// gConf holds the fallback default configuration.
 var gConf GloablConf = GloablConf{
 	Migrator: &MigratorAppConf{
-		// 单节点并行协程数
+		// Number of concurrent goroutines per node
 		WorkersNum: 1000,
-		// 每次迁移数据的时间间隔，单位：min
+		// Time interval for each data migration step, in minutes
 		MigrateStepMinutes: 60,
-		// 迁移成功更新的锁过期时间，单位：min
+		// Lock expiration time updated after successful migration, in minutes
 		MigrateSucessExpireMinutes: 120,
-		// 迁移器获取锁时，初设的过期时间，单位：min
+		// Initial lock expiration time when the migrator acquires the lock, in minutes
 		MigrateTryLockMinutes: 20,
-		// 迁移器提前将定时器数据缓存到内存中的保存时间，单位：min
+		// How long the migrator caches timer details in memory ahead of time, in minutes
 		TimerDetailCacheMinutes: 2,
 	},
 
 	Scheduler: &SchedulerAppConf{
-		// 单节点并行协程数
+		// Number of concurrent goroutines per node
 		WorkersNum: 100,
-		// 分桶数量
+		// Number of buckets
 		BucketsNum: 10,
-		// 调度器获取分布式锁时初设的过期时间，单位：s
+		// Initial lock expiration time when the scheduler acquires a distributed lock, in seconds
 		TryLockSeconds: 70,
-		// 调度器每次尝试获取分布式锁的时间间隔，单位：s
+		// Interval between each lock acquisition attempt by the scheduler, in milliseconds
 		TryLockGapMilliSeconds: 100,
-		// 时间片执行成功后，更新的分布式锁时间，单位：s
+		// Updated distributed lock duration after a time slice executes successfully, in seconds
 		SuccessExpireSeconds: 130,
 	},
 
 	Trigger: &TriggerAppConf{
-		// 触发器轮询定时任务 zset 的时间间隔，单位：s
+		// Interval at which the trigger polls the timer task zset, in seconds
 		ZRangeGapSeconds: 1,
-		// 并发协程数
+		// Number of concurrent goroutines
 		WorkersNum: 10000,
 	},
 
@@ -74,13 +78,13 @@ var gConf GloablConf = GloablConf{
 	},
 	Redis: &RedisConfig{
 		Network: "tcp",
-		// 最大空闲连接数
+		// Maximum number of idle connections
 		MaxIdle: 2000,
-		// 空闲连接超时时间，单位：s
+		// Idle connection timeout, in seconds
 		IdleTimeoutSeconds: 30,
-		// 连接池最大存活的连接数
+		// Maximum number of active connections in the pool
 		MaxActive: 1000,
-		// 当连接数达到上限时，新的请求是等待还是立即报错
+		// Whether new requests wait or fail immediately when the pool is full
 		Wait: true,
 	},
 	Mysql: &MySQLConfig{
@@ -95,5 +99,5 @@ type GloablConf struct {
 	Redis     *RedisConfig      `yaml:"redis"`
 	Trigger   *TriggerAppConf   `yaml:"trigger"`
 	Scheduler *SchedulerAppConf `yaml:"scheduler"`
-	WebServer *WebServerAppConf `yaml:"webServer"`
+	WebServer *WebServerAppConf `yaml:"webserver"`
 }

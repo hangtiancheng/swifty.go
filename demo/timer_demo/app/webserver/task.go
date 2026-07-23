@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/hangtiancheng/swifty.go/demo/timer_demo/common/model/vo"
 	service "github.com/hangtiancheng/swifty.go/demo/timer_demo/service/webserver"
 
-	"github.com/gin-gonic/gin"
+	swifty "github.com/hangtiancheng/swifty.go/swifty_http"
 )
 
 type TaskApp struct {
@@ -19,15 +20,38 @@ func NewTaskApp(service *service.TaskService) *TaskApp {
 	return &TaskApp{service: service}
 }
 
-func (t *TaskApp) GetTasks(c *gin.Context) {
-	var req vo.GetTasksReq
-	if err := c.Bind(&req); err != nil {
-		c.JSON(http.StatusBadRequest, vo.NewCodeMsg(-1, fmt.Sprintf("[get tasks] bind req failed, err: %v", err)))
+func (t *TaskApp) GetTasks(ctx *swifty.Context, next func()) {
+	req, err := parseGetTasksReq(ctx)
+	if err != nil {
+		ctx.SetStatus(http.StatusBadRequest)
+		ctx.JSON(vo.NewCodeMsg(-1, fmt.Sprintf("[get tasks] bind req failed, err: %v", err)))
 		return
 	}
 
-	tasks, total, err := t.service.GetTasks(c.Request.Context(), &req)
-	c.JSON(http.StatusOK, vo.NewGetTasksResp(tasks, total, vo.NewCodeMsgWithErr(err)))
+	tasks, total, err := t.service.GetTasks(ctx.Request.Context(), req)
+	ctx.JSON(vo.NewGetTasksResp(tasks, total, vo.NewCodeMsgWithErr(err)))
+}
+
+func parseGetTasksReq(ctx *swifty.Context) (*vo.GetTasksReq, error) {
+	req := &vo.GetTasksReq{}
+
+	timerIDStr := ctx.Query("timerID")
+	if timerIDStr == "" {
+		return nil, fmt.Errorf("timerID is required")
+	}
+	timerID, err := strconv.ParseUint(timerIDStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timerID: %v", err)
+	}
+	req.TimerID = uint(timerID)
+
+	if idx := ctx.Query("pageIndex"); idx != "" {
+		req.Index, _ = strconv.Atoi(idx)
+	}
+	if sz := ctx.Query("pageSize"); sz != "" {
+		req.Size, _ = strconv.Atoi(sz)
+	}
+	return req, nil
 }
 
 type taskService interface {

@@ -5,7 +5,7 @@ const (
 	SecondFormat = "2006-01-02 15:04:00"
 	HourFormat   = "2006-01-02 15"
 	DayFormat    = "2006-01-02"
-	// 默认为一天过期.
+	// Default expiration: one day.
 	BloomFilterKeyExpireSeconds = 24 * 60 * 60
 )
 

@@ -71,7 +71,7 @@ func SetUpConfig() *Config {
 }
 
 func setUpConfig(src io.Reader) *Config {
-	tmpkv := make(map[string]string)
+	tmpKv := make(map[string]string)
 	scanner := bufio.NewScanner(src)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -89,7 +89,7 @@ func setUpConfig(src io.Reader) *Config {
 
 		key := trimmed[:pivot]
 		value := trimmed[pivot+1:]
-		tmpkv[key] = value
+		tmpKv[key] = value
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -107,7 +107,7 @@ func setUpConfig(src io.Reader) *Config {
 		if !ok || strings.TrimSpace(key) == "" {
 			key = field.Name
 		}
-		value, ok := tmpkv[key]
+		value, ok := tmpKv[key]
 		if !ok {
 			continue
 		}
@@ -115,8 +115,8 @@ func setUpConfig(src io.Reader) *Config {
 		case reflect.String:
 			fieldVal.SetString(value)
 		case reflect.Int:
-			intv, _ := strconv.ParseInt(value, 10, 64)
-			fieldVal.SetInt(intv)
+			intVal, _ := strconv.ParseInt(value, 10, 64)
+			fieldVal.SetInt(intVal)
 		case reflect.Bool:
 			fieldVal.SetBool(value == "yes")
 		}

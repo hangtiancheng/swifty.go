@@ -82,7 +82,7 @@ func (t *TaskCache) BatchCreateTasks(ctx context.Context, tasks []*po.Task, star
 		tableName := t.GetTableName(task)
 		// tableName := t.GetTableName(task, minBuckets)
 		commands = append(commands, redis.NewZAddCommand(tableName, unix, utils.UnionTimerIDUnix(task.TimerID, unix)))
-		// zset 一天后过期
+		// Expire the zset after one day
 		aliveSeconds := int64(time.Until(task.RunTimer.Add(24*time.Hour)) / time.Second)
 		commands = append(commands, redis.NewExpireCommand(tableName, aliveSeconds))
 	}
@@ -110,7 +110,7 @@ func (t *TaskCache) GetTasksByTime(ctx context.Context, table string, start, end
 }
 
 func (t *TaskCache) GetTableName(task *po.Task) string {
-	// 兜底取值
+	// Fallback value
 	maxBucket := t.confProvider.Get().BucketsNum
 	// for _, minBucket := range minuteBuckets {
 	// 	if minBucket.Minute == task.RunTimer.Format(consts.MinuteFormat) {
@@ -123,7 +123,7 @@ func (t *TaskCache) GetTableName(task *po.Task) string {
 }
 
 // func (t *TaskCache) GetTableName(task *po.Task, minuteBuckets []*vo.MinuteBucket) string {
-// 	// 兜底取值
+// 	// Fallback value
 // 	bucket := t.confProvider.Get().BucketsNum
 // 	for _, minBucket := range minuteBuckets {
 // 		if minBucket.Minute == task.RunTimer.Format(consts.MinuteFormat) {
