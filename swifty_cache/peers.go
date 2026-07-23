@@ -49,7 +49,7 @@ type ClientPicker struct {
 	selfAddr string
 	svcName  string
 	mu       sync.RWMutex
-	consHash *ConHashMap
+	consHash *ConsistentHashMap
 	clients  map[string]*Client
 	etcdCli  *client_v3.Client
 	ctx      context.Context
@@ -90,7 +90,7 @@ func NewClientPicker(addr string, opts ...PickerOption) (*ClientPicker, error) {
 		selfAddr: addr,
 		svcName:  defaultSvcName,
 		clients:  make(map[string]*Client),
-		consHash: NewConHash(),
+		consHash: NewConsistentHash(),
 		ctx:      ctx,
 		cancel:   cancel,
 	}

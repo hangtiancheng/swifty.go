@@ -28,10 +28,10 @@ import (
 	"sync/atomic"
 )
 
-// ConHashMap is a concurrent consistent hash ring with virtual nodes.
+// ConsistentHashMap is a concurrent consistent hash ring with virtual nodes.
 // Virtual node counts are fixed (DefaultReplicas per node), matching
 // groupcache's stable key-to-owner mapping.
-type ConHashMap struct {
+type ConsistentHashMap struct {
 	mu            sync.RWMutex
 	config        *ConHashConfig
 	keys          []int
@@ -41,9 +41,9 @@ type ConHashMap struct {
 	totalRequests int64
 }
 
-// NewConHash creates a consistent hash ring.
-func NewConHash(opts ...ConHashOption) *ConHashMap {
-	m := &ConHashMap{
+// NewConsistentHash creates a consistent hash ring.
+func NewConsistentHash(opts ...ConHashOption) *ConsistentHashMap {
+	m := &ConsistentHashMap{
 		config:     DefaultConHashConfig,
 		hashMap:    make(map[int]string),
 		nodeHashes: make(map[string][]int),
@@ -57,11 +57,11 @@ func NewConHash(opts ...ConHashOption) *ConHashMap {
 }
 
 // Option configures a Map.
-type ConHashOption func(*ConHashMap)
+type ConHashOption func(*ConsistentHashMap)
 
 // WithConfig sets the hash ring config.
-func WithConHashConfig(config *ConHashConfig) ConHashOption {
-	return func(m *ConHashMap) {
+func WithConsistentHashConfig(config *ConHashConfig) ConHashOption {
+	return func(m *ConsistentHashMap) {
 		if config != nil {
 			m.config = config
 		}
@@ -69,7 +69,7 @@ func WithConHashConfig(config *ConHashConfig) ConHashOption {
 }
 
 // Add adds nodes to the hash ring. Adding an existing node is a no-op.
-func (m *ConHashMap) Add(nodes ...string) error {
+func (m *ConsistentHashMap) Add(nodes ...string) error {
 	if len(nodes) == 0 {
 		return errors.New("no nodes provided")
 	}
@@ -88,7 +88,7 @@ func (m *ConHashMap) Add(nodes ...string) error {
 }
 
 // Remove removes a node from the hash ring.
-func (m *ConHashMap) Remove(node string) error {
+func (m *ConsistentHashMap) Remove(node string) error {
 	if node == "" {
 		return errors.New("invalid node")
 	}
@@ -100,7 +100,7 @@ func (m *ConHashMap) Remove(node string) error {
 }
 
 // Get returns the node responsible for key.
-func (m *ConHashMap) Get(key string) string {
+func (m *ConsistentHashMap) Get(key string) string {
 	if key == "" {
 		return ""
 	}
@@ -128,7 +128,7 @@ func (m *ConHashMap) Get(key string) string {
 	return node
 }
 
-func (m *ConHashMap) addNodeLocked(node string, replicas int) {
+func (m *ConsistentHashMap) addNodeLocked(node string, replicas int) {
 	if _, exists := m.nodeHashes[node]; exists {
 		return
 	}
@@ -151,7 +151,7 @@ func (m *ConHashMap) addNodeLocked(node string, replicas int) {
 	}
 }
 
-func (m *ConHashMap) removeNodeLocked(node string) error {
+func (m *ConsistentHashMap) removeNodeLocked(node string) error {
 	hashes, ok := m.nodeHashes[node]
 	if !ok {
 		return fmt.Errorf("node %s not found", node)
@@ -177,7 +177,7 @@ func (m *ConHashMap) removeNodeLocked(node string) error {
 }
 
 // GetStats returns the traffic share per node.
-func (m *ConHashMap) GetStats() map[string]float64 {
+func (m *ConsistentHashMap) GetStats() map[string]float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

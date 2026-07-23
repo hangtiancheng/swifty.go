@@ -27,7 +27,7 @@ import (
 )
 
 func TestMapAddGetRemoveAndStats(t *testing.T) {
-	m := NewConHash(WithConHashConfig(&ConHashConfig{
+	m := NewConsistentHash(WithConsistentHashConfig(&ConHashConfig{
 		DefaultReplicas:      3,
 		MinReplicas:          1,
 		MaxReplicas:          10,
@@ -69,7 +69,7 @@ func TestMapAddGetRemoveAndStats(t *testing.T) {
 }
 
 func TestMapConcurrentAccess(t *testing.T) {
-	m := NewConHash(WithConHashConfig(&ConHashConfig{
+	m := NewConsistentHash(WithConsistentHashConfig(&ConHashConfig{
 		DefaultReplicas: 5,
 		HashFunc:        DefaultConHashConfig.HashFunc,
 	}))
