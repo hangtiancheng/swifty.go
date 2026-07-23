@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// DefaultSingleLockTimeout is the default per-node timeout in redlock (50ms).
+// DefaultSingleLockTimeout is the default per-node timeout in red lock (50ms).
 const DefaultSingleLockTimeout = 50 * time.Millisecond
 
 type RedLock struct {
@@ -15,7 +15,7 @@ type RedLock struct {
 }
 
 func NewRedLock(key string, confs []*SingleNodeConf, opts ...RedLockOption) (*RedLock, error) {
-	// Redlock requires at least 3 nodes to be meaningful.
+	// RedLock requires at least 3 nodes to be meaningful.
 	if len(confs) < 3 {
 		return nil, errors.New("can not use redLock less than 3 nodes")
 	}

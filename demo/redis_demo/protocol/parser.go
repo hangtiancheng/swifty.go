@@ -69,7 +69,7 @@ func (p *Parser) parse(rawReader io.Reader, ch chan<- *handler.Droplet) {
 	}
 }
 
-// 解析简单 string 类型
+// parseSimpleString parses a simple string reply.
 func (p *Parser) parseSimpleString(header []byte, reader *bufio.Reader) *handler.Droplet {
 	content := header[1:]
 	return &handler.Droplet{
@@ -77,7 +77,7 @@ func (p *Parser) parseSimpleString(header []byte, reader *bufio.Reader) *handler
 	}
 }
 
-// 解析简单 int 类型
+// parseInt parses an integer reply.
 func (p *Parser) parseInt(header []byte, reader *bufio.Reader) *handler.Droplet {
 
 	i, err := strconv.ParseInt(string(header[1:]), 10, 64)
@@ -93,16 +93,16 @@ func (p *Parser) parseInt(header []byte, reader *bufio.Reader) *handler.Droplet 
 	}
 }
 
-// 解析错误类型
+// parseError parses an error reply.
 func (p *Parser) parseError(header []byte, reader *bufio.Reader) *handler.Droplet {
 	return &handler.Droplet{
 		Reply: handler.NewErrReply(string(header[1:])),
 	}
 }
 
-// 解析定长 string 类型
+// parseBulk parses a bulk string reply.
 func (p *Parser) parseBulk(header []byte, reader *bufio.Reader) *handler.Droplet {
-	// 解析定长 string
+	// Parse the bulk string body.
 	body, err := p.parseBulkBody(header, reader)
 	if err != nil {
 		return &handler.Droplet{
@@ -115,24 +115,24 @@ func (p *Parser) parseBulk(header []byte, reader *bufio.Reader) *handler.Droplet
 	}
 }
 
-// 解析定长 string
+// Parse the bulk string body.
 func (p *Parser) parseBulkBody(header []byte, reader *bufio.Reader) ([]byte, error) {
-	// 获取 string 长度
+	// Read the string length.
 	strLen, err := strconv.ParseInt(string(header[1:]), 10, 64)
 	if err != nil {
 		return nil, err
 	}
 
-	// 长度 + 2，把 CRLF 也考虑在内
+	// Length + 2 to account for the trailing CRLF.
 	body := make([]byte, strLen+2)
-	// 从 reader 中读取对应长度
+	// Read exactly that many bytes from the reader.
 	if _, err = io.ReadFull(reader, body); err != nil {
 		return nil, err
 	}
 	return body[:len(body)-2], nil
 }
 
-// 解析
+// parseMultiBulk parses a multi-bulk reply.
 func (p *Parser) parseMultiBulk(header []byte, reader *bufio.Reader) (droplet *handler.Droplet) {
 	var _err error
 	defer func() {
@@ -144,7 +144,7 @@ func (p *Parser) parseMultiBulk(header []byte, reader *bufio.Reader) (droplet *h
 		}
 	}()
 
-	// 获取数组长度
+	// Read the array length.
 	length, err := strconv.ParseInt(string(header[1:]), 10, 64)
 	if err != nil {
 		_err = err
@@ -159,20 +159,20 @@ func (p *Parser) parseMultiBulk(header []byte, reader *bufio.Reader) (droplet *h
 
 	lines := make([][]byte, 0, length)
 	for i := int64(0); i < length; i++ {
-		// 获取每个 bulk 首行
+		// Read the first line of each bulk.
 		firstLine, err := reader.ReadBytes('\n')
 		if err != nil {
 			_err = err
 			return
 		}
 
-		// bulk 首行格式校验
+		// Validate the bulk first-line format.
 		length := len(firstLine)
 		if length < 4 || firstLine[length-2] != '\r' || firstLine[length-1] != '\n' || firstLine[0] != '$' {
 			continue
 		}
 
-		// bulk 解析
+		// Parse the bulk body.
 		bulkBody, err := p.parseBulkBody(firstLine[:length-2], reader)
 		if err != nil {
 			_err = err

@@ -53,7 +53,7 @@ func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func serveHTTPAPI(port int, s *service) {
+func serveHttpApi(port int, s *service) {
 	srv := http.Server{
 		Addr:    ":" + strconv.Itoa(port),
 		Handler: s,

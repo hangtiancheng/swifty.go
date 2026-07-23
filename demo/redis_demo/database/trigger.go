@@ -34,10 +34,10 @@ func (d *DBTrigger) Do(ctx context.Context, cmdLine [][]byte) handler.Reply {
 		receiver: make(CmdReceiver),
 	}
 
-	// 投递给到 executor
+	// Dispatch to the executor.
 	d.executor.Entrance() <- &cmd
 
-	// 监听 chan，直到接收到返回的 reply
+	// Listen on the channel until a reply is received.
 	return <-cmd.Receiver()
 }
 

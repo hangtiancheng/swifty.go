@@ -13,12 +13,12 @@ import (
 	"github.com/hangtiancheng/swifty.go/demo/redis_demo/log"
 )
 
-// 处理器
+// Handler processes tcp connections.
 type Handler interface {
-	Start() error // 启动 handler
-	// 处理到来的每一笔 tcp 连接
+	Start() error // start the handler
+	// Handle each incoming tcp connection.
 	Handle(ctx context.Context, conn net.Conn)
-	// 关闭处理器
+	// Close the handler.
 	Close()
 }
 
@@ -44,7 +44,7 @@ func (s *Server) Serve(address string) error {
 	}
 	var _err error
 	s.runOnce.Do(func() {
-		// 监听进程信号
+		// Listen for process signals.
 		exitWords := []os.Signal{syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT}
 
 		sigc := make(chan os.Signal, 1)
@@ -89,7 +89,7 @@ func (s *Server) listenAndServe(listener net.Listener, closec chan struct{}) {
 	errc := make(chan error, 1)
 	defer close(errc)
 
-	// 遇到意外错误，则终止流程
+	// On unexpected error, terminate.
 	ctx, cancel := context.WithCancel(context.Background())
 	pool.Submit(
 		func() {
@@ -109,22 +109,22 @@ func (s *Server) listenAndServe(listener net.Listener, closec chan struct{}) {
 
 	s.logger.Warnf("[server]server starting...")
 	var wg sync.WaitGroup
-	// io 多路复用模型，goroutine for per conn
+	// I/O multiplexing: one goroutine per connection.
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			// 超时类错误，忽略
+			// Ignore timeout errors.
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				time.Sleep(5 * time.Millisecond)
 				continue
 			}
 
-			// 意外错误，则停止运行
+			// Unexpected error: stop.
 			errc <- err
 			break
 		}
 
-		// 为每个到来的 conn 分配一个 goroutine 处理
+		// Allocate a goroutine for each incoming connection.
 		wg.Add(1)
 		pool.Submit(func() {
 			defer wg.Done()
@@ -132,6 +132,6 @@ func (s *Server) listenAndServe(listener net.Listener, closec chan struct{}) {
 		})
 	}
 
-	// 通过 waitGroup 保证优雅退出
+	// Use WaitGroup for graceful shutdown.
 	wg.Wait()
 }

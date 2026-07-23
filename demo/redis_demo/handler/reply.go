@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// CRLF 是 redis 统一的行分隔符协议
+// CRLF is the standard redis line delimiter.
 const CRLF = "\r\n"
 
 type OKReply struct{}
@@ -22,7 +22,7 @@ func (o *OKReply) ToBytes() []byte {
 
 var theOkReply = new(OKReply)
 
-// 简单字符串类型. 协议为 【+】【string】【CRLF】
+// SimpleStringReply. Protocol: [+][string][CRLF]
 type SimpleStringReply struct {
 	Str string
 }
@@ -37,7 +37,7 @@ func (s *SimpleStringReply) ToBytes() []byte {
 	return []byte("+" + s.Str + CRLF)
 }
 
-// 简单数字类型. 协议为 【:】【int】【CRLF】
+// IntReply. Protocol: [:][int][CRLF]
 type IntReply struct {
 	Code int64
 }
@@ -52,7 +52,7 @@ func (i *IntReply) ToBytes() []byte {
 	return []byte(":" + strconv.FormatInt(i.Code, 10) + CRLF)
 }
 
-// 参数语法错误
+// SyntaxErrReply is a syntax-error reply.
 type SyntaxErrReply struct{}
 
 var syntaxErrBytes = []byte("-Err syntax error\r\n")
@@ -70,7 +70,7 @@ func (r *SyntaxErrReply) Error() string {
 	return "Err syntax error"
 }
 
-// 数据类型错误
+// WrongTypeErrReply is a wrong-type error reply.
 type WrongTypeErrReply struct{}
 
 var theWrongTypeErrReply = &WrongTypeErrReply{}
@@ -89,7 +89,7 @@ func (r *WrongTypeErrReply) Error() string {
 	return "WRONGTYPE Operation against a key holding the wrong kind of value"
 }
 
-// 错误类型. 协议为 【-】【err】【CRLF】
+// ErrReply. Protocol: [-][err][CRLF]
 type ErrReply struct {
 	ErrStr string
 }
@@ -109,7 +109,7 @@ var (
 	nillBulkBytes = []byte("$-1\r\n")
 )
 
-// nill 类型，采用全局单例，格式固定为 【$】【-1】【CRLF】
+// NilReply is a global singleton. Format: [$][-1][CRLF]
 type NillReply struct {
 }
 
@@ -121,7 +121,7 @@ func (n *NillReply) ToBytes() []byte {
 	return nillBulkBytes
 }
 
-// 定长字符串类型，协议固定为 【$】【length】【CRLF】【content】【CRLF】
+// BulkReply. Protocol: [$][length][CRLF][content][CRLF]
 type BulkReply struct {
 	Arg []byte
 }
@@ -139,7 +139,7 @@ func (b *BulkReply) ToBytes() []byte {
 	return []byte("$" + strconv.Itoa(len(b.Arg)) + CRLF + string(b.Arg) + CRLF)
 }
 
-// 数组类型. 协议固定为 【*】【arr.length】【CRLF】+ arr.length * (【$】【length】【CRLF】【content】【CRLF】)
+// MultiBulkReply. Protocol: [*][length][CRLF] + length * ([$][length][CRLF][content][CRLF])
 type MultiBulkReply struct {
 	args [][]byte
 }
@@ -169,7 +169,7 @@ func (m *MultiBulkReply) ToBytes() []byte {
 
 var emptyMultiBulkBytes = []byte("*0\r\n")
 
-// 空数组类型. 采用单例，协议固定为【*】【0】【CRLF】
+// EmptyMultiBulkReply is a singleton. Protocol: [*][0][CRLF]
 type EmptyMultiBulkReply struct{}
 
 func NewEmptyMultiBulkReply() *EmptyMultiBulkReply {

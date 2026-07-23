@@ -16,36 +16,36 @@ var container = dig.New()
 
 func init() {
 	/**
-	   其它
+	   Miscellaneous
 	**/
-	// 配置加载 conf
+	// Config loading
 	_ = container.Provide(SetUpConfig)
 	_ = container.Provide(PersistThinker)
-	// 日志打印 logger
+	// Logger
 	_ = container.Provide(log.GetDefaultLogger)
 
 	/**
-	   存储引擎
+	   Storage engine
 	**/
-	// 数据持久化
+	// Persistence
 	_ = container.Provide(persist.NewPersister)
-	// 存储介质
+	// Storage medium
 	_ = container.Provide(datastore.NewKVStore)
-	// 执行器
+	// Executor
 	_ = container.Provide(database.NewDBExecutor)
-	// 触发器
+	// Trigger
 	_ = container.Provide(database.NewDBTrigger)
 
 	/**
-	   逻辑处理层
+	   Logic layer
 	**/
-	// 协议解析
+	// Protocol parser
 	_ = container.Provide(protocol.NewParser)
-	// 指令处理
+	// Command handler
 	_ = container.Provide(handler.NewHandler)
 
 	/**
-	   服务端
+	   Server
 	**/
 	_ = container.Provide(server.NewServer)
 }

@@ -71,7 +71,7 @@ func (e *DBExecutor) Entrance() chan<- *Command {
 }
 
 func (e *DBExecutor) ValidCommand(cmd CmdType) bool {
-	_, valid := e.cmdHandlers[cmd] // map 只读，不考虑并发问题
+	_, valid := e.cmdHandlers[cmd] // map is read-only; no concurrency concern
 	return valid
 }
 
@@ -85,7 +85,7 @@ func (e *DBExecutor) run() {
 		case <-e.ctx.Done():
 			return
 
-		// 每隔 1 分钟批量一次过期的 key
+		// Batch-expire keys every 1 minute.
 		case <-e.gcTicker.C:
 			e.dataStore.GC()
 
@@ -96,7 +96,7 @@ func (e *DBExecutor) run() {
 				continue
 			}
 
-			e.dataStore.ExpirePreprocess(string(cmd.args[0])) // 懒加载机制实现过期 key 删除
+			e.dataStore.ExpirePreprocess(string(cmd.args[0])) // lazy deletion of expired keys
 			cmd.receiver <- cmdFunc(cmd)
 		}
 	}

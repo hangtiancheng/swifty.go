@@ -15,5 +15,5 @@ func main() {
 
 	// Start the HTTP API server
 	s := newService(kvStore, proposeC, confChangeC)
-	serveHTTPAPI(8091, s)
+	serveHttpApi(8091, s)
 }

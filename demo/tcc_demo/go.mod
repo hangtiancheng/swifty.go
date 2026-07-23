@@ -14,6 +14,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.2
+	github.com/hangtiancheng/swifty.go/swifty_http v0.0.2
 )
 
 require (
@@ -36,3 +37,4 @@ require (
 )
 
 replace github.com/hangtiancheng/swifty.go/demo/redis_lock => ../redis_lock
+replace 	github.com/hangtiancheng/swifty.go/swifty_http => ../../swifty_http

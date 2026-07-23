@@ -65,7 +65,7 @@ func newAofPersister(thinker Thinker) (handler.Persister, error) {
 	case everysecAppendSyncStrategy.string():
 		a.appendFsync = everysecAppendSyncStrategy
 	default:
-		a.appendFsync = noAppendSyncStrategy // 默认策略
+		a.appendFsync = noAppendSyncStrategy // default strategy
 	}
 
 	pool.Submit(a.run)
@@ -112,7 +112,7 @@ func (a *aofPersister) run() {
 	}
 }
 
-// 记录执行的 aof 指令次数
+// aofTick tracks the number of AOF commands executed.
 func (a *aofPersister) aofTick() {
 	if a.autoAofRewriteAfterCmd <= 1 {
 		return
@@ -122,7 +122,7 @@ func (a *aofPersister) aofTick() {
 		return
 	}
 
-	// 达到重写次数，扣减计数器，进行重写
+	// Threshold reached: deduct the counter and trigger a rewrite.
 	_ = a.aofCounter.Add(-a.autoAofRewriteAfterCmd)
 	pool.Submit(func() {
 		if err := a.rewriteAOF(); err != nil {

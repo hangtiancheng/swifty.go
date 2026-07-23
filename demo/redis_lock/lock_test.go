@@ -42,7 +42,7 @@ func Test_blockingLock(t *testing.T) {
 	t.Log("success")
 }
 
-func Test_nonblockingLock(t *testing.T) {
+func Test_nonBlockingLock(t *testing.T) {
 	// Fill in the redis node address and password.
 	addr := "xxxx:xx"
 	passwd := ""

@@ -14,12 +14,12 @@ import (
 )
 
 type Config struct {
-	Bind                    string `cfg:"bind"`                        // ip 地址
-	Port                    int    `cfg:"port"`                        // 启动端口号
-	AppendOnly_             bool   `cfg:"appendonly"`                  // 是否启用 aof
-	AppendFileName_         string `cfg:"appendfilename"`              // aof 文件名称
-	AppendFsync_            string `cfg:"appendfsync"`                 // aof 级别
-	AutoAofRewriteAfterCmd_ int    `cfg:"auto-aof-rewrite-after-cmds"` // 每执行多少次 aof 操作后，进行一次重写
+	Bind                    string `cfg:"bind"`                        // ip address
+	Port                    int    `cfg:"port"`                        // listen port
+	AppendOnly_             bool   `cfg:"appendonly"`                  // whether AOF is enabled
+	AppendFileName_         string `cfg:"appendfilename"`              // AOF file name
+	AppendFsync_            string `cfg:"appendfsync"`                 // AOF fsync policy
+	AutoAofRewriteAfterCmd_ int    `cfg:"auto-aof-rewrite-after-cmds"` // number of AOF commands before a rewrite
 }
 
 func (c *Config) Address() string {
@@ -75,13 +75,13 @@ func setUpConfig(src io.Reader) *Config {
 	scanner := bufio.NewScanner(src)
 	for scanner.Scan() {
 		line := scanner.Text()
-		// 注释行，跳过
+		// skip comment lines
 		trimmed := strings.TrimSpace(line)
 		if len(trimmed) > 0 && trimmed[0] == '#' {
 			continue
 		}
 
-		// 寻找合法的空格分隔符位置
+		// find the space delimiter
 		pivot := strings.Index(trimmed, " ")
 		if pivot <= 0 || pivot >= len(trimmed)-1 {
 			continue
@@ -97,7 +97,7 @@ func setUpConfig(src io.Reader) *Config {
 	}
 
 	conf := &Config{}
-	// 通过反射设置 conf 属性值
+	// set config fields via reflection
 	t := reflect.TypeOf(conf)
 	v := reflect.ValueOf(conf)
 	for i := 0; i < t.Elem().NumField(); i++ {
@@ -129,6 +129,6 @@ func defaultConf() *Config {
 	return &Config{
 		Bind:        "0.0.0.0",
 		Port:        6379,
-		AppendOnly_: false, // 默认不启用 aof
+		AppendOnly_: false, // AOF disabled by default
 	}
 }

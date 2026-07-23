@@ -36,7 +36,7 @@ func NewHandler(db DB, persister Persister, parser Parser, logger log.Logger) (s
 }
 
 func (h *Handler) Start() error {
-	// 加载持久化文件，还原内容
+	// Load the persistence file and restore content
 	reloader, err := h.persister.Reloader()
 	if err != nil {
 		return err
@@ -48,13 +48,13 @@ func (h *Handler) Start() error {
 
 func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 	h.mu.Lock()
-	// 判断 db 是否已经关闭
+	// Check if the db is already closed
 	if h.closed.Load() {
 		h.mu.Unlock()
 		return
 	}
 
-	// 当前 conn 缓存起来
+	// Cache the current connection
 	h.conns[conn] = struct{}{}
 	h.mu.Unlock()
 
@@ -62,7 +62,7 @@ func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 }
 
 func (h *Handler) handle(ctx context.Context, conn io.ReadWriter) {
-	// 持续处理
+	// Process continuously
 	stream := h.parser.ParseStream(conn)
 	for {
 		select {
@@ -95,7 +95,7 @@ func (h *Handler) handleDroplet(ctx context.Context, conn io.ReadWriter, droplet
 		return nil
 	}
 
-	// 请求参数必须为 multiBulkReply 类型
+	// The request must be a MultiReply
 	multiReply, ok := droplet.Reply.(MultiReply)
 	if !ok {
 		h.logger.Errorf("[handler]conn invalid request: %s", droplet.Reply.ToBytes())

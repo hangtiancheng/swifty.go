@@ -62,7 +62,7 @@ func (k *KVStore) ExpireAt(cmd *database.Command) handler.Reply {
 
 func (k *KVStore) expireAt(ctx context.Context, cmd [][]byte, key string, expireAt time.Time) handler.Reply {
 	k.expire(key, expireAt)
-	k.persister.PersistCmd(ctx, cmd) // 持久化
+	k.persister.PersistCmd(ctx, cmd) // persist
 	return handler.NewOKReply()
 }
 
@@ -103,7 +103,7 @@ func (k *KVStore) Set(cmd *database.Command) handler.Reply {
 	key := string(args[0])
 	value := string(args[1])
 
-	// 支持 NX EX
+	// Support NX and EX flags.
 	var (
 		insertStrategy bool
 		ttlStrategy    bool
@@ -117,7 +117,7 @@ func (k *KVStore) Set(cmd *database.Command) handler.Reply {
 		case "nx":
 			insertStrategy = true
 		case "ex":
-			// 重复的 ex 指令
+			// Duplicate EX flag.
 			if ttlStrategy {
 				return handler.NewSyntaxErrReply()
 			}
@@ -141,20 +141,20 @@ func (k *KVStore) Set(cmd *database.Command) handler.Reply {
 		}
 	}
 
-	// 将 args 剔除 ex 部分，进行持久化
+	// Strip the EX pair from args before persisting.
 	if ttlIndex != -1 {
 		args = append(args[:ttlIndex], args[ttlIndex+2:]...)
 	}
 
-	// 设置
+	// Set the key.
 	affected := k.put(key, value, insertStrategy)
 	if affected > 0 && ttlStrategy {
 		expireAt := lib.TimeNow().Add(time.Duration(ttlSeconds) * time.Second)
 		_cmd := [][]byte{[]byte(database.CmdTypeExpireAt), []byte(key), []byte(lib.TimeSecondFormat(expireAt))}
-		_ = k.expireAt(cmd.Ctx(), _cmd, key, expireAt) // 其中会完成 ex 信息的持久化
+		_ = k.expireAt(cmd.Ctx(), _cmd, key, expireAt) // this also persists the EX information
 	}
 
-	// 过期时间处理
+	// Persist the SET command.
 	if affected > 0 {
 		k.persister.PersistCmd(cmd.Ctx(), append([][]byte{[]byte(database.CmdTypeSet)}, args...))
 		return handler.NewIntReply(affected)
@@ -232,7 +232,7 @@ func (k *KVStore) LPop(cmd *database.Command) handler.Reply {
 		return handler.NewNillReply()
 	}
 
-	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 
 	if len(poped) == 1 {
 		return handler.NewBulkReply(poped[0])
@@ -259,7 +259,7 @@ func (k *KVStore) RPush(cmd *database.Command) handler.Reply {
 		list.RPush(args[i])
 	}
 
-	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	return handler.NewIntReply(list.Len())
 }
 
@@ -296,7 +296,7 @@ func (k *KVStore) RPop(cmd *database.Command) handler.Reply {
 		return handler.NewNillReply()
 	}
 
-	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	if len(poped) == 1 {
 		return handler.NewBulkReply(poped[0])
 	}
@@ -356,7 +356,7 @@ func (k *KVStore) SAdd(cmd *database.Command) handler.Reply {
 		added += set.Add(string(arg))
 	}
 
-	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	return handler.NewIntReply(added)
 }
 
@@ -397,7 +397,7 @@ func (k *KVStore) SRem(cmd *database.Command) handler.Reply {
 	}
 
 	if remed > 0 {
-		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	}
 	return handler.NewIntReply(remed)
 }
@@ -426,7 +426,7 @@ func (k *KVStore) HSet(cmd *database.Command) handler.Reply {
 		hmap.Put(hkey, hvalue)
 	}
 
-	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	return handler.NewIntReply(int64((len(args) - 1) >> 1))
 }
 
@@ -467,7 +467,7 @@ func (k *KVStore) HDel(cmd *database.Command) handler.Reply {
 	}
 
 	if remed > 0 {
-		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	}
 	return handler.NewIntReply(remed)
 }
@@ -509,7 +509,7 @@ func (k *KVStore) ZAdd(cmd *database.Command) handler.Reply {
 		zset.Add(scores[i], members[i])
 	}
 
-	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+	k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	return handler.NewIntReply(int64(len(scores)))
 }
 
@@ -569,7 +569,7 @@ func (k *KVStore) ZRem(cmd *database.Command) handler.Reply {
 	}
 
 	if remed > 0 {
-		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // 持久化
+		k.persister.PersistCmd(cmd.Ctx(), cmd.Cmd()) // persist
 	}
 	return handler.NewIntReply(remed)
 }

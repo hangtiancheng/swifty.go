@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
+	go_redis "github.com/redis/go-redis/v9"
 )
 
 // LockClient is the redis surface used by RedisLock.
@@ -19,7 +19,7 @@ type LockClient interface {
 // Client wraps a github.com/redis/go-redis/v9 client.
 type Client struct {
 	ClientOptions
-	client *goredis.Client
+	client *go_redis.Client
 }
 
 // NewClient builds a Client against the given redis endpoint.
@@ -38,7 +38,7 @@ func NewClient(network, address, password string, opts ...ClientOption) *Client 
 
 	repairClient(&c.ClientOptions)
 
-	client := goredis.NewClient(&goredis.Options{
+	client := go_redis.NewClient(&go_redis.Options{
 		Network:         c.network,
 		Addr:            c.address,
 		Password:        c.password,

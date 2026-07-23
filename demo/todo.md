@@ -1,17 +1,14 @@
-- consistent_cache
-- redis_lock
-- raft_demo
-- red_mq
-- consistent_hash
-- lsm_tree
+- consistent_cache V
+- redis_lock V
+- raft_demo V
+- red_mq V
+- consistent_hash V
+- lsm_tree V
 - redis_demo (doing)
 
 替换所有的中文为专业的英文, 替换 github.com/panjf2000/ants 为 github.com/bytedance/gopkg@v0.1.4/util/gopool; 彻底移除 github.com/spf13/cast、github.com/stretchr/testify (使用 go 原生 test)、彻底移除 go.uber.org/zap、gopkg.in/natefinch/lumberjack.v2 (使用 go 原生 log)
 
-- time_wheel
-
-替换所有的中文为专业的英文, 彻底移除 github.com/demdxx/gocast、替换 github.com/gomodule/redigo 为 github.com/redis/go-redis/v9
-
+- time_wheel V
 - timer_demo
 
 替换所有的中文为专业的英文
@@ -32,3 +29,4 @@
 彻底移除 github.com/spf13/cast
 彻底移除 github.com/demdxx/gocast
 替换 github.com/agiledragon/gomonkey/v2 为 https://github.com/uber-go/mock
+不允许使用 git 撤销变更等任何会影响到磁盘文件的操作，因为我在别的目录下工作！

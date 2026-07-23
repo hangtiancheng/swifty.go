@@ -34,7 +34,7 @@ type DB interface {
 	Close()
 }
 
-// 协议解析器
+// Parser is the protocol parser.
 type Parser interface {
 	ParseStream(reader io.Reader) <-chan *Droplet
 }

@@ -54,7 +54,7 @@ func newSkiplist(key string) SortedSet {
 }
 
 func (s *skiplist) Add(score int64, member string) {
-	// 之前存在，需要删除
+	// Already exists; remove the old entry first.
 	oldScore, ok := s.memberToScore[member]
 	if ok {
 		if oldScore == score {
@@ -70,7 +70,7 @@ func (s *skiplist) Add(score int64, member string) {
 		return
 	}
 
-	// 新插入，roll 出高度
+	// New insert; roll a height.
 	height := s.roll()
 	for int64(len(s.head.nexts)) < height+1 {
 		s.head.nexts = append(s.head.nexts, nil)
@@ -93,7 +93,7 @@ func (s *skiplist) Add(score int64, member string) {
 }
 
 func (s *skiplist) Rem(member string) int64 {
-	// 之前存在，需要删除
+	// Already exists; remove the old entry first.
 	score, ok := s.memberToScore[member]
 	if !ok {
 		return 0
@@ -119,7 +119,7 @@ func (s *skiplist) Range(score1, score2 int64) []string {
 		}
 	}
 
-	// 来到了 level0 层，move.nexts[i] 如果存在，就是首个 >= score1 的元素
+	// At level 0, move.nexts[0] (if present) is the first element >= score1.
 	if len(move.nexts) == 0 || move.nexts[0] == nil {
 		return []string{}
 	}
