@@ -160,6 +160,7 @@
     "tasklist",
     "termenv",
     "testdata",
+    "tmpl",
     "tonumber",
     "topbar",
     "trimpath",
