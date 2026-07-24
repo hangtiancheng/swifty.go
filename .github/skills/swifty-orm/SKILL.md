@@ -458,7 +458,7 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
-    engine, err := swifty_orm.NewEngine(ctx, "mongodb://localhost:27017", "myapp")
+    engine, err := swifty_orm.NewEngine(ctx, "mongodb://localhost:27017", "my-app")
     if err != nil {
         log.Fatal(err)
     }
@@ -701,12 +701,6 @@ func main() {
 
 - Go 1.26.0 or newer (per `go.mod`)
 - `go.mongodb.org/mongo-driver` v1.17.6 (direct)
-
-Indirect: `github.com/golang/snappy`, `github.com/klauspost/compress`,
-`github.com/montanaflynn/stats`, `github.com/xdg-go/pbkdf2`,
-`github.com/xdg-go/scram`, `github.com/xdg-go/stringprep`,
-`github.com/youmark/pkcs8`, `golang.org/x/crypto`, `golang.org/x/sync`,
-`golang.org/x/text`, `github.com/davecgh/go-spew`, `github.com/google/go-cmp`.
 
 `go.mod` contains `replace` directives pointing the sibling modules
 (`swifty_cache`, `swifty_http`, `swifty_rpc`) at their local directories.
