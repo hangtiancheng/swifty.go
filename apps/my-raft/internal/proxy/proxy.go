@@ -79,16 +79,25 @@ func (r *raftProxy) listen() {
 		case <-ticker.C:
 			r.node.Tick()
 
-		case <-r.node.Ready():
-			// Persist the hard state and the configuration.
+		case rd := <-r.node.Ready():
+			// Persist the hard state and the entries.
+			_ = r.storage.SetHardState(rd.HardState)
+			_ = r.storage.Append(rd.Entries)
 
-			// Persist entries.
+			// The transport module is not implemented yet: messages to other
+			// nodes are dropped, so this node only works as a single-node
+			// cluster.
 
-			// Send messages.
+			// Deliver committed entries to the application.
+			for _, ent := range rd.CommittedEntries {
+				if len(ent.Data) == 0 {
+					// Skip the empty leader no-op entries.
+					continue
+				}
+				data := string(ent.Data)
+				r.commitC <- &data
+			}
 
-			// Apply committed entries.
-
-			// Advance.
 			r.node.Advance()
 		}
 	}

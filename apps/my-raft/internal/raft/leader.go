@@ -12,6 +12,9 @@ func (r *raft) becomeLeader() {
 
 	// A newly elected leader appends an empty entry for the current term.
 	r.appendEntry([]Entry{{Data: nil}}...)
+	// On a single-node cluster the quorum is already met, which commits the
+	// no-op entry and unblocks the log.
+	r.maybeCommit()
 }
 
 func stepLeader(r *raft, m Message) {
@@ -37,9 +40,13 @@ func stepLeader(r *raft, m Message) {
 
 		// Broadcast to replicate the new entries.
 		r.bcastAppend()
+
+		// On a single-node cluster the quorum is met by the leader itself.
+		r.maybeCommit()
 		return
 	case MsgReadIndex:
 		// Handle the read request.
+		r.handleReadIndex(m)
 		return
 	}
 
@@ -58,11 +65,59 @@ func stepLeader(r *raft, m Message) {
 			if pr.mayDecrTo(m.LogIndex, m.RejectHint) {
 				r.sendAppend(m.From)
 			}
+			return
+		}
+
+		// The follower acknowledged the entries up to m.LogIndex.
+		pr.maybeUpdate(m.LogIndex)
+		if r.maybeCommit() {
+			// The commit index advanced: inform the followers.
+			r.bcastAppend()
 		}
 
 	case MsgHeartbeatResp:
+		// A heartbeat response carrying a context acknowledges a pending
+		// ReadIndex request.
+		if len(m.Context) != 0 {
+			r.ackReadIndex(m)
+		}
+	}
+}
+
+// handleReadIndex records a linearizable read request and confirms it with a
+// round of heartbeats: once a quorum has acknowledged, the current commit
+// index is a valid read index.
+func (r *raft) handleReadIndex(m Message) {
+	if len(m.Context) == 0 {
+		return
 	}
 
+	key := string(m.Context)
+	if _, ok := r.reads[key]; ok {
+		// A read with this context is already in flight.
+		return
+	}
+
+	// Count the leader itself, then ask the followers to confirm leadership.
+	r.reads[key] = 1
+	r.bcastHeartbeatWithCtx(m.Context)
+}
+
+func (r *raft) ackReadIndex(m Message) {
+	key := string(m.Context)
+	acks, ok := r.reads[key]
+	if !ok {
+		return
+	}
+
+	if acks+1 < r.quorum() {
+		r.reads[key] = acks + 1
+		return
+	}
+
+	// Quorum confirmed: publish the read state for the application.
+	delete(r.reads, key)
+	r.readStates = append(r.readStates, ReadState{Index: r.raftLog.commitIndex, RequestCtx: m.Context})
 }
 
 func (r *raft) bcastHeartbeat() {

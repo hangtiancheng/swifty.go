@@ -276,6 +276,16 @@ func (r *raftLog) commitTo(tocommit uint64) {
 	r.commitIndex = tocommit
 }
 
+// maybeCommit advances the commit index to i if i is higher than the current
+// commit index. It reports whether the commit index advanced.
+func (r *raftLog) maybeCommit(i uint64) bool {
+	if i <= r.commitIndex {
+		return false
+	}
+	r.commitTo(i)
+	return true
+}
+
 func (r *raftLog) maybeAppend(logIndex, logTerm, commitIndex uint64, ents ...Entry) (uint64, bool) {
 	// Bail out if the preceding entry's index and term do not match.
 	if !r.matchTerm(logIndex, logTerm) {

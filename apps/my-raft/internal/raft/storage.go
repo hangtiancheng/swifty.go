@@ -11,6 +11,10 @@ var ErrUnavailable = errors.New("requested entry at index is unavailable")
 
 type Storage interface {
 	InitialState() (HardState, ConfState, error)
+	// Append persists the given entries, truncating any conflicting tail.
+	Append(entries []Entry) error
+	// SetHardState persists the given hard state.
+	SetHardState(hardState HardState) error
 	// Entries returns the entries in the range [l, r).
 	Entries(l, r uint64) ([]Entry, error)
 	// Term returns the term of the entry at the given index.
@@ -36,6 +40,39 @@ func NewMemoryStorage() *MemoryStorage {
 
 func (m *MemoryStorage) InitialState() (HardState, ConfState, error) {
 	return m.hardState, ConfState{}, nil
+}
+
+// SetHardState persists the given hard state.
+func (m *MemoryStorage) SetHardState(hardState HardState) error {
+	m.Lock()
+	defer m.Unlock()
+	m.hardState = hardState
+	return nil
+}
+
+// Append persists the given entries, truncating any conflicting tail first.
+func (m *MemoryStorage) Append(entries []Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	m.Lock()
+	defer m.Unlock()
+
+	offset := m.ents[0].Index
+	first := entries[0].Index
+	if first < offset {
+		return ErrCompacted
+	}
+
+	// Drop the local tail that conflicts with the incoming entries.
+	if last := m.lastIndex(); first <= last {
+		m.ents = m.ents[:first-offset]
+	} else if first > last+1 {
+		return ErrUnavailable
+	}
+	m.ents = append(m.ents, entries...)
+	return nil
 }
 
 func (m *MemoryStorage) Entries(l, r uint64) ([]Entry, error) {

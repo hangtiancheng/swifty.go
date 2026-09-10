@@ -22,14 +22,17 @@ type Ready struct {
 }
 
 func newReady(r *raft, preSoft *SoftState, preHard HardState) Ready {
-	rd := Ready{
-		// Entries that are not persisted yet and must be persisted.
-		Entries: r.raftLog.unstableEntries(),
-		// Entries ready to be committed.
-		CommittedEntries: r.raftLog.nextEnts(),
-		// Messages waiting to be sent.
-		Message: r.msgs,
+	rd := Ready{}
+	// Copy the entry slices: the application may hold the Ready while the log
+	// keeps appending to and re-slicing its own arrays.
+	if ents := r.raftLog.unstableEntries(); len(ents) > 0 {
+		rd.Entries = append([]Entry{}, ents...)
 	}
+	if ents := r.raftLog.nextEnts(); len(ents) > 0 {
+		rd.CommittedEntries = append([]Entry{}, ents...)
+	}
+	// Messages waiting to be sent.
+	rd.Message = r.msgs
 	if soft := r.softState(); !soft.equal(preSoft) {
 		rd.SoftState = soft
 	}

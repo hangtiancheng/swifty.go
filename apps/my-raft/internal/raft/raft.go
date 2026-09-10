@@ -2,6 +2,7 @@ package raft
 
 import (
 	"math/rand"
+	"slices"
 )
 
 type stepFunc func(*raft, Message)
@@ -21,6 +22,9 @@ type raft struct {
 	state StateType
 	// Records which nodes voted for this node.
 	votes map[uint64]bool
+	// Reads tracks the in-flight ReadIndex requests by their context,
+	// counting the quorum confirmations received so far.
+	reads map[string]int
 	// Messages waiting to be delivered to the application.
 	msgs []Message
 	// ID of the current leader.
@@ -142,6 +146,8 @@ func (r *raft) Step(m Message) error {
 		// already voted for.
 		if r.raftLog.isUpToDate(m.LogIndex, m.LogTerm) && (r.Vote == None || m.Term > r.Term || m.From == r.Vote) {
 			if m.Type == MsgVote {
+				// Granting a vote resets the election timer.
+				r.electionElapsed = 0
 				r.Vote = m.From
 				r.send(Message{Type: MsgVoteResp, To: m.From})
 				break
@@ -173,6 +179,15 @@ func (r *raft) reset(term uint64) {
 	r.heartbeatElapsed = 0
 	// Reset the randomized election timeout.
 	r.resetRandomizedElectionTimeout()
+	// Votes from previous campaigns must never leak into a new one.
+	r.votes = make(map[uint64]bool)
+	// Read requests confirmed by a previous leadership are stale.
+	r.reads = make(map[string]int)
+	// Rebuild the replication progress: the new leadership restarts from the
+	// local log end, and stale Match values must not be counted as quorum.
+	for id := range r.prs {
+		r.prs[id] = &Progress{Next: r.raftLog.lastIndex() + 1}
+	}
 }
 
 func (r *raft) resetRandomizedElectionTimeout() {
@@ -194,6 +209,11 @@ func (r *raft) hardState() HardState {
 func (r *raft) send(m Message) {
 	if m.Type != MsgProp && m.Type != MsgReadIndex {
 		m.Term = r.Term
+	}
+	// Outgoing messages must carry the sender ID: receivers use it to look up
+	// the sender's progress and to learn the leader.
+	if m.From == None {
+		m.From = r.id
 	}
 
 	r.msgs = append(r.msgs, m)
@@ -298,4 +318,16 @@ func (r *raft) appendEntry(es ...Entry) {
 	// Assign the term and index of the new entries.
 	r.raftLog.append(es...)
 	r.prs[r.id].maybeUpdate(r.raftLog.lastIndex())
+}
+
+// maybeCommit advances the commit index to the highest index replicated on a
+// quorum of nodes, if it is higher than the current commit index.
+func (r *raft) maybeCommit() bool {
+	matches := make([]uint64, 0, len(r.prs))
+	for _, pr := range r.prs {
+		matches = append(matches, pr.Match)
+	}
+	slices.Sort(matches)
+	// The majority-matched index is the middle of the sorted matches.
+	return r.raftLog.maybeCommit(matches[len(matches)-1-(len(matches)-1)/2])
 }

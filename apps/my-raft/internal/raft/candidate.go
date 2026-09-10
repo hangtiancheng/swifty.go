@@ -4,6 +4,9 @@ func (r *raft) becomePreCandidate() {
 	if r.state == StateLeader {
 		panic("invalid transition leader -> pre-candidate")
 	}
+	// The term and the vote are intentionally left untouched, but stale votes
+	// from previous campaigns must not leak into this one.
+	r.reset(r.Term)
 	r.step = stepCandidate
 	r.tick = r.tickElection
 	r.state = StatePreCandidate
