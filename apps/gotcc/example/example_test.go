@@ -117,19 +117,19 @@ func TestTCCExample(t *testing.T) {
 	txID, success, err := txManager.Transaction(ctx, []*gotcc.RequestEntity{
 		{
 			ComponentID: componentAID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentAID + "_biz_" + suffix,
 			},
 		},
 		{
 			ComponentID: componentBID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentBID + "_biz_" + suffix,
 			},
 		},
 		{
 			ComponentID: componentCID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentCID + "_biz_" + suffix,
 			},
 		},
@@ -188,19 +188,19 @@ func TestTCCExampleRollback(t *testing.T) {
 	txID, success, err := txManager.Transaction(ctx, []*gotcc.RequestEntity{
 		{
 			ComponentID: componentAID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentAID + "_biz_" + suffix,
 			},
 		},
 		{
 			ComponentID: componentBID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentBID + "_biz_" + suffix,
 			},
 		},
 		{
 			ComponentID: componentCID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"biz_id": componentCID + "_biz_" + suffix,
 			},
 		},

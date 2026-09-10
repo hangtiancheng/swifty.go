@@ -97,7 +97,7 @@ func (c *redisClient) SetNEX(ctx context.Context, key, value string, expireSecon
 
 // Eval implements redis_lock.LockClient. keyCount declares how many leading
 // entries of keysAndArgs are KEYS; the remaining entries are passed as ARGV.
-func (c *redisClient) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (c *redisClient) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	if keyCount < 0 || keyCount > len(keysAndArgs) {
 		return nil, fmt.Errorf("redis EVAL invalid keyCount %d for %d keys and args", keyCount, len(keysAndArgs))
 	}

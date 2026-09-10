@@ -22,7 +22,7 @@ type RTaskElement struct {
 	Key         string            `json:"key"`
 	CallbackURL string            `json:"callback_url"`
 	Method      string            `json:"method"`
-	Req         interface{}       `json:"req"`
+	Req         any               `json:"req"`
 	Header      map[string]string `json:"header"`
 }
 
@@ -80,7 +80,7 @@ func (r *RTimeWheel) AddTask(ctx context.Context, key string, task *RTaskElement
 		// Set holding the keys flagged as deleted.
 		r.getDeleteSetKey(executeAt),
 	}
-	args := []interface{}{
+	args := []any{
 		// The second-level unix timestamp of the execution time is the
 		// zset score.
 		executeAt.Unix(),
@@ -96,7 +96,7 @@ func (r *RTimeWheel) AddTask(ctx context.Context, key string, task *RTaskElement
 // when it becomes due.
 func (r *RTimeWheel) RemoveTask(ctx context.Context, key string, executeAt time.Time) error {
 	keys := []string{r.getDeleteSetKey(executeAt)}
-	args := []interface{}{key}
+	args := []any{key}
 	return goredis.NewScript(LuaDeleteTask).Run(ctx, r.redisClient, keys, args).Err()
 }
 
@@ -135,9 +135,8 @@ func (r *RTimeWheel) executeTasks() {
 		task := task // capture the loop variable
 		go func() {
 			defer wg.Done()
-			if err := r.executeTask(tctx, task); err != nil {
-				// TODO: log the execution error.
-			}
+			// TODO: log the execution error.
+			_ = r.executeTask(tctx, task)
 		}()
 	}
 	wg.Wait()
@@ -168,13 +167,13 @@ func (r *RTimeWheel) getExecutableTasks(ctx context.Context) ([]*RTaskElement, e
 	score2 := nowSecond.Add(time.Second).Unix()
 
 	keys := []string{minuteSlice, deleteSetKey}
-	args := []interface{}{score1, score2}
+	args := []any{score1, score2}
 	rawReply, err := goredis.NewScript(LuaZrangeTasks).Run(ctx, r.redisClient, keys, args).Result()
 	if err != nil {
 		return nil, fmt.Errorf("fetch executable tasks: %w", err)
 	}
 
-	replies, ok := rawReply.([]interface{})
+	replies, ok := rawReply.([]any)
 	if !ok {
 		return nil, fmt.Errorf("unexpected reply type %T from LuaZrangeTasks", rawReply)
 	}
@@ -184,7 +183,7 @@ func (r *RTimeWheel) getExecutableTasks(ctx context.Context) ([]*RTaskElement, e
 	}
 
 	// replies[0] holds the delete set members.
-	deletedMembers, _ := replies[0].([]interface{})
+	deletedMembers, _ := replies[0].([]any)
 	deletedSet := make(map[string]struct{}, len(deletedMembers))
 	for _, member := range deletedMembers {
 		deletedSet[redisReplyString(member)] = struct{}{}
@@ -208,7 +207,7 @@ func (r *RTimeWheel) getExecutableTasks(ctx context.Context) ([]*RTaskElement, e
 }
 
 // redisReplyString converts a redis reply element to its string form.
-func redisReplyString(v interface{}) string {
+func redisReplyString(v any) string {
 	switch s := v.(type) {
 	case string:
 		return s

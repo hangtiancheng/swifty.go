@@ -65,7 +65,7 @@ func (t *Tree) compactLevel(level int) {
 	}
 
 	// Iterate over every key value pair to merge.
-	for i := 0; i < len(pickedKVs); i++ {
+	for i := range pickedKVs {
 		// If the new level+1 sst file has reached its size limit, flush it to
 		// disk and start a new one.
 		if sstWriter.Size() > sstLimit {
@@ -166,7 +166,7 @@ func (t *Tree) pickedNodesToKVs(pickedNodes []*sst.Node) ([]*sst.KV, error) {
 func (t *Tree) removeNodes(level int, nodes []*sst.Node) {
 	// Remove the old nodes from the nodes of the lsm tree.
 outer:
-	for k := 0; k < len(nodes); k++ {
+	for k := range nodes {
 		node := nodes[k]
 		for i := level + 1; i >= level; i-- {
 			for j := 0; j < len(t.nodes[i]); j++ {
@@ -327,7 +327,7 @@ func (t *Tree) walFile() string {
 }
 
 func walFileToMemTableIndex(walFile string) int {
-	rawIndex := strings.Replace(walFile, ".wal", "", -1)
+	rawIndex := strings.ReplaceAll(walFile, ".wal", "")
 	index, _ := strconv.Atoi(rawIndex)
 	return index
 }

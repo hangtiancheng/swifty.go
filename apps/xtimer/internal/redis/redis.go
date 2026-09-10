@@ -3,7 +3,6 @@ package redis
 import (
 	"context"
 	"errors"
-	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -84,20 +83,22 @@ func (c *Client) HGet(ctx context.Context, table, key string) (string, error) {
 }
 
 // HSet executes the Redis HSET command.
-func (c *Client) HSet(ctx context.Context, table, key string, value interface{}) error {
+func (c *Client) HSet(ctx context.Context, table, key string, value any) error {
 	return c.client.HSet(ctx, table, key, value).Err()
 }
 
 // ZRangeByScore executes the Redis ZRANGEBYSCORE command, both scores inclusive.
 func (c *Client) ZRangeByScore(ctx context.Context, table string, score1, score2 int64) ([]string, error) {
-	return c.client.ZRangeByScore(ctx, table, &redis.ZRangeBy{
-		Min: strconv.FormatInt(score1, 10),
-		Max: strconv.FormatInt(score2, 10),
+	return c.client.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     table,
+		Start:   score1,
+		Stop:    score2,
+		ByScore: true,
 	}).Result()
 }
 
 // ZAdd executes the Redis ZADD command.
-func (c *Client) ZAdd(ctx context.Context, table string, score int64, value interface{}) error {
+func (c *Client) ZAdd(ctx context.Context, table string, score int64, value any) error {
 	return c.client.ZAdd(ctx, table, redis.Z{Score: float64(score), Member: value}).Err()
 }
 
@@ -142,7 +143,7 @@ func (c *Client) MGet(ctx context.Context, keys ...string) ([]string, error) {
 }
 
 // NewSetCommand builds a SET command for use with Transaction.
-func NewSetCommand(args ...interface{}) *Command {
+func NewSetCommand(args ...any) *Command {
 	return &Command{
 		Name: "SET",
 		Args: args,
@@ -150,7 +151,7 @@ func NewSetCommand(args ...interface{}) *Command {
 }
 
 // NewZAddCommand builds a ZADD command for use with Transaction.
-func NewZAddCommand(args ...interface{}) *Command {
+func NewZAddCommand(args ...any) *Command {
 	return &Command{
 		Name: "ZADD",
 		Args: args,
@@ -158,7 +159,7 @@ func NewZAddCommand(args ...interface{}) *Command {
 }
 
 // NewSetBitCommand builds a SETBIT command for use with Transaction.
-func NewSetBitCommand(args ...interface{}) *Command {
+func NewSetBitCommand(args ...any) *Command {
 	return &Command{
 		Name: "SETBIT",
 		Args: args,
@@ -166,7 +167,7 @@ func NewSetBitCommand(args ...interface{}) *Command {
 }
 
 // NewExpireCommand builds an EXPIRE command for use with Transaction.
-func NewExpireCommand(args ...interface{}) *Command {
+func NewExpireCommand(args ...any) *Command {
 	return &Command{
 		Name: "EXPIRE",
 		Args: args,
@@ -176,12 +177,12 @@ func NewExpireCommand(args ...interface{}) *Command {
 // Command is a raw Redis command executed as part of a MULTI/EXEC transaction.
 type Command struct {
 	Name string
-	Args []interface{}
+	Args []any
 }
 
 // Transaction runs all commands atomically in a MULTI/EXEC block and returns
 // the replies in order.
-func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]interface{}, error) {
+func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]any, error) {
 	if len(commands) == 0 {
 		return nil, nil
 	}
@@ -189,7 +190,7 @@ func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]inter
 	pipe := c.client.TxPipeline()
 	cmds := make([]*redis.Cmd, 0, len(commands))
 	for _, command := range commands {
-		cmd := pipe.Do(ctx, append([]interface{}{command.Name}, command.Args...)...)
+		cmd := pipe.Do(ctx, append([]any{command.Name}, command.Args...)...)
 		cmds = append(cmds, cmd)
 	}
 
@@ -197,7 +198,7 @@ func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]inter
 		return nil, err
 	}
 
-	res := make([]interface{}, len(cmds))
+	res := make([]any, len(cmds))
 	for i, cmd := range cmds {
 		v, _ := cmd.Result()
 		res[i] = v

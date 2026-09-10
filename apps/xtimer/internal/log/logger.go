@@ -9,14 +9,14 @@ import (
 )
 
 type Logger interface {
-	Error(v ...interface{})
-	Warn(v ...interface{})
-	Info(v ...interface{})
-	Debug(v ...interface{})
-	Errorf(format string, v ...interface{})
-	Warnf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-	Debugf(format string, v ...interface{})
+	Error(v ...any)
+	Warn(v ...any)
+	Info(v ...any)
+	Debug(v ...any)
+	Errorf(format string, v ...any)
+	Warnf(format string, v ...any)
+	Infof(format string, v ...any)
+	Debugf(format string, v ...any)
 }
 
 var defaultLogger Logger
@@ -99,64 +99,64 @@ func GetDefaultLogger() Logger {
 }
 
 // Debugf logs a Debug message.
-func Debugf(format string, args ...interface{}) {
+func Debugf(format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
 // Infof logs an Info message.
-func Infof(format string, args ...interface{}) {
+func Infof(format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
 // Warnf logs a Warn message.
-func Warnf(format string, args ...interface{}) {
+func Warnf(format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
 // Errorf logs an Error message.
-func Errorf(format string, args ...interface{}) {
+func Errorf(format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
 // DebugContext logs a Debug message.
-func DebugContext(ctx context.Context, args ...interface{}) {
+func DebugContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Debug(args...)
 }
 
 // DebugContextf logs a Debug message.
-func DebugContextf(ctx context.Context, format string, args ...interface{}) {
+func DebugContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
 // InfoContext logs an Info message.
-func InfoContext(ctx context.Context, args ...interface{}) {
+func InfoContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Info(args...)
 }
 
 // InfoContextf logs an Info message.
-func InfoContextf(ctx context.Context, format string, args ...interface{}) {
+func InfoContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
 // WarnContext logs a Warn message.
-func WarnContext(ctx context.Context, args ...interface{}) {
+func WarnContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Warn(args...)
 }
 
 // WarnContextf logs a Warn message.
-func WarnContextf(ctx context.Context, format string, args ...interface{}) {
+func WarnContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
 // ErrorContext logs an Error message.
-func ErrorContext(ctx context.Context, args ...interface{}) {
+func ErrorContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Error(args...)
 }
 
-func ErrorContextf(ctx context.Context, format string, args ...interface{}) {
+func ErrorContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
-func Fatalf(format string, args ...interface{}) {
+func Fatalf(format string, args ...any) {
 	Errorf(format, args...)
 }

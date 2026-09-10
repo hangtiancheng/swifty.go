@@ -3,6 +3,7 @@ package memtable
 import (
 	"bytes"
 	"math/rand"
+	"slices"
 	"time"
 )
 
@@ -117,7 +118,7 @@ func (s *Skiplist) EntriesCnt() int {
 func (s *Skiplist) getNode(key []byte) *skipNode {
 	move := s.head
 	// Walk the levels from high to low.
-	for level := len(s.head.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.head.nexts) {
 		// Keep moving right until the next node is missing or its key is not
 		// smaller than the key being searched for.
 		for move.nexts[level] != nil && bytes.Compare(move.nexts[level].key, key) < 0 {

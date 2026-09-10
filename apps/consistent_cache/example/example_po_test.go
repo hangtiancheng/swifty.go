@@ -67,7 +67,7 @@ func TestExampleMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Write() error = %v", err)
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal([]byte(body), &m); err != nil {
 		t.Errorf("serialized body is not valid JSON: %v", err)
 	}

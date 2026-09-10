@@ -102,7 +102,7 @@ func (t *Tree) loadNode(sstEntry fs.DirEntry) error {
 // name such as 1_2.sst. The third result reports whether the name follows the
 // expected level_seq.sst layout.
 func parseLevelSeqFromSSTFile(file string) (level int, seq int32, ok bool) {
-	file = strings.Replace(file, ".sst", "", -1)
+	file = strings.ReplaceAll(file, ".sst", "")
 	splitted := strings.Split(file, "_")
 	if len(splitted) != 2 {
 		return 0, 0, false
@@ -168,7 +168,7 @@ func (t *Tree) restoreMemTable(wals []fs.DirEntry) error {
 	})
 
 	// 2 Restore the memtables one by one and add them to memory and channel.
-	for i := 0; i < len(wals); i++ {
+	for i := range wals {
 		name := wals[i].Name()
 		file := path.Join(t.conf.Dir, "walfile", name)
 

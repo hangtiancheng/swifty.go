@@ -59,13 +59,11 @@ func (w *Worker) Work(ctx context.Context, minuteBucketKey string, ack func()) e
 	defer notifier.Close()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := w.handleBatch(ctx, minuteBucketKey, startTime, startTime.Add(gap)); err != nil {
 			notifier.Put(err)
 		}
-	}()
+	})
 	for range ticker.C {
 		select {
 		case e := <-notifier.GetChan():
@@ -112,7 +110,6 @@ func (w *Worker) handleBatch(ctx context.Context, key string, start, end time.Ti
 	}
 
 	for _, task := range tasks {
-		task := task
 		if err := w.pool.Submit(func() {
 			if err := w.executor.Work(ctx, utils.UnionTimerIDUnix(task.TimerID, task.RunTimer.UnixMilli())); err != nil {
 				log.ErrorContextf(ctx, "executor work failed, err: %v", err)

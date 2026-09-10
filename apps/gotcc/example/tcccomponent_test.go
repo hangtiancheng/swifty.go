@@ -74,7 +74,7 @@ func TestMockComponentTry(t *testing.T) {
 			},
 			req: &gotcc.TCCReq{
 				TXID: "tx",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"biz_id": "setTXToBizErr",
 				},
 			},
@@ -92,7 +92,7 @@ func TestMockComponentTry(t *testing.T) {
 			},
 			req: &gotcc.TCCReq{
 				TXID: "tx",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"biz_id": "frozeBizErr",
 				},
 			},
@@ -105,7 +105,7 @@ func TestMockComponentTry(t *testing.T) {
 			},
 			req: &gotcc.TCCReq{
 				TXID: "tx",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"biz_id": "frozeBizFail",
 				},
 			},
@@ -129,7 +129,7 @@ func TestMockComponentTry(t *testing.T) {
 			name: "success",
 			req: &gotcc.TCCReq{
 				TXID: "success",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"biz_id": "successBiz",
 				},
 			},

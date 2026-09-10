@@ -36,7 +36,7 @@ type RedisLock struct {
 	client LockClient
 
 	// Whether the watchdog is currently running.
-	runningDog int32
+	runningDog atomic.Int32
 	// stopDog stops the watchdog.
 	stopDog context.CancelFunc
 }
@@ -112,14 +112,14 @@ func (r *RedisLock) watchDog(ctx context.Context) {
 	}
 
 	// 2. Make sure a previously started watchdog has been fully reclaimed.
-	for !atomic.CompareAndSwapInt32(&r.runningDog, 0, 1) {
+	for !r.runningDog.CompareAndSwap(0, 1) {
 	}
 
 	// 3. Start the watchdog.
 	ctx, r.stopDog = context.WithCancel(ctx)
 	go func() {
 		defer func() {
-			atomic.StoreInt32(&r.runningDog, 0)
+			r.runningDog.Store(0)
 		}()
 		r.runWatchDog(ctx)
 	}()
@@ -147,7 +147,7 @@ func (r *RedisLock) runWatchDog(ctx context.Context) {
 // DelayExpire extends the expiry of the lock. The Lua script keeps the
 // check-and-extend operation atomic and verifies ownership first.
 func (r *RedisLock) DelayExpire(ctx context.Context, expireSeconds int64) error {
-	keysAndArgs := []interface{}{r.getLockKey(), r.token, expireSeconds}
+	keysAndArgs := []any{r.getLockKey(), r.token, expireSeconds}
 	reply, err := r.client.Eval(ctx, lua.LuaCheckAndExpireDistributedLock, 1, keysAndArgs)
 	if err != nil {
 		return err
@@ -206,7 +206,7 @@ func (r *RedisLock) Unlock(ctx context.Context) error {
 		}
 	}()
 
-	keysAndArgs := []interface{}{r.getLockKey(), r.token}
+	keysAndArgs := []any{r.getLockKey(), r.token}
 	reply, err := r.client.Eval(ctx, lua.LuaCheckAndDeleteDistributedLock, 1, keysAndArgs)
 	if err != nil {
 		return err

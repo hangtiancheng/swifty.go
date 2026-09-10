@@ -25,19 +25,19 @@ func NewClient() *Client {
 }
 
 // JSONGet performs a GET request and decodes the JSON response into resp.
-func (c *Client) JSONGet(ctx context.Context, url string, header, params map[string]string, resp interface{}) error {
+func (c *Client) JSONGet(ctx context.Context, url string, header, params map[string]string, resp any) error {
 	return c.JSONDo(ctx, nethttp.MethodGet, getCompleteURL(url, params), header, nil, resp)
 }
 
 // JSONPost performs a POST request with req serialized as the JSON body and
 // decodes the JSON response into resp.
-func (c *Client) JSONPost(ctx context.Context, url string, header map[string]string, req, resp interface{}) error {
+func (c *Client) JSONPost(ctx context.Context, url string, header map[string]string, req, resp any) error {
 	return c.JSONDo(ctx, nethttp.MethodPost, url, header, req, resp)
 }
 
 // JSONDo performs an HTTP request; req is serialized as a JSON body when not
 // nil, and the JSON response is decoded into resp when not nil.
-func (c *Client) JSONDo(ctx context.Context, method, url string, header map[string]string, req, resp interface{}) error {
+func (c *Client) JSONDo(ctx context.Context, method, url string, header map[string]string, req, resp any) error {
 	var reqReader io.Reader
 	if req != nil {
 		body, err := json.Marshal(req)

@@ -249,7 +249,7 @@ func TestTXManagerTransactionSuccess(t *testing.T) {
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		componentID := strconv.Itoa(i)
 		if err := txManager.Register(newMockComponent(componentID)); err != nil {
 			t.Fatal(err)
@@ -286,14 +286,14 @@ func TestTXManagerTransactionFailure(t *testing.T) {
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		componentID := strconv.Itoa(i)
 		if err := txManager.Register(newMockComponent(componentID)); err != nil {
 			t.Fatal(err)
 		}
 		componentReqs = append(componentReqs, &RequestEntity{
 			ComponentID: componentID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"reject_flag": true,
 			},
 		})
@@ -322,7 +322,7 @@ func TestTXManagerTransactionConcurrent(t *testing.T) {
 
 	// Register 10 components.
 	componentsCnt := 10
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		if err := txManager.Register(newMockComponent(strconv.Itoa(i))); err != nil {
 			t.Fatal(err)
 		}
@@ -333,10 +333,8 @@ func TestTXManagerTransactionConcurrent(t *testing.T) {
 	concurrentTXs := 100
 	componentReqCnt := 3
 	var wg sync.WaitGroup
-	for i := 0; i < concurrentTXs; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range concurrentTXs {
+		wg.Go(func() {
 			rander := rand.New(rand.NewSource(time.Now().UnixNano()))
 			componentSet := make(map[string]struct{}, componentReqCnt)
 			for len(componentSet) < componentReqCnt {
@@ -367,7 +365,7 @@ func TestTXManagerTransactionConcurrent(t *testing.T) {
 			if tx.Status != TXSuccessful {
 				t.Errorf("tx status = %s, want %s", tx.Status, TXSuccessful)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -382,14 +380,14 @@ func TestTXManagerTransactionAdvanceProgress(t *testing.T) {
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		componentID := strconv.Itoa(i)
 		if err := txManager.Register(newMockComponent(componentID)); err != nil {
 			t.Fatal(err)
 		}
 		componentReqs = append(componentReqs, &RequestEntity{
 			ComponentID: componentID,
-			Request: map[string]interface{}{
+			Request: map[string]any{
 				"hanging_flag": true,
 			},
 		})

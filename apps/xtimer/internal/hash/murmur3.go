@@ -18,7 +18,7 @@ func Sum32(data []byte) uint32 {
 	h := murmurSeed
 	n := len(data) / 4
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		k := binary.LittleEndian.Uint32(data[i*4:])
 		k *= murmurC1
 		k = bits.RotateLeft32(k, 15)

@@ -116,7 +116,7 @@ func (f *fakeRedis) SetNEX(ctx context.Context, key, value string, expireSeconds
 	return 1, nil
 }
 
-func (f *fakeRedis) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (f *fakeRedis) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if keyCount < 1 || keyCount > len(keysAndArgs) {

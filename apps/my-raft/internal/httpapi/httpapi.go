@@ -31,15 +31,15 @@ func NewService(kvStore *kvstore.Store, proposeC chan<- string, confChangeC chan
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	url := r.RequestURI
 
-	switch {
-	case r.Method == http.MethodPut:
+	switch r.Method {
+	case http.MethodPut:
 		v, err := io.ReadAll(r.Body)
 		if err != nil {
 			panic(err)
 		}
 		s.kvStore.Propose(url, string(v))
 
-	case r.Method == http.MethodPost:
+	case http.MethodPost:
 		v, err := io.ReadAll(r.Body)
 		if err != nil {
 			panic(err)

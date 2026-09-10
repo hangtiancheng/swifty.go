@@ -66,12 +66,12 @@ func (r *RClient) Del(ctx context.Context, key string) error {
 
 // Eval runs the given Lua script with keyCount keys taken from the head of
 // keysAndArgs and the remaining elements as script arguments.
-func (r *RClient) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (r *RClient) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	if keyCount < 0 || keyCount > len(keysAndArgs) {
 		return nil, errors.New("redis EVAL invalid key count")
 	}
 	keys := make([]string, keyCount)
-	for i := 0; i < keyCount; i++ {
+	for i := range keyCount {
 		key, ok := keysAndArgs[i].(string)
 		if !ok {
 			return nil, errors.New("redis EVAL key must be a string")

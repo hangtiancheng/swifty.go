@@ -243,7 +243,7 @@ func (m *MockComponent) Cancel(ctx context.Context, txID string) (*gotcc.TCCResp
 }
 
 // toString converts a request field into a string.
-func toString(v interface{}) string {
+func toString(v any) string {
 	switch t := v.(type) {
 	case nil:
 		return ""

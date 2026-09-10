@@ -34,7 +34,7 @@ func (t *TimerDAO) UpdateTimer(ctx context.Context, timer *po.Timer) error {
 }
 
 func (t *TimerDAO) GetTimer(ctx context.Context, opts ...Option) (*po.Timer, error) {
-	db := t.client.DB.WithContext(ctx)
+	db := t.client.WithContext(ctx)
 	for _, opt := range opts {
 		db = opt(db)
 	}

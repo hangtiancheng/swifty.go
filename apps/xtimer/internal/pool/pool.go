@@ -37,9 +37,7 @@ func (g *GoWorkerPool) Submit(f func()) error {
 	// Blocks until a slot is available.
 	g.sem <- struct{}{}
 
-	g.wg.Add(1)
-	go func() {
-		defer g.wg.Done()
+	g.wg.Go(func() {
 		defer func() {
 			<-g.sem
 		}()
@@ -49,7 +47,7 @@ func (g *GoWorkerPool) Submit(f func()) error {
 			}
 		}()
 		f()
-	}()
+	})
 	return nil
 }
 

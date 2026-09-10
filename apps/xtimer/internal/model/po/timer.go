@@ -27,7 +27,7 @@ func (t *Timer) BatchTasksFromTimer(executeTimes []time.Time) []*Task {
 	for _, executeTime := range executeTimes {
 		tasks = append(tasks, &Task{
 			App:      t.App,
-			TimerID:  t.Model.ID,
+			TimerID:  t.ID,
 			Status:   consts.NotRun.ToInt(),
 			RunTimer: executeTime,
 		})

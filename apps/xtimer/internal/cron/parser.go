@@ -155,7 +155,7 @@ func parseField(field string, min, max int, names map[string]int, set func(int))
 		set(normalizeValue(v, names))
 	}
 
-	for _, part := range strings.Split(field, ",") {
+	for part := range strings.SplitSeq(field, ",") {
 		if part == "" {
 			return fmt.Errorf("empty list element")
 		}

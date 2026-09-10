@@ -19,7 +19,7 @@ func NewTaskDAO(client *mysql.Client) *TaskDAO {
 }
 
 func (t *TaskDAO) GetTask(ctx context.Context, opts ...Option) (*po.Task, error) {
-	db := t.client.DB.WithContext(ctx)
+	db := t.client.WithContext(ctx)
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -29,7 +29,7 @@ func (t *TaskDAO) GetTask(ctx context.Context, opts ...Option) (*po.Task, error)
 }
 
 func (t *TaskDAO) GetTasks(ctx context.Context, opts ...Option) ([]*po.Task, error) {
-	db := t.client.DB.WithContext(ctx)
+	db := t.client.WithContext(ctx)
 	for _, opt := range opts {
 		db = opt(db)
 	}

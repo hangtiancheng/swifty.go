@@ -12,14 +12,14 @@ import (
 
 // Logger is the logging interface used by redmq.
 type Logger interface {
-	Error(v ...interface{})
-	Warn(v ...interface{})
-	Info(v ...interface{})
-	Debug(v ...interface{})
-	Errorf(format string, v ...interface{})
-	Warnf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-	Debugf(format string, v ...interface{})
+	Error(v ...any)
+	Warn(v ...any)
+	Info(v ...any)
+	Debug(v ...any)
+	Errorf(format string, v ...any)
+	Warnf(format string, v ...any)
+	Infof(format string, v ...any)
+	Debugf(format string, v ...any)
 }
 
 var (
@@ -107,66 +107,66 @@ func GetDefaultLogger() Logger {
 }
 
 // Debugf logs a message at debug level.
-func Debugf(format string, args ...interface{}) {
+func Debugf(format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
 // Infof logs a message at info level.
-func Infof(format string, args ...interface{}) {
+func Infof(format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
 // Warnf logs a message at warn level.
-func Warnf(format string, args ...interface{}) {
+func Warnf(format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
 // Errorf logs a message at error level.
-func Errorf(format string, args ...interface{}) {
+func Errorf(format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
 // DebugContext logs a message at debug level.
-func DebugContext(ctx context.Context, args ...interface{}) {
+func DebugContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Debug(args...)
 }
 
 // DebugContextf logs a formatted message at debug level.
-func DebugContextf(ctx context.Context, format string, args ...interface{}) {
+func DebugContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Debugf(format, args...)
 }
 
 // InfoContext logs a message at info level.
-func InfoContext(ctx context.Context, args ...interface{}) {
+func InfoContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Info(args...)
 }
 
 // InfoContextf logs a formatted message at info level.
-func InfoContextf(ctx context.Context, format string, args ...interface{}) {
+func InfoContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Infof(format, args...)
 }
 
 // WarnContext logs a message at warn level.
-func WarnContext(ctx context.Context, args ...interface{}) {
+func WarnContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Warn(args...)
 }
 
 // WarnContextf logs a formatted message at warn level.
-func WarnContextf(ctx context.Context, format string, args ...interface{}) {
+func WarnContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Warnf(format, args...)
 }
 
 // ErrorContext logs a message at error level.
-func ErrorContext(ctx context.Context, args ...interface{}) {
+func ErrorContext(ctx context.Context, args ...any) {
 	GetDefaultLogger().Error(args...)
 }
 
 // ErrorContextf logs a formatted message at error level.
-func ErrorContextf(ctx context.Context, format string, args ...interface{}) {
+func ErrorContextf(ctx context.Context, format string, args ...any) {
 	GetDefaultLogger().Errorf(format, args...)
 }
 
 // Fatalf logs a formatted message at error level.
-func Fatalf(format string, args ...interface{}) {
+func Fatalf(format string, args ...any) {
 	Errorf(format, args...)
 }

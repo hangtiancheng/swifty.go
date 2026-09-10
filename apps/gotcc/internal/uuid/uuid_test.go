@@ -9,7 +9,7 @@ import (
 var uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func TestNewFormat(t *testing.T) {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := New()
 		if !uuidV4Pattern.MatchString(id) {
 			t.Fatalf("New() = %q, want RFC 4122 version 4 format", id)
@@ -20,7 +20,7 @@ func TestNewFormat(t *testing.T) {
 func TestNewUnique(t *testing.T) {
 	const count = 1000
 	seen := make(map[string]struct{}, count)
-	for i := 0; i < count; i++ {
+	for range count {
 		id := New()
 		if _, ok := seen[id]; ok {
 			t.Fatalf("duplicate uuid generated: %s", id)

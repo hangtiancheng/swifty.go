@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -116,10 +118,8 @@ func (s *SkiplistHashRing) Unlock(ctx context.Context) error {
 func (s *SkiplistHashRing) Add(_ context.Context, score int32, nodeID string) error {
 	targetNode, ok := s.get(score)
 	if ok {
-		for _, registeredID := range targetNode.nodeIDs {
-			if registeredID == nodeID {
-				return nil
-			}
+		if slices.Contains(targetNode.nodeIDs, nodeID) {
+			return nil
 		}
 		targetNode.nodeIDs = append(targetNode.nodeIDs, nodeID)
 		return nil
@@ -203,7 +203,7 @@ func (s *SkiplistHashRing) Rem(_ context.Context, score int32, nodeID string) er
 
 	// Unlink the node from every level, top level first.
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}
@@ -228,9 +228,7 @@ func (s *SkiplistHashRing) Rem(_ context.Context, score int32, nodeID string) er
 // Nodes returns a copy of the mapping from node id to virtual node count.
 func (s *SkiplistHashRing) Nodes(_ context.Context) (map[string]int, error) {
 	nodes := make(map[string]int, len(s.nodeToReplicas))
-	for nodeID, replicas := range s.nodeToReplicas {
-		nodes[nodeID] = replicas
-	}
+	maps.Copy(nodes, s.nodeToReplicas)
 	return nodes, nil
 }
 
@@ -311,7 +309,7 @@ func (s *SkiplistHashRing) ceiling(score int32) (int32, bool) {
 	}
 
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}
@@ -340,7 +338,7 @@ func (s *SkiplistHashRing) floor(score int32) (int32, bool) {
 	}
 
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}
@@ -360,7 +358,7 @@ func (s *SkiplistHashRing) floor(score int32) (int32, bool) {
 // last returns the largest score of the ring.
 func (s *SkiplistHashRing) last() (int32, bool) {
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil {
 			move = move.nexts[level]
 		}
@@ -376,7 +374,7 @@ func (s *SkiplistHashRing) last() (int32, bool) {
 // get finds the virtual node registered under the given score.
 func (s *SkiplistHashRing) get(score int32) (*virtualNode, bool) {
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}

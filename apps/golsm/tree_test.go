@@ -154,7 +154,7 @@ func Test_Tree_getSortedSSTEntries(t *testing.T) {
 		t.Fatalf("got len: %d, expect: %d", len(gotEntries), len(expectEntries))
 	}
 
-	for i := 0; i < len(gotEntries); i++ {
+	for i := range gotEntries {
 		if gotEntries[i].Name() != expectEntries[i] {
 			t.Errorf("index: %d, got entry: %s, expect: %s", i, gotEntries[i].Name(), expectEntries[i])
 		}

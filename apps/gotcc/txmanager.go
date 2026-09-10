@@ -138,16 +138,13 @@ func (t *TXManager) batchAdvanceProgress(txs []*Transaction) error {
 		var wg sync.WaitGroup
 		for _, tx := range txs {
 			// shadow
-			tx := tx
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				// Each goroutine advances one transaction.
 				if err := t.advanceProgress(tx); err != nil {
 					// Forward the error to the collector below.
 					errCh <- err
 				}
-			}()
+			})
 		}
 		wg.Wait()
 		close(errCh)
@@ -248,10 +245,7 @@ func (t *TXManager) twoPhaseCommit(ctx context.Context, txID string, componentEn
 		var wg sync.WaitGroup
 		for _, componentEntity := range componentEntities {
 			// shadow
-			componentEntity := componentEntity
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				resp, err := componentEntity.Component.Try(cctx, &TCCReq{
 					ComponentID: componentEntity.Component.ID(),
 					TXID:        txID,
@@ -275,7 +269,7 @@ func (t *TXManager) twoPhaseCommit(ctx context.Context, txID string, componentEn
 					log.ErrorContextf(cctx, "tx update failed, tx id: %s, component id: %s, err: %v", txID, componentEntity.Component.ID(), err)
 					errCh <- err
 				}
-			}()
+			})
 		}
 
 		wg.Wait()

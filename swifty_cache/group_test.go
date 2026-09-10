@@ -400,8 +400,8 @@ func TestOptionsAndCacheConfig(t *testing.T) {
 	if group.mainCache.opts.MaxBytes != 64 {
 		t.Fatalf("WithCacheOptions was not applied: %+v", group.mainCache.opts)
 	}
-	if isPeerRequest(nil) {
-		t.Fatal("nil context should not be a peer request")
+	if isPeerRequest(context.TODO()) {
+		t.Fatal("plain context should not be a peer request")
 	}
 }
 

@@ -2,7 +2,6 @@ package raft
 
 import (
 	"math/rand"
-	"sort"
 )
 
 type stepFunc func(*raft, Message)
@@ -26,10 +25,6 @@ type raft struct {
 	msgs []Message
 	// ID of the current leader.
 	lead uint64
-	// Indicates there are still uncommitted configuration change entries.
-	pendingConf bool
-	// State of in-flight linearizable read requests.
-	readOnly *readOnly
 	// Whether the node runs the pre-vote phase before elections.
 	preVote bool
 	// tick is executed whenever the timer fires; each role has its own logic.
@@ -69,7 +64,6 @@ func newRaft(conf *Config) *raft {
 		electionTimeout:  conf.ElectionTick,
 		heartbeatTimeout: conf.HeartbeatTick,
 		preVote:          conf.Prevote,
-		readOnly:         newReadOnly(),
 	}
 
 	// Add the peers to the progress map.
@@ -197,13 +191,6 @@ func (r *raft) hardState() HardState {
 	}
 }
 
-func (r *raft) addNode(id uint64) {
-	if _, ok := r.prs[id]; ok {
-		return
-	}
-	r.prs[id] = &Progress{Match: 0, Next: r.raftLog.lastIndex() + 1}
-}
-
 func (r *raft) send(m Message) {
 	if m.Type != MsgProp && m.Type != MsgReadIndex {
 		m.Term = r.Term
@@ -311,16 +298,4 @@ func (r *raft) appendEntry(es ...Entry) {
 	// Assign the term and index of the new entries.
 	r.raftLog.append(es...)
 	r.prs[r.id].maybeUpdate(r.raftLog.lastIndex())
-}
-
-func (r *raft) maybeCommit() bool {
-	matches := make(uint64Slice, 0, len(r.prs))
-	for id := range r.prs {
-		matches = append(matches, r.prs[id].Match)
-	}
-
-	sort.Sort(sort.Reverse(matches))
-	mid := matches[r.quorum()-1]
-
-	return r.raftLog.maybeCommit(mid, r.Term)
 }

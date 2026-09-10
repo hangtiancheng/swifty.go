@@ -18,7 +18,7 @@ type LockClient interface {
 	SetNEX(ctx context.Context, key, value string, expireSeconds int64) (int64, error)
 	// Eval runs the Lua script src, declaring the first keyCount entries of
 	// keysAndArgs as KEYS and the remaining entries as ARGV.
-	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error)
+	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error)
 }
 
 // Client is a Redis client built on top of github.com/redis/go-redis/v9.
@@ -182,7 +182,7 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 // entries of keysAndArgs are KEYS; the remaining entries are passed as ARGV.
 // This adapts the redigo "EVAL src keyCount keysAndArgs..." convention to
 // go-redis's Script.Run(ctx, client, keys, args...).
-func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	if keyCount < 0 || keyCount > len(keysAndArgs) {
 		return nil, fmt.Errorf("redis EVAL invalid keyCount %d for %d keys and args", keyCount, len(keysAndArgs))
 	}

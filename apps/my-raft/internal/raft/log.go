@@ -239,14 +239,6 @@ func (r *raftLog) entries(i uint64) ([]Entry, error) {
 	return r.slice(i, r.lastIndex()+1)
 }
 
-func (r *raftLog) maybeCommit(maxIndex, term uint64) bool {
-	if maxIndex > r.commitIndex && r.zeroTermOnErrCompacted(r.term(maxIndex)) == term {
-		r.commitTo(maxIndex)
-		return true
-	}
-	return false
-}
-
 func (r *raftLog) term(i uint64) (uint64, error) {
 	dummyIndex := r.firstIndex() - 1
 	if i < dummyIndex || i > r.lastIndex() {
@@ -282,17 +274,6 @@ func (r *raftLog) commitTo(tocommit uint64) {
 	}
 
 	r.commitIndex = tocommit
-}
-
-func (r *raftLog) zeroTermOnErrCompacted(t uint64, err error) uint64 {
-	if err == nil {
-		return t
-	}
-	if err == ErrCompacted {
-		return 0
-	}
-
-	panic(err)
 }
 
 func (r *raftLog) maybeAppend(logIndex, logTerm, commitIndex uint64, ents ...Entry) (uint64, bool) {

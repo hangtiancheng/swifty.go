@@ -33,7 +33,7 @@ func skipWithoutRedis(t *testing.T) {
 func Test_toString(t *testing.T) {
 	tests := []struct {
 		name string
-		in   interface{}
+		in   any
 		want string
 	}{
 		{name: "string", in: "value", want: "value"},
@@ -68,7 +68,7 @@ func Test_toMsgEntities(t *testing.T) {
 		{
 			name: "single field message",
 			in: []goredis.XMessage{
-				{ID: "1692066364494-0", Values: map[string]interface{}{"first_key": "first_val"}},
+				{ID: "1692066364494-0", Values: map[string]any{"first_key": "first_val"}},
 			},
 			want: []*MsgEntity{
 				{MsgID: "1692066364494-0", Key: "first_key", Val: "first_val"},
@@ -77,8 +77,8 @@ func Test_toMsgEntities(t *testing.T) {
 		{
 			name: "multiple messages",
 			in: []goredis.XMessage{
-				{ID: "1-1", Values: map[string]interface{}{"k1": "v1"}},
-				{ID: "1-2", Values: map[string]interface{}{"k2": 100}},
+				{ID: "1-1", Values: map[string]any{"k1": "v1"}},
+				{ID: "1-2", Values: map[string]any{"k2": 100}},
 			},
 			want: []*MsgEntity{
 				{MsgID: "1-1", Key: "k1", Val: "v1"},
@@ -88,7 +88,7 @@ func Test_toMsgEntities(t *testing.T) {
 		{
 			name: "message without fields",
 			in: []goredis.XMessage{
-				{ID: "1-3", Values: map[string]interface{}{}},
+				{ID: "1-3", Values: map[string]any{}},
 			},
 			want: []*MsgEntity{
 				{MsgID: "1-3"},
@@ -248,7 +248,7 @@ func Test_eval(t *testing.T) {
 	ctx := context.Background()
 	key := fmt.Sprintf("redmq_test_eval_key_%d", time.Now().UnixNano())
 
-	res, err := client.Eval(ctx, "return redis.call('GET', KEYS[1])", 1, []interface{}{key})
+	res, err := client.Eval(ctx, "return redis.call('GET', KEYS[1])", 1, []any{key})
 	if !errors.Is(err, goredis.Nil) {
 		t.Errorf("Eval() on missing key = %v, %v, want redis.Nil", res, err)
 	}
@@ -257,7 +257,7 @@ func Test_eval(t *testing.T) {
 		t.Fatalf("Set() failed: %v", err)
 	}
 
-	res, err = client.Eval(ctx, "return redis.call('GET', KEYS[1])", 1, []interface{}{key})
+	res, err = client.Eval(ctx, "return redis.call('GET', KEYS[1])", 1, []any{key})
 	if err != nil || res != "lua" {
 		t.Errorf("Eval() = %v, %v, want lua, nil", res, err)
 	}

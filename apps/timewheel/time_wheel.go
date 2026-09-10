@@ -151,12 +151,10 @@ func (t *TimeWheel) execute(l *list.List) {
 // wheel rotations after which it becomes due. It must only be called from the
 // run goroutine, the sole owner of curSlot.
 func (t *TimeWheel) getPosAndCycle(executeAt time.Time) (int, int) {
-	delay := time.Until(executeAt)
-	if delay < t.interval {
+	delay := max(time.Until(executeAt),
 		// Tasks scheduled in the past or within the next tick run on the
 		// next tick. Clamping also keeps the slot index non-negative.
-		delay = t.interval
-	}
+		t.interval)
 	wheelDuration := len(t.slots) * int(t.interval)
 	cycle := int(delay) / wheelDuration
 	pos := (t.curSlot + int(delay)/int(t.interval)) % len(t.slots)

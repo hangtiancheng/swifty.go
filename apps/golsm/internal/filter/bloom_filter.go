@@ -135,12 +135,6 @@ func (bf *BloomFilter) bestK() uint8 {
 		return 1
 	}
 	// k is clamped to [1, 30].
-	k := 69 * bf.m / 100 / len(bf.hashedKeys)
-	if k < 1 {
-		k = 1
-	}
-	if k > 30 {
-		k = 30
-	}
+	k := min(max(69*bf.m/100/len(bf.hashedKeys), 1), 30)
 	return uint8(k)
 }

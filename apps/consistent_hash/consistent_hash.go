@@ -73,7 +73,7 @@ func (c *ConsistentHash) AddNode(ctx context.Context, nodeID string, weight int)
 	}
 
 	var migrateTasks []func()
-	for i := 0; i < replicas; i++ {
+	for i := range replicas {
 		// 5. Derive the virtual node key and its score on the ring.
 		nodeKey := c.getRawNodeKey(nodeID, i)
 		virtualScore := c.encryptor.Encrypt(nodeKey)

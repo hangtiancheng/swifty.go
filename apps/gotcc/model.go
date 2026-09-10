@@ -10,7 +10,7 @@ type RequestEntity struct {
 	// ComponentID is the target component identifier.
 	ComponentID string `json:"componentName"`
 	// Request carries the component specific business input.
-	Request map[string]interface{} `json:"request"`
+	Request map[string]any `json:"request"`
 }
 
 // ComponentEntities is a slice of ComponentEntity.
@@ -28,7 +28,7 @@ func (c ComponentEntities) ToComponents() []TCCComponent {
 // ComponentEntity pairs a component with the request it should be invoked
 // with.
 type ComponentEntity struct {
-	Request   map[string]interface{}
+	Request   map[string]any
 	Component TCCComponent
 }
 

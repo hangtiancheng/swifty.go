@@ -2,6 +2,7 @@ package golsm
 
 import (
 	"bytes"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -134,8 +135,8 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 
 	// 2 Read the read only memtables. Iterate by index in reverse order: the
 	// bigger the index, the later the data was written and the fresher it is.
-	for i := len(t.rOnlyMemTable) - 1; i >= 0; i-- {
-		value, ok = t.rOnlyMemTable[i].memTable.Get(key)
+	for _, v := range slices.Backward(t.rOnlyMemTable) {
+		value, ok = v.memTable.Get(key)
 		if ok {
 			t.dataLock.RUnlock()
 			return value, true, nil
@@ -147,8 +148,8 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 	// bigger the index, the later the data was written and the fresher it is.
 	var err error
 	t.levelLocks[0].RLock()
-	for i := len(t.nodes[0]) - 1; i >= 0; i-- {
-		if value, ok, err = t.nodes[0][i].Get(key); err != nil {
+	for _, v := range slices.Backward(t.nodes[0]) {
+		if value, ok, err = v.Get(key); err != nil {
 			t.levelLocks[0].RUnlock()
 			return nil, false, err
 		}

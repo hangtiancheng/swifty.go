@@ -81,9 +81,9 @@ func (w *Worker) executeAndPostProcess(ctx context.Context, timerID uint, unix i
 	return w.postProcess(ctx, resp, err, timer.App, timerID, unix, execTime)
 }
 
-func (w *Worker) execute(ctx context.Context, timer *vo.Timer) (map[string]interface{}, error) {
+func (w *Worker) execute(ctx context.Context, timer *vo.Timer) (map[string]any, error) {
 	var (
-		resp map[string]interface{}
+		resp map[string]any
 		err  error
 	)
 	switch strings.ToUpper(timer.NotifyHTTPParam.Method) {
@@ -102,7 +102,7 @@ func (w *Worker) execute(ctx context.Context, timer *vo.Timer) (map[string]inter
 	return resp, err
 }
 
-func (w *Worker) postProcess(ctx context.Context, resp map[string]interface{}, execErr error, app string, timerID uint, unix int64, execTime time.Time) error {
+func (w *Worker) postProcess(ctx context.Context, resp map[string]any, execErr error, app string, timerID uint, unix int64, execTime time.Time) error {
 	go w.reportMonitorData(app, unix, execTime)
 	bloomKey := utils.GetTaskBloomFilterKey(utils.GetDayStr(time.UnixMilli(unix)))
 	if err := w.bloomFilter.Set(ctx, bloomKey, utils.UnionTimerIDUnix(timerID, unix), consts.BloomFilterKeyExpireSeconds); err != nil {

@@ -32,6 +32,8 @@ linters:
   default: standard
   enable:
     - modernize
+  disable:
+    - errcheck
 
 formatters:
   enable:

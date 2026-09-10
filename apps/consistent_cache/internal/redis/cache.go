@@ -12,7 +12,7 @@ import (
 
 // Client abstracts the Redis operations used by the cache module.
 type Client interface {
-	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error)
+	Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error)
 	Get(ctx context.Context, key string) (string, error)
 	SetEx(ctx context.Context, key, value string, expireSeconds int64) error
 	Del(ctx context.Context, key string) error
@@ -65,7 +65,7 @@ func (c *Cache) Get(ctx context.Context, key string) (string, error) {
 func (c *Cache) PutWhenEnable(ctx context.Context, key, value string, expireSeconds int64) (bool, error) {
 	// Run the Redis Lua script to guarantee that the write is performed only
 	// when the disable key does not exist.
-	reply, err := c.client.Eval(ctx, LuaCheckEnableAndWriteCache, 2, []interface{}{
+	reply, err := c.client.Eval(ctx, LuaCheckEnableAndWriteCache, 2, []any{
 		c.disableKey(key),
 		key,
 		value,

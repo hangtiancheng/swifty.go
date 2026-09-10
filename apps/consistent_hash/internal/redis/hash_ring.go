@@ -255,8 +255,8 @@ func (r *RedisHashRing) DeleteNodeToDataKeys(ctx context.Context, nodeID string,
 
 // eval runs a Lua script through the redis_lock client. The script receives
 // exactly one key followed by its arguments.
-func (r *RedisHashRing) eval(ctx context.Context, script, key string, args ...string) (interface{}, error) {
-	keysAndArgs := make([]interface{}, 0, len(args)+1)
+func (r *RedisHashRing) eval(ctx context.Context, script, key string, args ...string) (any, error) {
+	keysAndArgs := make([]any, 0, len(args)+1)
 	keysAndArgs = append(keysAndArgs, key)
 	for _, arg := range args {
 		keysAndArgs = append(keysAndArgs, arg)
@@ -291,12 +291,12 @@ func decodeDataKeys(raw string) (map[string]struct{}, error) {
 
 // replyToScoreEntities converts a flat [member, score, ...] Lua reply into
 // ScoreEntity values. A nil reply yields an empty result.
-func replyToScoreEntities(reply interface{}) ([]*ScoreEntity, error) {
+func replyToScoreEntities(reply any) ([]*ScoreEntity, error) {
 	if reply == nil {
 		return nil, nil
 	}
 
-	raws, ok := reply.([]interface{})
+	raws, ok := reply.([]any)
 	if !ok {
 		return nil, fmt.Errorf("unexpected redis reply type: %T", reply)
 	}
@@ -320,12 +320,12 @@ func replyToScoreEntities(reply interface{}) ([]*ScoreEntity, error) {
 }
 
 // replyToStringSlice converts a flat Lua reply into a string slice.
-func replyToStringSlice(reply interface{}) ([]string, error) {
+func replyToStringSlice(reply any) ([]string, error) {
 	if reply == nil {
 		return nil, nil
 	}
 
-	raws, ok := reply.([]interface{})
+	raws, ok := reply.([]any)
 	if !ok {
 		return nil, fmt.Errorf("unexpected redis reply type: %T", reply)
 	}
@@ -342,7 +342,7 @@ func replyToStringSlice(reply interface{}) ([]string, error) {
 }
 
 // replyToString converts a single Lua reply element into a string.
-func replyToString(reply interface{}) (string, error) {
+func replyToString(reply any) (string, error) {
 	switch v := reply.(type) {
 	case string:
 		return v, nil
@@ -354,7 +354,7 @@ func replyToString(reply interface{}) (string, error) {
 }
 
 // replyToInt64 converts a single Lua reply element into an int64.
-func replyToInt64(reply interface{}) (int64, error) {
+func replyToInt64(reply any) (int64, error) {
 	switch v := reply.(type) {
 	case int64:
 		return v, nil

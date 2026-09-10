@@ -70,7 +70,7 @@ func (c *Client) XADD(ctx context.Context, topic string, maxLen int, key, val st
 	return c.cli.XAdd(ctx, &goredis.XAddArgs{
 		Stream: topic,
 		MaxLen: int64(maxLen),
-		Values: []interface{}{key, val},
+		Values: []any{key, val},
 	}).Result()
 }
 
@@ -223,7 +223,7 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 
 // Eval runs the given Lua script on the server. keysAndArgs holds keyCount
 // key names followed by the additional script arguments.
-func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []interface{}) (interface{}, error) {
+func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	if keyCount < 0 {
 		return nil, errors.New("redis EVAL key count can't be negative")
 	}
@@ -232,10 +232,10 @@ func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs
 	}
 
 	keys := make([]string, keyCount)
-	for i := 0; i < keyCount; i++ {
+	for i := range keyCount {
 		keys[i] = toString(keysAndArgs[i])
 	}
-	args := make([]interface{}, len(keysAndArgs)-keyCount)
+	args := make([]any, len(keysAndArgs)-keyCount)
 	copy(args, keysAndArgs[keyCount:])
 
 	return goredis.NewScript(src).Run(ctx, c.cli, keys, args...).Result()
@@ -265,7 +265,7 @@ func toMsgEntities(msgs []goredis.XMessage) []*MsgEntity {
 }
 
 // toString converts a Redis reply value to its string representation.
-func toString(v interface{}) string {
+func toString(v any) string {
 	switch val := v.(type) {
 	case string:
 		return val

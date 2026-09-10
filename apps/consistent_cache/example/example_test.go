@@ -79,16 +79,16 @@ func pingRedis(t *testing.T) {
 // user:password@tcp(host:port)/database.
 func mysqlAddr(dsn string) (string, error) {
 	const marker = "tcp("
-	i := strings.Index(dsn, marker)
-	if i < 0 {
+	_, after, ok := strings.Cut(dsn, marker)
+	if !ok {
 		return "", fmt.Errorf("invalid DSN %q: missing tcp(...) address", dsn)
 	}
-	rest := dsn[i+len(marker):]
-	j := strings.Index(rest, ")")
-	if j < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, ")")
+	if !ok0 {
 		return "", fmt.Errorf("invalid DSN %q: unterminated tcp(...) address", dsn)
 	}
-	return rest[:j], nil
+	return before0, nil
 }
 
 // requireServices skips the test when Redis or MySQL cannot be reached.
@@ -187,10 +187,8 @@ func TestConsistentCacheCorrectness(t *testing.T) {
 	// Asynchronously spawn 100 goroutines that write concurrently.
 	go func() {
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 100 {
+			wg.Go(func() {
 				k := prefix + strconv.Itoa(rand.IntN(100))
 				v := prefix + strconv.Itoa(rand.IntN(100))
 				data := example.Example{
@@ -205,7 +203,7 @@ func TestConsistentCacheCorrectness(t *testing.T) {
 				// After a successful write, send the data through the channel
 				// so the reader goroutine can back it up locally.
 				datac <- &data
-			}()
+			})
 		}
 		wg.Wait()
 		close(datac)
@@ -229,7 +227,7 @@ func TestConsistentCacheCorrectness(t *testing.T) {
 	// Expected number of reads served from the cache.
 	var expectUseCacheCnt int
 	querySet := make(map[string]struct{}, 100)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		k := prefix + strconv.Itoa(rand.IntN(100))
 		data := example.Example{
 			Key_: k,

@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"sort"
 	"testing"
 )
 
@@ -33,14 +32,6 @@ func TestNumOfPendingConf(t *testing.T) {
 	}
 	if got := numOfPendingConf(nil); got != 0 {
 		t.Errorf("numOfPendingConf(nil) = %d, want 0", got)
-	}
-}
-
-func TestUint64SliceSort(t *testing.T) {
-	s := uint64Slice{3, 1, 2}
-	sort.Sort(s)
-	if s[0] != 1 || s[1] != 2 || s[2] != 3 {
-		t.Errorf("sorted slice = %v, want [1 2 3]", []uint64(s))
 	}
 }
 

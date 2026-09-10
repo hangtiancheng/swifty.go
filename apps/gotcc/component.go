@@ -9,7 +9,7 @@ type TCCReq struct {
 	// TXID is the globally unique transaction id.
 	TXID string `json:"txID"`
 	// Data carries the component specific business input.
-	Data map[string]interface{} `json:"data"`
+	Data map[string]any `json:"data"`
 }
 
 // TCCResp is the response returned by a TCC component.

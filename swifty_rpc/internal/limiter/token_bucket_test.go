@@ -29,8 +29,10 @@ import (
 func TestTokenBucketAllowAndRefill(t *testing.T) {
 	tb := NewTokenBucket(2)
 	defer tb.Stop()
-	if !tb.Allow() || !tb.Allow() {
-		t.Fatal("expected initial tokens")
+	for range 2 {
+		if !tb.Allow() {
+			t.Fatal("expected initial tokens")
+		}
 	}
 	if tb.Allow() {
 		t.Fatal("expected bucket to be empty")

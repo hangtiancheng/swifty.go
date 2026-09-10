@@ -21,9 +21,6 @@ func TestNewServiceDefaults(t *testing.T) {
 	if opts.logger == nil {
 		t.Error("default logger is nil")
 	}
-	if _, ok := opts.logger.(Logger); !ok {
-		t.Errorf("default logger %T does not satisfy the Logger interface", opts.logger)
-	}
 }
 
 // TestOptionsCacheExpireSeconds verifies CacheExpireSeconds in fixed mode.
@@ -61,7 +58,7 @@ func TestOptionsCacheExpireSeconds(t *testing.T) {
 				cacheExpireRandomMode: tt.randomMode,
 			}
 
-			for i := 0; i < 1000; i++ {
+			for range 1000 {
 				got := opts.CacheExpireSeconds()
 				if tt.randomMode {
 					if got < tt.wantMinJitter || got > tt.wantMaxJitter {
@@ -81,7 +78,7 @@ func TestOptionsCacheExpireSecondsRandomProducesVariety(t *testing.T) {
 	opts := &Options{cacheExpireSeconds: 64, cacheExpireRandomMode: true}
 
 	seen := make(map[int64]struct{})
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		seen[opts.CacheExpireSeconds()] = struct{}{}
 	}
 	if len(seen) < 2 {
@@ -100,7 +97,7 @@ func TestWithLogger(t *testing.T) {
 
 type testLogger struct{}
 
-func (*testLogger) Errorf(format string, v ...interface{}) {}
-func (*testLogger) Warnf(format string, v ...interface{})  {}
-func (*testLogger) Infof(format string, v ...interface{})  {}
-func (*testLogger) Debugf(format string, v ...interface{}) {}
+func (*testLogger) Errorf(format string, v ...any) {}
+func (*testLogger) Warnf(format string, v ...any)  {}
+func (*testLogger) Infof(format string, v ...any)  {}
+func (*testLogger) Debugf(format string, v ...any) {}
