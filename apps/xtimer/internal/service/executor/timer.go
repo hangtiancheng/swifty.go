@@ -1,0 +1,137 @@
+package executor
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/config"
+	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/consts"
+	taskdao "github.com/hangtiancheng/swifty.go/apps/xtimer/internal/dao/task"
+	timerdao "github.com/hangtiancheng/swifty.go/apps/xtimer/internal/dao/timer"
+	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/log"
+	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/model/po"
+	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/model/vo"
+)
+
+type TimerService struct {
+	sync.Once
+	confProvider *config.MigratorAppConfProvider
+	ctx          context.Context
+	stop         func()
+
+	mu       sync.RWMutex
+	timers   map[uint]*vo.Timer
+	timerDAO timerDAO
+	taskDAO  *taskdao.TaskDAO
+}
+
+func NewTimerService(timerDAO *timerdao.TimerDAO, taskDAO *taskdao.TaskDAO, confProvider *config.MigratorAppConfProvider) *TimerService {
+	return &TimerService{
+		confProvider: confProvider,
+		timers:       make(map[uint]*vo.Timer),
+		timerDAO:     timerDAO,
+		taskDAO:      taskDAO,
+	}
+}
+
+func (t *TimerService) Start(ctx context.Context) {
+	t.Do(func() {
+		go func() {
+			t.ctx, t.stop = context.WithCancel(ctx)
+
+			stepMinutes := t.confProvider.Get().TimerDetailCacheMinutes
+			ticker := time.NewTicker(time.Duration(stepMinutes) * time.Minute)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				select {
+				case <-t.ctx.Done():
+					return
+				default:
+				}
+
+				go func() {
+					start := time.Now()
+					timers, _ := t.getTimersByTime(ctx, start, start.Add(time.Duration(stepMinutes)*time.Minute))
+					t.mu.Lock()
+					t.timers = timers
+					t.mu.Unlock()
+				}()
+			}
+		}()
+	})
+}
+
+func (t *TimerService) getTimersByTime(ctx context.Context, start, end time.Time) (map[uint]*vo.Timer, error) {
+	tasks, err := t.taskDAO.GetTasks(ctx, taskdao.WithStartTime(start), taskdao.WithEndTime(end))
+	if err != nil {
+		return nil, err
+	}
+
+	timerIDs := getTimerIDs(tasks)
+	if len(timerIDs) == 0 {
+		return nil, nil
+	}
+	pTimers, err := t.timerDAO.GetTimers(ctx, timerdao.WithIDs(timerIDs), timerdao.WithStatus(int32(consts.Enabled)))
+	if err != nil {
+		return nil, err
+	}
+
+	return getTimersMap(pTimers)
+}
+
+func getTimerIDs(tasks []*po.Task) []uint {
+	timerIDSet := make(map[uint]struct{})
+	for _, task := range tasks {
+		if _, ok := timerIDSet[task.TimerID]; ok {
+			continue
+		}
+		timerIDSet[task.TimerID] = struct{}{}
+	}
+	timerIDs := make([]uint, 0, len(timerIDSet))
+	for id := range timerIDSet {
+		timerIDs = append(timerIDs, id)
+	}
+	return timerIDs
+}
+
+func getTimersMap(pTimers []*po.Timer) (map[uint]*vo.Timer, error) {
+	vTimers, err := vo.NewTimers(pTimers)
+	if err != nil {
+		return nil, err
+	}
+
+	timers := make(map[uint]*vo.Timer, len(vTimers))
+	for _, vTimer := range vTimers {
+		timers[vTimer.ID] = vTimer
+	}
+	return timers, nil
+}
+
+func (t *TimerService) GetTimer(ctx context.Context, id uint) (*vo.Timer, error) {
+	t.mu.RLock()
+	vTimer, ok := t.timers[id]
+	t.mu.RUnlock()
+	if ok {
+		return vTimer, nil
+	}
+
+	log.WarnContextf(ctx, "get timer from local cache failed, timerID: %d", id)
+
+	pTimer, err := t.timerDAO.GetTimer(ctx, timerdao.WithID(id))
+	if err != nil {
+		return nil, err
+	}
+
+	return vo.NewTimer(pTimer)
+}
+
+func (t *TimerService) Stop() {
+	t.stop()
+}
+
+type timerDAO interface {
+	GetTimer(context.Context, ...timerdao.Option) (*po.Timer, error)
+	GetTimers(ctx context.Context, opts ...timerdao.Option) ([]*po.Timer, error)
+}

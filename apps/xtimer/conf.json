@@ -1,0 +1,9 @@
+{
+  "mysql": {
+    "dsn": "please-enter-your-mysql-dsn"
+  },
+  "redis": {
+    "address": "please-enter-your-redis-address",
+    "password": "please-enter-your-redis-password"
+  }
+}
