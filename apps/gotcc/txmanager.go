@@ -20,6 +20,7 @@ import (
 type TXManager struct {
 	ctx            context.Context
 	stop           context.CancelFunc
+	done           chan struct{}
 	opts           *Options
 	txStore        TXStore
 	registryCenter *registryCenter
@@ -35,6 +36,7 @@ func NewTXManager(txStore TXStore, opts ...Option) *TXManager {
 		registryCenter: newRegistryCenter(),
 		ctx:            ctx,
 		stop:           cancel,
+		done:           make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -47,9 +49,11 @@ func NewTXManager(txStore TXStore, opts ...Option) *TXManager {
 	return &txManager
 }
 
-// Stop stops the monitor task of the coordinator.
+// Stop stops the monitor task of the coordinator and waits until it has
+// exited. The done channel is closed by run once the monitor loop returns.
 func (t *TXManager) Stop() {
 	t.stop()
+	<-t.done
 }
 
 // Register adds a TCCComponent to the coordinator.
@@ -76,8 +80,11 @@ func (t *TXManager) Transaction(ctx context.Context, reqs ...*RequestEntity) (st
 		return "", false, err
 	}
 
-	// 2. Two-phase commit: try, then confirm/cancel.
-	return txID, t.twoPhaseCommit(ctx, txID, componentEntities), nil
+	// 2. Two-phase commit: try, then confirm/cancel. The try phase is
+	// bounded by the transaction timeout so that a hung try cannot keep the
+	// caller waiting beyond it; the timeout rollback itself is driven by
+	// the monitor task on the manager context.
+	return txID, t.twoPhaseCommit(tctx, txID, componentEntities), nil
 }
 
 // backOffTick doubles the tick and caps it at eight times MonitorTick.
@@ -92,6 +99,8 @@ func (t *TXManager) backOffTick(tick time.Duration) time.Duration {
 // run is the monitor loop: it periodically locks the store, fetches the
 // hanging transactions and advances their progress.
 func (t *TXManager) run() {
+	defer close(t.done)
+
 	var tick time.Duration
 	var err error
 	for {

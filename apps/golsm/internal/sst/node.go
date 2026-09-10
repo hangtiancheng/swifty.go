@@ -49,10 +49,12 @@ func (n *Node) Get(key []byte) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 
-	// Let the bloom filter help decide whether the key exists.
-	bitmap := n.blockToFilter[index.PrevBlockOffset]
-	if ok = n.opts.Filter.Exist(bitmap, key); !ok {
-		return nil, false, nil
+	// Let the bloom filter help decide whether the key exists. A block
+	// without filter information cannot be skipped, so it is always read.
+	if bitmap, ok := n.blockToFilter[index.PrevBlockOffset]; ok {
+		if !n.opts.Filter.Exist(bitmap, key) {
+			return nil, false, nil
+		}
 	}
 
 	// Read the matching block.

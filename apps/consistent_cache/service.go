@@ -40,23 +40,31 @@ func (s *Service) Put(ctx context.Context, obj Object) error {
 		return err
 	}
 
-	defer func() {
-		go func() {
-			tctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
-			if err := s.cache.Enable(tctx, obj.Key(), s.opts.enableDelayMilis); err != nil {
-				s.opts.logger.Errorf("enable fail, key: %s, err: %v", obj.Key(), err)
-			}
-		}()
-	}()
-
 	// 2. Delete the cache entry of the key.
 	if err := s.cache.Del(ctx, obj.Key()); err != nil {
 		return err
 	}
 
 	// 3. Write the data into the database.
-	return s.db.Put(ctx, obj)
+	if err := s.db.Put(ctx, obj); err != nil {
+		return err
+	}
+
+	// 4. The write flow succeeded; re-enable the read-flow write-cache
+	// mechanism after a delay. On any failure above, the disable mark is left
+	// to expire on its own, so the read flow keeps bypassing the cache while
+	// the write is incomplete. The goroutine is detached and uses a fresh
+	// context on purpose: a cancelled request context must not prevent the
+	// delayed re-enable.
+	go func() {
+		tctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := s.cache.Enable(tctx, obj.Key(), s.opts.enableDelayMilis); err != nil {
+			s.opts.logger.Errorf("enable fail, key: %s, err: %v", obj.Key(), err)
+		}
+	}()
+
+	return nil
 }
 
 // Get performs a read operation. useCache reports whether the value was served

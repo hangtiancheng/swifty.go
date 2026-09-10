@@ -37,27 +37,32 @@ func NewTimerService(timerDAO *timerdao.TimerDAO, taskDAO *taskdao.TaskDAO, conf
 
 func (t *TimerService) Start(ctx context.Context) {
 	t.Do(func() {
-		go func() {
-			t.ctx, t.stop = context.WithCancel(ctx)
+		// Assign the derived context synchronously so Stop never races with
+		// Start and never observes a nil cancel func.
+		t.ctx, t.stop = context.WithCancel(ctx)
 
+		go func() {
 			stepMinutes := t.confProvider.Get().TimerDetailCacheMinutes
 			ticker := time.NewTicker(time.Duration(stepMinutes) * time.Minute)
 			defer ticker.Stop()
 
-			for range ticker.C {
+			for {
 				select {
 				case <-t.ctx.Done():
 					return
-				default:
+				case <-ticker.C:
 				}
 
-				go func() {
-					start := time.Now()
-					timers, _ := t.getTimersByTime(ctx, start, start.Add(time.Duration(stepMinutes)*time.Minute))
-					t.mu.Lock()
-					t.timers = timers
-					t.mu.Unlock()
-				}()
+				start := time.Now()
+				timers, err := t.getTimersByTime(t.ctx, start, start.Add(time.Duration(stepMinutes)*time.Minute))
+				if err != nil {
+					log.ErrorContextf(t.ctx, "refresh timer detail cache failed, err: %v", err)
+					continue
+				}
+
+				t.mu.Lock()
+				t.timers = timers
+				t.mu.Unlock()
 			}
 		}()
 	})
@@ -128,7 +133,9 @@ func (t *TimerService) GetTimer(ctx context.Context, id uint) (*vo.Timer, error)
 }
 
 func (t *TimerService) Stop() {
-	t.stop()
+	if t.stop != nil {
+		t.stop()
+	}
 }
 
 type timerDAO interface {

@@ -48,6 +48,9 @@ type Tree struct {
 	// channel closed when the lsm tree stops
 	stopc chan struct{}
 
+	// channel closed by the compaction goroutine when it exits
+	compactDone chan struct{}
+
 	// index of the active memtable. It maps one to one to a wal file.
 	memTableIndex int
 
@@ -63,6 +66,7 @@ func NewTree(conf *Config) (*Tree, error) {
 		memCompactC:   make(chan *memTableCompactItem),
 		levelCompactC: make(chan int),
 		stopc:         make(chan struct{}),
+		compactDone:   make(chan struct{}),
 		levelToSeq:    make([]atomic.Int32, conf.MaxLevel),
 		nodes:         make([][]*sst.Node, conf.MaxLevel),
 		levelLocks:    make([]sync.RWMutex, conf.MaxLevel),
@@ -78,6 +82,11 @@ func NewTree(conf *Config) (*Tree, error) {
 
 	// 4 Restore the memtables from the wal files.
 	if err := t.constructMemtable(); err != nil {
+		// Stop the compaction goroutine and release every resource acquired
+		// so far before reporting the failure.
+		close(t.stopc)
+		<-t.compactDone
+		t.closeNodes()
 		return nil, err
 	}
 
@@ -88,7 +97,15 @@ func NewTree(conf *Config) (*Tree, error) {
 // Close stops the tree and releases all resources.
 func (t *Tree) Close() {
 	close(t.stopc)
+	// Wait until the compaction goroutine finished its current work, so no
+	// node can be inserted anymore while the readers are being closed.
+	<-t.compactDone
 	t.walWriter.Close()
+	t.closeNodes()
+}
+
+// closeNodes closes the sst reader of every node of the lsm tree.
+func (t *Tree) closeNodes() {
 	for i := 0; i < len(t.nodes); i++ {
 		for j := 0; j < len(t.nodes[i]); j++ {
 			t.nodes[i][j].Close()
@@ -188,24 +205,35 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 // refreshMemTableLocked turns the active memtable into a read only memtable
 // and builds a new active one. The data lock must be held by the caller.
 func (t *Tree) refreshMemTableLocked() error {
-	// Retire the old memtable: turn it into a read only memtable, append it to
-	// the slice and hand it over to the compact goroutine through the channel.
-	// The compact goroutine is responsible for flushing it into a level 0 sst
-	// file.
+	// Welcome the new memtable first: build a new active memtable together
+	// with its matching wal file. If this fails the old memtable and its wal
+	// file stay in place, so the data remains safe.
+	oldWalFile := t.walFile()
+	oldMemTable := t.memTable
+	oldWALWriter := t.walWriter
+	t.memTableIndex++
+	if err := t.newMemTable(); err != nil {
+		t.memTableIndex--
+		return err
+	}
+
+	// Retire the old memtable: close its wal file, turn it into a read only
+	// memtable, append it to the slice and hand it over to the compact
+	// goroutine through the channel. The compact goroutine is responsible for
+	// flushing it into a level 0 sst file.
+	oldWALWriter.Close()
 	oldItem := memTableCompactItem{
-		walFile:  t.walFile(),
-		memTable: t.memTable,
+		walFile:  oldWalFile,
+		memTable: oldMemTable,
 	}
 	t.rOnlyMemTable = append(t.rOnlyMemTable, &oldItem)
-	t.walWriter.Close()
 	go func() {
-		t.memCompactC <- &oldItem
+		select {
+		case t.memCompactC <- &oldItem:
+		case <-t.stopc:
+		}
 	}()
-
-	// Welcome the new memtable: build a new active memtable together with its
-	// matching wal file.
-	t.memTableIndex++
-	return t.newMemTable()
+	return nil
 }
 
 // levelBinarySearch looks up the node of a level whose key range may contain

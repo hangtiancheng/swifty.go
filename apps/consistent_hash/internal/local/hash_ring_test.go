@@ -2,8 +2,13 @@ package local
 
 import (
 	"context"
+	"math"
+	"math/rand/v2"
+	"slices"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 func assertScore(t *testing.T, name string, got int32, err error, want int32) {
@@ -262,5 +267,306 @@ func TestSkiplistHashRing_Lock(t *testing.T) {
 	}
 	if err := ring.Unlock(ctx); err != nil {
 		t.Fatalf("unlock: %v", err)
+	}
+}
+
+// TestSkiplistHashRing_ConcurrentLockDoesNotBlockRelease is the regression
+// test for the lock-ordering deadlock: Lock used to take doubleLock before the
+// ring mutex, so a goroutine waiting for a held lock blocked the holder's
+// Unlock forever. Ownership is tracked per goroutine, so the holder unlocks
+// from its own goroutine and the waiter must be able to acquire the lock.
+func TestSkiplistHashRing_ConcurrentLockDoesNotBlockRelease(t *testing.T) {
+	ring := NewSkiplistHashRing()
+	ctx := context.Background()
+
+	holderDone := make(chan error, 1)
+	go func() {
+		if err := ring.Lock(ctx, 0); err != nil {
+			holderDone <- err
+			return
+		}
+		// Give the waiter time to block on the ring mutex before
+		// releasing it from this (the owning) goroutine.
+		time.Sleep(50 * time.Millisecond)
+		holderDone <- ring.Unlock(ctx)
+	}()
+
+	waiterDone := make(chan error, 1)
+	go func() {
+		time.Sleep(10 * time.Millisecond) // let the holder lock first
+		if err := ring.Lock(ctx, 0); err != nil {
+			waiterDone <- err
+			return
+		}
+		waiterDone <- ring.Unlock(ctx)
+	}()
+
+	// The waiter can only acquire the lock after the holder's Unlock
+	// returned; a regression would leave both blocked forever.
+	select {
+	case err := <-waiterDone:
+		if err != nil {
+			t.Fatalf("waiter: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter never acquired the lock: Lock/Unlock deadlock")
+	}
+	if err := <-holderDone; err != nil {
+		t.Fatalf("holder: %v", err)
+	}
+}
+
+// TestSkiplistHashRing_NodeReturnsCopy verifies that mutating the slice
+// returned by Node cannot corrupt the internal ring state.
+func TestSkiplistHashRing_NodeReturnsCopy(t *testing.T) {
+	ring := NewSkiplistHashRing()
+	ctx := context.Background()
+
+	if err := ring.Add(ctx, 100, "a_0"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	ids, err := ring.Node(ctx, 100)
+	if err != nil {
+		t.Fatalf("node: %v", err)
+	}
+	ids[0] = "mutated"
+
+	ids, err = ring.Node(ctx, 100)
+	if err != nil {
+		t.Fatalf("node: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "a_0" {
+		t.Fatalf("Node must return a copy, got %v", ids)
+	}
+}
+
+// TestSkiplistHashRing_RandomOperationsAgainstModel drives the skiplist with
+// pseudo random add and rem operations and checks every step against a plain
+// reference map, covering shared scores, wrap-around lookups and full ring
+// sweeps.
+func TestSkiplistHashRing_RandomOperationsAgainstModel(t *testing.T) {
+	ring := NewSkiplistHashRing()
+	ctx := context.Background()
+
+	const (
+		scoreMax    = int32(100) // score domain [0, scoreMax)
+		ops         = 2000
+		sweepPeriod = 200
+	)
+	ids := []string{"n_0", "n_1", "n_2", "n_3", "n_4"}
+
+	// entries mirrors the expected ring content: score -> node keys in
+	// registration order.
+	entries := make(map[int32][]string)
+
+	modelCeiling := func(score int32) int32 {
+		if len(entries) == 0 {
+			return -1
+		}
+		best := int32(-1)
+		for s := range entries {
+			if s >= score && (best == -1 || s < best) {
+				best = s
+			}
+		}
+		if best != -1 {
+			return best
+		}
+		// Wrap around to the smallest score of the ring.
+		best = int32(math.MaxInt32)
+		for s := range entries {
+			if s < best {
+				best = s
+			}
+		}
+		return best
+	}
+	modelFloor := func(score int32) int32 {
+		if len(entries) == 0 {
+			return -1
+		}
+		best := int32(-1)
+		for s := range entries {
+			if s <= score && s > best {
+				best = s
+			}
+		}
+		if best != -1 {
+			return best
+		}
+		// Wrap around to the largest score of the ring.
+		for s := range entries {
+			if s > best {
+				best = s
+			}
+		}
+		return best
+	}
+
+	checkLookups := func(probes []int32) {
+		t.Helper()
+		for _, probe := range probes {
+			got, err := ring.Ceiling(ctx, probe)
+			assertScore(t, "Ceiling", got, err, modelCeiling(probe))
+			got, err = ring.Floor(ctx, probe)
+			assertScore(t, "Floor", got, err, modelFloor(probe))
+		}
+	}
+
+	// sweepRing walks every distinct score via Ceiling and compares the set
+	// with the model.
+	sweepRing := func() {
+		t.Helper()
+		if len(entries) == 0 {
+			return
+		}
+		first, err := ring.Ceiling(ctx, 0)
+		if err != nil {
+			t.Fatalf("sweep ceiling: %v", err)
+		}
+		scores := []int32{first}
+		for {
+			next, err := ring.Ceiling(ctx, scores[len(scores)-1]+1)
+			if err != nil {
+				t.Fatalf("sweep ceiling: %v", err)
+			}
+			if next == first {
+				break
+			}
+			scores = append(scores, next)
+		}
+		if len(scores) != len(entries) {
+			t.Fatalf("sweep found %d scores, model has %d: %v", len(scores), len(entries), scores)
+		}
+		for _, score := range scores {
+			if _, ok := entries[score]; !ok {
+				t.Fatalf("sweep found unexpected score %d", score)
+			}
+		}
+	}
+
+	rng := rand.New(rand.NewPCG(42, 2024))
+	for i := range ops {
+		var (
+			score     int32
+			id        string
+			expectErr bool
+		)
+
+		if rng.IntN(100) < 55 || len(entries) == 0 {
+			// Add: a duplicate key under an existing score is idempotent.
+			score = int32(rng.IntN(int(scoreMax)))
+			id = ids[rng.IntN(len(ids))]
+
+			if err := ring.Add(ctx, score, id); err != nil {
+				t.Fatalf("op %d: add (%d, %s): %v", i, score, id, err)
+			}
+			if !slices.Contains(entries[score], id) {
+				entries[score] = append(entries[score], id)
+			}
+		} else {
+			// Rem: always target an existing score.
+			existing := make([]int32, 0, len(entries))
+			for s := range entries {
+				existing = append(existing, s)
+			}
+			score = existing[rng.IntN(len(existing))]
+
+			if rng.IntN(100) < 20 {
+				// Rem of a key that is not registered under the score
+				// must fail with an error.
+				var ghosts []string
+				for _, candidate := range ids {
+					if !slices.Contains(entries[score], candidate) {
+						ghosts = append(ghosts, candidate)
+					}
+				}
+				if len(ghosts) > 0 {
+					id = ghosts[rng.IntN(len(ghosts))]
+					if err := ring.Rem(ctx, score, id); err == nil {
+						t.Fatalf("op %d: rem of unregistered key (%d, %s) should fail", i, score, id)
+					}
+					expectErr = true
+				}
+			}
+
+			if !expectErr {
+				// All ids may already be registered under the score, in
+				// which case the ghost branch above was skipped and a
+				// registered key is removed instead.
+				if id == "" {
+					id = entries[score][rng.IntN(len(entries[score]))]
+				}
+				if err := ring.Rem(ctx, score, id); err != nil {
+					t.Fatalf("op %d: rem (%d, %s): %v", i, score, id, err)
+				}
+				remaining := slices.DeleteFunc(slices.Clone(entries[score]), func(k string) bool { return k == id })
+				if len(remaining) == 0 {
+					delete(entries, score)
+				} else {
+					entries[score] = remaining
+				}
+			}
+		}
+
+		// Verify the touched score and the wrap-around edges after every op.
+		got, nodeErr := ring.Node(ctx, score)
+		if want, ok := entries[score]; ok {
+			if nodeErr != nil {
+				t.Fatalf("op %d: node %d: %v", i, score, nodeErr)
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("op %d: node %d: got %v, want %v", i, score, got, want)
+			}
+		} else if nodeErr == nil {
+			t.Fatalf("op %d: node %d should fail, got %v", i, score, got)
+		}
+		checkLookups([]int32{0, 1, scoreMax / 2, scoreMax - 1, score - 1, score, score + 1})
+
+		if i%sweepPeriod == sweepPeriod-1 {
+			sweepRing()
+		}
+	}
+	sweepRing()
+}
+
+// TestSkiplistHashRing_GuardianGoroutineCleanup proves with goleak that the
+// guardian goroutine of an expiring ring lock exits both after an explicit
+// Unlock and after the expiry based auto release.
+func TestSkiplistHashRing_GuardianGoroutineCleanup(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	ring := NewSkiplistHashRing()
+	ctx := context.Background()
+
+	// The explicit unlock cancels the guardian.
+	if err := ring.Lock(ctx, 1); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	if err := ring.Unlock(ctx); err != nil {
+		t.Fatalf("unlock: %v", err)
+	}
+
+	// A lock left to expire releases itself and stops its guardian. The
+	// relock below blocks until the guardian released the expired lock.
+	if err := ring.Lock(ctx, 1); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	cycled := make(chan error, 1)
+	go func() {
+		if err := ring.Lock(ctx, 0); err != nil {
+			cycled <- err
+			return
+		}
+		cycled <- ring.Unlock(ctx)
+	}()
+	select {
+	case err := <-cycled:
+		if err != nil {
+			t.Fatalf("relock after expiry: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("lock was not released by the guardian after expiry")
 	}
 }

@@ -3,6 +3,7 @@ package redmq
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/hangtiancheng/swifty.go/apps/redmq/internal/log"
 	"github.com/hangtiancheng/swifty.go/apps/redmq/internal/redis"
@@ -18,6 +19,13 @@ var (
 // MsgCallback is invoked for every message received by a Consumer.
 // It is defined by the user of this library.
 type MsgCallback func(ctx context.Context, msg *redis.MsgEntity) error
+
+// failedMsg tracks a message whose processing failed, together with the
+// number of failures accumulated for that message id.
+type failedMsg struct {
+	msg      *redis.MsgEntity
+	failures int
+}
 
 // Consumer consumes messages from a Redis stream topic as a member of a
 // consumer group.
@@ -39,8 +47,9 @@ type Consumer struct {
 	// the id of this consumer within the group
 	consumerID string
 
-	// accumulated failure count per message
-	failureCnts map[redis.MsgEntity]int
+	// failed messages with their accumulated failure counts, keyed by
+	// message id; only touched by the run goroutine
+	failedMsgs map[string]*failedMsg
 
 	// user defined configuration
 	opts *ConsumerOptions
@@ -62,7 +71,7 @@ func NewConsumer(client *redis.Client, topic, groupID, consumerID string, callba
 
 		opts: &ConsumerOptions{},
 
-		failureCnts: make(map[redis.MsgEntity]int),
+		failedMsgs: make(map[string]*failedMsg),
 	}
 
 	if err := c.checkParam(); err != nil {
@@ -101,6 +110,11 @@ func (c *Consumer) Stop() {
 	c.stop()
 }
 
+// receiveRetryBackoff pauses the consume loop after a failed receive round,
+// so a persistent error (for example a missing consumer group) does not turn
+// into a hot retry loop.
+const receiveRetryBackoff = 100 * time.Millisecond
+
 // run is the main consume loop.
 func (c *Consumer) run() {
 	for {
@@ -113,7 +127,12 @@ func (c *Consumer) run() {
 		// receive and handle newly published messages
 		msgs, err := c.receive()
 		if err != nil {
+			// the context is canceled when the consumer is shutting down
+			if c.ctx.Err() != nil {
+				return
+			}
 			log.ErrorContextf(c.ctx, "receive msg failed, err: %v", err)
+			time.Sleep(receiveRetryBackoff)
 			continue
 		}
 
@@ -129,7 +148,12 @@ func (c *Consumer) run() {
 		// receive and handle pending (delivered but unacknowledged) messages
 		pendingMsgs, err := c.receivePending()
 		if err != nil {
+			// the context is canceled when the consumer is shutting down
+			if c.ctx.Err() != nil {
+				return
+			}
 			log.ErrorContextf(c.ctx, "pending msg received failed, err: %v", err)
+			time.Sleep(receiveRetryBackoff)
 			continue
 		}
 
@@ -160,8 +184,13 @@ func (c *Consumer) receivePending() ([]*redis.MsgEntity, error) {
 func (c *Consumer) handleMsgs(ctx context.Context, msgs []*redis.MsgEntity) {
 	for _, msg := range msgs {
 		if err := c.callbackFunc(ctx, msg); err != nil {
-			// increment the failure counter
-			c.failureCnts[*msg]++
+			// increment the failure counter of the message
+			fm := c.failedMsgs[msg.MsgID]
+			if fm == nil {
+				fm = &failedMsg{msg: msg}
+			}
+			fm.failures++
+			c.failedMsgs[msg.MsgID] = fm
 			continue
 		}
 
@@ -171,30 +200,32 @@ func (c *Consumer) handleMsgs(ctx context.Context, msgs []*redis.MsgEntity) {
 			continue
 		}
 
-		delete(c.failureCnts, *msg)
+		delete(c.failedMsgs, msg.MsgID)
 	}
 }
 
 func (c *Consumer) deliverDeadLetter(ctx context.Context) {
 	// messages that failed the configured number of times are delivered to
 	// the dead letter mailbox and then acknowledged
-	for msg, failureCnt := range c.failureCnts {
-		if failureCnt < c.opts.maxRetryLimit {
+	for msgID, fm := range c.failedMsgs {
+		if fm.failures < c.opts.maxRetryLimit {
 			continue
 		}
 
-		// deliver to the dead letter queue
-		if err := c.opts.deadLetterMailbox.Deliver(ctx, &msg); err != nil {
-			log.ErrorContextf(c.ctx, "dead letter deliver failed, msg id: %s, err: %v", msg.MsgID, err)
+		// deliver to the dead letter mailbox; on failure the message stays
+		// pending and the delivery is retried in a later round
+		if err := c.opts.deadLetterMailbox.Deliver(ctx, fm.msg); err != nil {
+			log.ErrorContextf(ctx, "dead letter deliver failed, msg id: %s, err: %v", msgID, err)
+			continue
 		}
 
 		// acknowledge the message
-		if err := c.client.XACK(ctx, c.topic, c.groupID, msg.MsgID); err != nil {
-			log.ErrorContextf(c.ctx, "msg ack failed, msg id: %s, err: %v", msg.MsgID, err)
+		if err := c.client.XACK(ctx, c.topic, c.groupID, msgID); err != nil {
+			log.ErrorContextf(ctx, "msg ack failed, msg id: %s, err: %v", msgID, err)
 			continue
 		}
 
 		// messages acknowledged successfully are removed from the failure map
-		delete(c.failureCnts, msg)
+		delete(c.failedMsgs, msgID)
 	}
 }

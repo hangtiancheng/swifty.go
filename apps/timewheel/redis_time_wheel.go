@@ -122,7 +122,7 @@ func (r *RTimeWheel) executeTasks() {
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
-	tasks, err := r.getExecutableTasks(tctx)
+	tasks, err := r.getExecutableTasks(tctx, time.Now())
 	if err != nil {
 		// TODO: log the fetch error.
 		return
@@ -131,13 +131,10 @@ func (r *RTimeWheel) executeTasks() {
 	// Execute the tasks concurrently.
 	var wg sync.WaitGroup
 	for _, task := range tasks {
-		wg.Add(1)
-		task := task // capture the loop variable
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			// TODO: log the execution error.
 			_ = r.executeTask(tctx, task)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -157,14 +154,18 @@ func (r *RTimeWheel) addTaskPrecheck(task *RTaskElement) error {
 }
 
 // getExecutableTasks fetches the tasks whose score (execution second) falls
-// into the current second, excluding the ones flagged as deleted.
-func (r *RTimeWheel) getExecutableTasks(ctx context.Context) ([]*RTaskElement, error) {
-	now := time.Now()
-	minuteSlice := r.getMinuteSlice(now)
-	deleteSetKey := r.getDeleteSetKey(now)
+// into the current second or the previous one, excluding the ones flagged as
+// deleted. The previous second is retried so tasks are not lost when a fetch
+// round starts late or fails; the zset removal in the fetch script keeps each
+// task from running twice. Note the retry can only reach tasks of the same
+// minute shard: a task due in the last second of a minute lives in the
+// previous minute's shard, so a cross-minute retry finds nothing there.
+func (r *RTimeWheel) getExecutableTasks(ctx context.Context, now time.Time) ([]*RTaskElement, error) {
 	nowSecond := timex.TruncateToSecond(now)
-	score1 := nowSecond.Unix()
-	score2 := nowSecond.Add(time.Second).Unix()
+	minuteSlice := r.getMinuteSlice(nowSecond)
+	deleteSetKey := r.getDeleteSetKey(nowSecond)
+	score1 := nowSecond.Add(-time.Second).Unix()
+	score2 := nowSecond.Unix()
 
 	keys := []string{minuteSlice, deleteSetKey}
 	args := []any{score1, score2}

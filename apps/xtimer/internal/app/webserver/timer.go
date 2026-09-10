@@ -73,7 +73,15 @@ func (t *TimerApp) DeleteTimer(c fiber.Ctx) error {
 }
 
 func (t *TimerApp) UpdateTimer(c fiber.Ctx) error {
-	return c.Status(http.StatusOK).JSON(nil)
+	var req vo.Timer
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(vo.NewCodeMsg(-1, fmt.Sprintf("[update timer] bind req failed, err: %v", err)))
+	}
+
+	if err := t.service.UpdateTimer(c.RequestCtx(), &req); err != nil {
+		return c.Status(http.StatusOK).JSON(vo.NewCodeMsg(-1, err.Error()))
+	}
+	return c.Status(http.StatusOK).JSON(vo.NewCodeMsgWithErr(nil))
 }
 
 func (t *TimerApp) GetTimer(c fiber.Ctx) error {

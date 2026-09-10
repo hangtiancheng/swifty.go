@@ -24,7 +24,10 @@ func Test_Node_Get(t *testing.T) {
 		sstWriter.Append(kv.Key, kv.Value)
 	}
 
-	size, blockToFilter, index := sstWriter.Finish()
+	size, blockToFilter, index, err := sstWriter.Finish()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	sstReader, err := NewSSTReader("test_node_get.sst", opts)
 	if err != nil {

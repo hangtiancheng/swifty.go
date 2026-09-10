@@ -17,8 +17,6 @@ type Worker struct {
 	appConfProvider appConfProvider
 	trigger         *trigger.Worker
 	lockService     lockService
-	bucketGetter    bucketGetter
-	minuteBuckets   map[string]int
 }
 
 func NewWorker(trigger *trigger.Worker, redisClient *redis.Client, appConfProvider *config.SchedulerAppConfProvider) *Worker {
@@ -26,9 +24,7 @@ func NewWorker(trigger *trigger.Worker, redisClient *redis.Client, appConfProvid
 		pool:            pool.NewGoWorkerPool(appConfProvider.Get().WorkersNum),
 		trigger:         trigger,
 		lockService:     redisClient,
-		bucketGetter:    redisClient,
 		appConfProvider: appConfProvider,
-		minuteBuckets:   make(map[string]int),
 	}
 }
 
@@ -38,28 +34,22 @@ func (w *Worker) Start(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(w.appConfProvider.Get().TryLockGapMilliSeconds) * time.Millisecond)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
 		select {
 		case <-ctx.Done():
 			log.WarnContext(ctx, "stopped")
 			return nil
-		default:
+		case <-ticker.C:
 		}
 
 		w.handleSlices(ctx)
 	}
-	return nil
 }
 
 func (w *Worker) handleSlices(ctx context.Context) {
-	for i := 0; i < w.getValidBucket(ctx); i++ {
+	for i := range w.appConfProvider.Get().BucketsNum {
 		w.handleSlice(ctx, i)
 	}
-}
-
-// getValidBucket returns the number of buckets. Dynamic bucket sizing is disabled.
-func (w *Worker) getValidBucket(ctx context.Context) int {
-	return w.appConfProvider.Get().BucketsNum
 }
 
 func (w *Worker) handleSlice(ctx context.Context, bucketID int) {
@@ -102,8 +92,4 @@ type appConfProvider interface {
 
 type lockService interface {
 	GetDistributionLock(key string) redis.DistributeLocker
-}
-
-type bucketGetter interface {
-	Get(ctx context.Context, key string) (string, error)
 }

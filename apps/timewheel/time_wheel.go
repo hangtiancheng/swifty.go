@@ -73,27 +73,37 @@ func (t *TimeWheel) Stop() {
 }
 
 // AddTask schedules task to run when executeAt is reached, identified by key.
-// Adding a task whose key was added before replaces the earlier task.
+// Adding a task whose key was added before replaces the earlier task. If the
+// wheel has been stopped, the task is dropped.
 func (t *TimeWheel) AddTask(key string, task func(), executeAt time.Time) {
-	t.addTaskCh <- &taskElement{
+	select {
+	case t.addTaskCh <- &taskElement{
 		key:       key,
 		task:      task,
 		executeAt: executeAt,
+	}:
+	case <-t.stopc:
 	}
 }
 
-// RemoveTask cancels the pending task registered under key, if any.
+// RemoveTask cancels the pending task registered under key, if any. It is a
+// no-op if the wheel has been stopped.
 func (t *TimeWheel) RemoveTask(key string) {
-	t.removeTaskCh <- key
+	select {
+	case t.removeTaskCh <- key:
+	case <-t.stopc:
+	}
 }
 
 // run is the single goroutine that owns the wheel state (slots, curSlot and
 // the key index). Keeping all mutations here avoids data races.
 func (t *TimeWheel) run() {
 	defer func() {
-		// Never let a panic in the loop crash the process; the wheel stops
-		// serving in the worst case.
-		_ = recover()
+		if recover() != nil {
+			// A panic in the loop kills the wheel goroutine. Stop the wheel so
+			// pending AddTask and RemoveTask callers do not block forever.
+			t.Stop()
+		}
 	}()
 
 	for {

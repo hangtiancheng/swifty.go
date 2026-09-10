@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -289,6 +290,12 @@ func (s *SSTReader) ReadRecord(prevKey []byte, buf *bytes.Buffer) (key, value []
 	value = make([]byte, valLen)
 	if _, err = io.ReadFull(buf, value); err != nil {
 		return nil, nil, err
+	}
+
+	// The shared prefix must be contained in the previous key; anything else
+	// means the block content is corrupt.
+	if sharedPrefixLen > uint64(len(prevKey)) {
+		return nil, nil, fmt.Errorf("shared prefix length %d exceeds the previous key length %d", sharedPrefixLen, len(prevKey))
 	}
 
 	// Join the shared prefix and the remaining key part.

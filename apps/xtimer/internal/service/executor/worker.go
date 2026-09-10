@@ -116,6 +116,7 @@ func (w *Worker) postProcess(ctx context.Context, resp map[string]any, execErr e
 
 	respBody, _ := json.Marshal(resp)
 	task.Output = string(respBody)
+	task.CostTime = int(time.Since(execTime).Milliseconds())
 
 	if execErr != nil {
 		task.Status = consts.Failed.ToInt()

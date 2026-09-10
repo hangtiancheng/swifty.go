@@ -86,6 +86,18 @@ func TestOptionsCacheExpireSecondsRandomProducesVariety(t *testing.T) {
 	}
 }
 
+// TestOptionsCacheExpireSecondsNonPositiveDoesNotPanic verifies that random
+// mode with a non-positive configured expiry does not panic (rand.Int64N
+// panics on a non-positive bound) and returns the configured value as is.
+func TestOptionsCacheExpireSecondsNonPositiveDoesNotPanic(t *testing.T) {
+	for _, configured := range []int64{0, -1, -100} {
+		opts := &Options{cacheExpireSeconds: configured, cacheExpireRandomMode: true}
+		if got, want := opts.CacheExpireSeconds(), configured; got != want {
+			t.Errorf("CacheExpireSeconds() = %d, want %d", got, want)
+		}
+	}
+}
+
 // TestWithLogger verifies that the logger option is honored.
 func TestWithLogger(t *testing.T) {
 	l := &testLogger{}

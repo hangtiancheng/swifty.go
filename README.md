@@ -38,18 +38,18 @@ go get github.com/hangtiancheng/swifty.go/swifty_http
 package main
 
 import (
-    "net/http"
+  "net/http"
 
-    swifty "github.com/hangtiancheng/swifty.go/swifty_http"
+  swifty "github.com/hangtiancheng/swifty.go/swifty_http"
 )
 
 func main() {
-    app := swifty.Default() // Logger + Recovery
-    app.Get("/", func(ctx *swifty.Context, next func()) {
-        ctx.Status = http.StatusOK
-        ctx.String("Hello World")
-    })
-    app.Listen(":8000")
+  app := swifty.Default() // Logger + Recovery
+  app.Get("/", func(ctx *swifty.Context, next func()) {
+    ctx.Status = http.StatusOK
+    ctx.String("Hello World")
+  })
+  app.Listen(":8000")
 }
 ```
 
@@ -76,17 +76,17 @@ go get github.com/hangtiancheng/swifty.go/swifty_orm
 ```go
 engine, err := swifty_orm.NewEngine(ctx, "mongodb://localhost:27017", "demo")
 if err != nil {
-    log.Fatal(err)
+  log.Fatal(err)
 }
 defer engine.Close(ctx)
 
 var adults []User
 err = engine.Model(&User{}).            // collection name derived: "users"
-    Where("age", ">=", 18).
-    WhereNotNull("email").
-    OrderBy("created_at", "desc").
-    Limit(10).
-    Find(ctx, &adults)
+  Where("age", ">=", 18).
+  WhereNotNull("email").
+  OrderBy("created_at", "desc").
+  Limit(10).
+  Find(ctx, &adults)
 ```
 
 Highlights:
@@ -111,9 +111,9 @@ go get github.com/hangtiancheng/swifty.go/swifty_cache
 
 ```go
 scores := cache.NewGroup("scores", 64<<20, cache.GetterFunc(
-    func(ctx context.Context, key string) ([]byte, error) {
-        return loadFromDB(ctx, key) // invoked on cache miss
-    },
+  func(ctx context.Context, key string) ([]byte, error) {
+    return loadFromDB(ctx, key) // invoked on cache miss
+  },
 ), cache.WithExpiration(5*time.Minute))
 defer scores.Close()
 

@@ -106,8 +106,9 @@ func (m *MockComponent) Try(ctx context.Context, req *gotcc.TCCReq) (*gotcc.TCCR
 		return nil, err
 	}
 
-	// The data must be frozen from scratch: SetNX fails when the data is
-	// already frozen by another transaction.
+	// The data must be frozen from scratch: SetNX fails when the data key
+	// already exists, e.g. when a previous attempt of this try froze the
+	// data but could not record the tried status.
 	reply, err := m.client.SetNX(ctx, pkg.BuildDataKey(m.id, req.TXID, bizID), DataFrozen.String())
 	if err != nil {
 		return nil, err
@@ -170,7 +171,16 @@ func (m *MockComponent) Confirm(ctx context.Context, txID string) (*gotcc.TCCRes
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
 	}
-	if dataStatus != DataFrozen.String() {
+	switch dataStatus {
+	case DataSuccessful.String():
+		// A previous confirm attempt already committed the data but failed
+		// to record the confirmed status (e.g. it crashed in between). The
+		// confirm took effect, so answer idempotently with a successful ack.
+		res.ACK = true
+		return &res, nil
+	case DataFrozen.String():
+		// The data is frozen by this transaction, commit it.
+	default:
 		// Illegal data state (including a missing data key): reject.
 		return &res, nil
 	}
@@ -205,9 +215,19 @@ func (m *MockComponent) Cancel(ctx context.Context, txID string) (*gotcc.TCCResp
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
 	}
-	// Confirm before cancel is an illegal state transition.
-	if txStatus == TXConfirmed.String() {
+	switch txStatus {
+	case TXConfirmed.String():
+		// Confirm before cancel is an illegal state transition.
 		return nil, fmt.Errorf("invalid tx status: %s, txid: %s", txStatus, txID)
+	case TXCanceled.String():
+		// Already canceled by a previous attempt, answer idempotently with
+		// a successful ack and leave the data untouched.
+		return &gotcc.TCCResp{
+			ACK:         true,
+			ComponentID: m.id,
+			TXID:        txID,
+		}, nil
+	default:
 	}
 
 	// Fetch the business id of the transaction.

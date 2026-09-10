@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/app"
+	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/log"
 )
 
 func main() {
@@ -18,8 +19,6 @@ func main() {
 
 	migratorApp.Start()
 	schedulerApp.Start()
-	defer schedulerApp.Stop()
-
 	monitor.Start()
 	webServer.Start()
 
@@ -32,4 +31,9 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT)
 	<-quit
+
+	log.Warnf("shutting down")
+	migratorApp.Stop()
+	schedulerApp.Stop()
+	monitor.Stop()
 }

@@ -6,8 +6,10 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/hangtiancheng/swifty.go/apps/redis_lock"
 )
@@ -25,6 +27,12 @@ type ScoreEntity struct {
 type RedisHashRing struct {
 	key         string
 	redisClient *redis_lock.Client
+
+	// holder is the lock instance of the active Lock/Unlock pair. The ring
+	// protocol serializes Lock/Unlock pairs, so at most one pair is active
+	// at a time; holderMu only guards the field itself.
+	holderMu sync.Mutex
+	holder   *redis_lock.RedisLock
 }
 
 // NewRedisHashRing builds a Redis backed hash ring identified by key. The
@@ -52,15 +60,31 @@ func (r *RedisHashRing) getNodeDataKey(nodeID string) string {
 	return fmt.Sprintf("redis:consistent_hash:ring:node:data:%s", nodeID)
 }
 
-// Lock acquires the distributed ring lock, expiring after expireSeconds.
+// Lock acquires the distributed ring lock, expiring after expireSeconds. The
+// acquired lock instance is remembered so that Unlock releases exactly the
+// same lock: ownership is tracked with a per instance token.
 func (r *RedisHashRing) Lock(ctx context.Context, expireSeconds int) error {
 	lock := redis_lock.NewRedisLock(r.getLockKey(), r.redisClient, redis_lock.WithExpireSeconds(int64(expireSeconds)))
-	return lock.Lock(ctx)
+	if err := lock.Lock(ctx); err != nil {
+		return err
+	}
+
+	r.holderMu.Lock()
+	r.holder = lock
+	r.holderMu.Unlock()
+	return nil
 }
 
-// Unlock releases the distributed ring lock.
+// Unlock releases the distributed ring lock acquired by the matching Lock.
 func (r *RedisHashRing) Unlock(ctx context.Context) error {
-	lock := redis_lock.NewRedisLock(r.getLockKey(), r.redisClient)
+	r.holderMu.Lock()
+	lock := r.holder
+	r.holder = nil
+	r.holderMu.Unlock()
+
+	if lock == nil {
+		return errors.New("ring lock is not held")
+	}
 	return lock.Unlock(ctx)
 }
 
@@ -71,13 +95,18 @@ func (r *RedisHashRing) Add(ctx context.Context, score int32, nodeID string) err
 		return fmt.Errorf("redis ring add failed: %w", err)
 	}
 
-	switch code, _ := replyToInt64(reply); code {
+	code, err := replyToInt64(reply)
+	if err != nil {
+		return fmt.Errorf("redis ring add failed, unexpected reply: %w", err)
+	}
+
+	switch code {
 	case 1, 0:
 		return nil
 	case -1:
 		return fmt.Errorf("redis ring add failed, several members share score: %d", score)
 	default:
-		return fmt.Errorf("redis ring add failed, unexpected reply: %v", reply)
+		return fmt.Errorf("redis ring add failed, unexpected reply code: %d", code)
 	}
 }
 
@@ -134,7 +163,12 @@ func (r *RedisHashRing) Rem(ctx context.Context, score int32, nodeID string) err
 		return fmt.Errorf("redis ring rem failed: %w", err)
 	}
 
-	switch code, _ := replyToInt64(reply); code {
+	code, err := replyToInt64(reply)
+	if err != nil {
+		return fmt.Errorf("redis ring rem failed, unexpected reply: %w", err)
+	}
+
+	switch code {
 	case 1, 0:
 		return nil
 	case -1:
@@ -142,7 +176,7 @@ func (r *RedisHashRing) Rem(ctx context.Context, score int32, nodeID string) err
 	case -2:
 		return fmt.Errorf("redis ring rem failed, several members share score: %d", score)
 	default:
-		return fmt.Errorf("redis ring rem failed, unexpected reply: %v", reply)
+		return fmt.Errorf("redis ring rem failed, unexpected reply code: %d", code)
 	}
 }
 

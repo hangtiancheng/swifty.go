@@ -100,8 +100,8 @@ func (c *Client) XReadGroupPending(ctx context.Context, groupID, consumerID, top
 }
 
 // XReadGroup reads brand new messages never delivered to the group, blocking
-// at most timeoutMilliSeconds. A non positive timeout blocks forever, which
-// matches the Redis BLOCK 0 semantics.
+// at most timeoutMilliSeconds. A zero timeout blocks forever, which matches
+// the Redis BLOCK 0 semantics; a negative timeout does not block at all.
 func (c *Client) XReadGroup(ctx context.Context, groupID, consumerID, topic string, timeoutMilliSeconds int) ([]*MsgEntity, error) {
 	return c.xReadGroup(ctx, groupID, consumerID, topic, timeoutMilliSeconds, false)
 }
@@ -170,7 +170,7 @@ func (c *Client) Set(ctx context.Context, key, value string) (int64, error) {
 // key does not exist yet. It returns 1 when the key was set, 0 otherwise.
 func (c *Client) SetNEX(ctx context.Context, key, value string, expireSeconds int64) (int64, error) {
 	if key == "" || value == "" {
-		return -1, errors.New("redis SET key NX EX or value can't be empty")
+		return -1, errors.New("redis SET key or value can't be empty")
 	}
 
 	ok, err := c.cli.SetNX(ctx, key, value, time.Duration(expireSeconds)*time.Second).Result()
@@ -188,7 +188,7 @@ func (c *Client) SetNEX(ctx context.Context, key, value string, expireSeconds in
 // returns 1 when the key was set, 0 otherwise.
 func (c *Client) SetNX(ctx context.Context, key, value string) (int64, error) {
 	if key == "" || value == "" {
-		return -1, errors.New("redis SET key NX or value can't be empty")
+		return -1, errors.New("redis SET key or value can't be empty")
 	}
 
 	ok, err := c.cli.SetNX(ctx, key, value, 0).Result()

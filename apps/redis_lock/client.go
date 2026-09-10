@@ -130,6 +130,11 @@ func (c *Client) SetNEX(ctx context.Context, key, value string, expireSeconds in
 	if key == "" || value == "" {
 		return -1, errors.New("redis SET key or value can't be empty")
 	}
+	// A non-positive expiry would make go-redis store the key without any
+	// expiry at all, which contradicts the EX contract of this method.
+	if expireSeconds <= 0 {
+		return -1, errors.New("redis SETNEX expireSeconds must be positive")
+	}
 
 	reply, err := c.client.SetNX(ctx, key, value, time.Duration(expireSeconds)*time.Second).Result()
 	if err != nil {

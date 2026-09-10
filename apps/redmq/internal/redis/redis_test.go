@@ -159,6 +159,86 @@ func Test_xReadGroup_param_validation(t *testing.T) {
 	}
 }
 
+func Test_param_validation(t *testing.T) {
+	client := NewClient(network, testAddress, testPassword)
+	defer client.cli.Close()
+	ctx := context.Background()
+
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "XADD empty topic",
+			call: func() error { _, err := client.XADD(ctx, "", 10, "k", "v"); return err },
+		},
+		{
+			name: "XACK empty topic",
+			call: func() error { return client.XACK(ctx, "", "g", "1-1") },
+		},
+		{
+			name: "XACK empty group id",
+			call: func() error { return client.XACK(ctx, "t", "", "1-1") },
+		},
+		{
+			name: "XACK empty msg id",
+			call: func() error { return client.XACK(ctx, "t", "g", "") },
+		},
+		{
+			name: "GET empty key",
+			call: func() error { _, err := client.Get(ctx, ""); return err },
+		},
+		{
+			name: "SET empty key",
+			call: func() error { _, err := client.Set(ctx, "", "v"); return err },
+		},
+		{
+			name: "SET empty value",
+			call: func() error { _, err := client.Set(ctx, "k", ""); return err },
+		},
+		{
+			name: "SetNEX empty key",
+			call: func() error { _, err := client.SetNEX(ctx, "", "v", 10); return err },
+		},
+		{
+			name: "SetNEX empty value",
+			call: func() error { _, err := client.SetNEX(ctx, "k", "", 10); return err },
+		},
+		{
+			name: "SetNX empty key",
+			call: func() error { _, err := client.SetNX(ctx, "", "v"); return err },
+		},
+		{
+			name: "SetNX empty value",
+			call: func() error { _, err := client.SetNX(ctx, "k", ""); return err },
+		},
+		{
+			name: "DEL empty key",
+			call: func() error { return client.Del(ctx, "") },
+		},
+		{
+			name: "INCR empty key",
+			call: func() error { _, err := client.Incr(ctx, ""); return err },
+		},
+		{
+			name: "EVAL negative key count",
+			call: func() error { _, err := client.Eval(ctx, "return 1", -1, nil); return err },
+		},
+		{
+			name: "EVAL too few keys",
+			call: func() error { _, err := client.Eval(ctx, "return 1", 2, []any{"k1"}); return err },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); err == nil {
+				t.Errorf("%s succeeded, want a validation error", tt.name)
+			}
+		})
+	}
+}
+
 func Test_xadd_and_xreadgroup(t *testing.T) {
 	skipWithoutRedis(t)
 
@@ -203,6 +283,47 @@ func Test_xadd_and_xreadgroup(t *testing.T) {
 	}
 }
 
+func Test_xreadgroup_pending_before_ack(t *testing.T) {
+	skipWithoutRedis(t)
+
+	client := NewClient(network, testAddress, testPassword)
+	defer client.cli.Close()
+
+	ctx := context.Background()
+	topic := fmt.Sprintf("redmq_test_topic_%d", time.Now().UnixNano())
+	group := fmt.Sprintf("redmq_test_group_%d", time.Now().UnixNano())
+
+	msgID, err := client.XADD(ctx, topic, 10, "test_key", "test_val")
+	if err != nil {
+		t.Fatalf("XADD failed: %v", err)
+	}
+
+	if _, err := client.XGroupCreate(ctx, topic, group); err != nil {
+		t.Fatalf("XGroupCreate failed: %v", err)
+	}
+
+	if _, err := client.XReadGroup(ctx, group, "test_consumer", topic, 1000); err != nil {
+		t.Fatalf("XReadGroup failed: %v", err)
+	}
+
+	// an unacknowledged message stays in the pending entries list of the
+	// consumer it was delivered to
+	msgs, err := client.XReadGroupPending(ctx, group, "test_consumer", topic)
+	if err != nil {
+		t.Fatalf("XReadGroupPending failed: %v", err)
+	}
+	want := []*MsgEntity{{MsgID: msgID, Key: "test_key", Val: "test_val"}}
+	if !reflect.DeepEqual(msgs, want) {
+		t.Errorf("XReadGroupPending() = %+v, want %+v", msgs, want)
+	}
+
+	// another consumer of the group does not see the pending message
+	msgs, err = client.XReadGroupPending(ctx, group, "test_consumer2", topic)
+	if !errors.Is(err, ErrNoMsg) {
+		t.Errorf("XReadGroupPending() = %+v, err = %v, want ErrNoMsg", msgs, err)
+	}
+}
+
 func Test_set_get_del_incr(t *testing.T) {
 	skipWithoutRedis(t)
 
@@ -232,6 +353,16 @@ func Test_set_get_del_incr(t *testing.T) {
 
 	if n, err := client.SetNEX(ctx, keyPrefix+"_nex", "value", 10); err != nil || n != 1 {
 		t.Errorf("SetNEX() = %d, %v, want 1, nil", n, err)
+	}
+
+	// SetNEX on an existing key does not overwrite it
+	if n, err := client.SetNEX(ctx, key, "other", 10); err != nil || n != 0 {
+		t.Errorf("SetNEX() on existing key = %d, %v, want 0, nil", n, err)
+	}
+
+	val, err = client.Get(ctx, key)
+	if err != nil || val != "test_value" {
+		t.Errorf("Get() = %q, %v, want %q, nil", val, err, "test_value")
 	}
 
 	if err := client.Del(ctx, key); err != nil {

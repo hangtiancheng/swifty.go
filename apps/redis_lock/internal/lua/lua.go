@@ -6,13 +6,13 @@ package lua
 // it. KEYS[1] is the lock key, ARGV[1] is the caller's token. It returns 1
 // when the lock was deleted and 0 otherwise.
 const LuaCheckAndDeleteDistributedLock = `
-  local lockerKey = KEYS[1]
+  local lockKey = KEYS[1]
   local targetToken = ARGV[1]
-  local getToken = redis.call('get',lockerKey)
-  if (not getToken or getToken ~= targetToken) then
+  local currentToken = redis.call('get', lockKey)
+  if not currentToken or currentToken ~= targetToken then
     return 0
-	else
-		return redis.call('del',lockerKey)
+  else
+    return redis.call('del', lockKey)
   end
 `
 
@@ -21,13 +21,13 @@ const LuaCheckAndDeleteDistributedLock = `
 // and ARGV[2] is the new expiry in seconds. It returns 1 when the lock was
 // extended and 0 otherwise.
 const LuaCheckAndExpireDistributedLock = `
-  local lockerKey = KEYS[1]
+  local lockKey = KEYS[1]
   local targetToken = ARGV[1]
   local duration = ARGV[2]
-  local getToken = redis.call('get',lockerKey)
-  if (not getToken or getToken ~= targetToken) then
+  local currentToken = redis.call('get', lockKey)
+  if not currentToken or currentToken ~= targetToken then
     return 0
-	else
-		return redis.call('expire',lockerKey,duration)
+  else
+    return redis.call('expire', lockKey, duration)
   end
 `

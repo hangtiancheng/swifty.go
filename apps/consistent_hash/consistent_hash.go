@@ -174,6 +174,19 @@ func (c *ConsistentHash) RemoveNode(ctx context.Context, nodeID string) error {
 		})
 	}
 
+	// Without a migrator no migration task ever moves the data keys, so the
+	// records of the removed node have to be dropped explicitly to keep the
+	// data-key bookkeeping consistent.
+	if c.migrator == nil {
+		var dataKeys map[string]struct{}
+		if dataKeys, err = c.hashRing.DataKeys(ctx, nodeID); err != nil {
+			return err
+		}
+		if err = c.hashRing.DeleteNodeToDataKeys(ctx, nodeID, dataKeys); err != nil {
+			return err
+		}
+	}
+
 	c.batchExecuteMigrator(migrateTasks)
 
 	return nil

@@ -33,7 +33,7 @@ func init() {
 // Options holds the logger configuration.
 type Options struct {
 	// LogLevel is one of "debug", "info", "warn", "error" or "fatal"
-	// (case-insensitive). An empty value means "debug".
+	// (case-insensitive). An empty value means "info".
 	LogLevel string
 }
 

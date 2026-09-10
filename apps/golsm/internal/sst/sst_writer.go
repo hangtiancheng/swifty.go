@@ -20,6 +20,7 @@ type Index struct {
 type SSTWriter struct {
 	opts          *Options          // sst layer options
 	dest          *os.File          // the sstable file
+	file          string            // final name of the sstable file, without the directory path
 	dataBuf       *bytes.Buffer     // data block buffer: key -> value
 	filterBuf     *bytes.Buffer     // filter block buffer: previous block offset -> filter bitmap
 	indexBuf      *bytes.Buffer     // index block buffer: index key -> previous block offset, previous block size
@@ -36,9 +37,13 @@ type SSTWriter struct {
 	prevBlockSize   uint64 // size of the previous data block
 }
 
-// NewSSTWriter creates an sst writer.
+// NewSSTWriter creates an sst writer. The data goes into a temporary file
+// first and is published under the final name by Finish, so a crash in the
+// middle of a write never leaves a partial sstable behind that would fail to
+// load on the next start.
 func NewSSTWriter(file string, opts *Options) (*SSTWriter, error) {
-	dest, err := os.OpenFile(path.Join(opts.Dir, file), os.O_CREATE|os.O_WRONLY, 0644)
+	// Open the temporary file, truncating a stale one left behind by a crash.
+	dest, err := os.OpenFile(path.Join(opts.Dir, file+".tmp"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +51,7 @@ func NewSSTWriter(file string, opts *Options) (*SSTWriter, error) {
 	return &SSTWriter{
 		opts:          opts,
 		dest:          dest,
+		file:          file,
 		dataBuf:       bytes.NewBuffer([]byte{}),
 		filterBuf:     bytes.NewBuffer([]byte{}),
 		indexBuf:      bytes.NewBuffer([]byte{}),
@@ -57,9 +63,10 @@ func NewSSTWriter(file string, opts *Options) (*SSTWriter, error) {
 	}, nil
 }
 
-// Finish completes the whole sstable: it flushes the buffered data to disk and
-// returns the information the upper lsm layer needs to cache.
-func (s *SSTWriter) Finish() (size uint64, blockToFilter map[uint64][]byte, index []*Index) {
+// Finish completes the whole sstable: it flushes the buffered data to disk,
+// publishes the file under its final name and returns the information the
+// upper lsm layer needs to cache.
+func (s *SSTWriter) Finish() (size uint64, blockToFilter map[uint64][]byte, index []*Index, err error) {
 	// Handle the last data block.
 	s.refreshBlock()
 	// Complete the last index entry.
@@ -84,10 +91,23 @@ func (s *SSTWriter) Finish() (size uint64, blockToFilter map[uint64][]byte, inde
 	size += indexBufLen
 
 	// Write everything to the file in order.
-	_, _ = s.dest.Write(s.dataBuf.Bytes())
-	_, _ = s.dest.Write(s.filterBuf.Bytes())
-	_, _ = s.dest.Write(s.indexBuf.Bytes())
-	_, _ = s.dest.Write(footer)
+	if _, err = s.dest.Write(s.dataBuf.Bytes()); err != nil {
+		return
+	}
+	if _, err = s.dest.Write(s.filterBuf.Bytes()); err != nil {
+		return
+	}
+	if _, err = s.dest.Write(s.indexBuf.Bytes()); err != nil {
+		return
+	}
+	if _, err = s.dest.Write(footer); err != nil {
+		return
+	}
+
+	// Publish the sstable under its final name.
+	if err = os.Rename(path.Join(s.opts.Dir, s.file+".tmp"), path.Join(s.opts.Dir, s.file)); err != nil {
+		return
+	}
 
 	blockToFilter = s.blockToFilter
 	index = s.index
@@ -120,12 +140,15 @@ func (s *SSTWriter) Size() uint64 {
 	return uint64(s.dataBuf.Len())
 }
 
-// Close closes the sstable file and releases the buffers.
+// Close closes the sstable file and releases the buffers. If the sstable was
+// never finished its temporary file is removed; after a successful Finish the
+// temporary file no longer exists and the removal fails silently.
 func (s *SSTWriter) Close() {
 	_ = s.dest.Close()
 	s.dataBuf.Reset()
 	s.indexBuf.Reset()
 	s.filterBuf.Reset()
+	_ = os.Remove(path.Join(s.opts.Dir, s.file+".tmp"))
 }
 
 func (s *SSTWriter) insertIndex(key []byte) {
@@ -143,11 +166,22 @@ func (s *SSTWriter) insertIndex(key []byte) {
 }
 
 func (s *SSTWriter) refreshBlock() {
+	// An empty block has nothing to flush and contributes no index entry.
+	if s.dataBlock.entriesCnt == 0 {
+		return
+	}
+
+	// The block being flushed starts at the current end of the data buffer.
+	s.prevBlockOffset = uint64(s.dataBuf.Len())
+	// Move the data of the block into the buffer.
+	s.prevBlockSize, _ = s.dataBlock.FlushTo(s.dataBuf)
+
+	// A filter holding no keys contributes no bitmap. The data of the block
+	// is flushed either way, otherwise its records would be lost.
 	if s.opts.Filter.KeyLen() == 0 {
 		return
 	}
 
-	s.prevBlockOffset = uint64(s.dataBuf.Len())
 	// Store the bloom filter bitmap.
 	filterBitmap := s.opts.Filter.Hash()
 	s.blockToFilter[s.prevBlockOffset] = filterBitmap
@@ -155,7 +189,4 @@ func (s *SSTWriter) refreshBlock() {
 	s.filterBlock.Append(s.assistScratch[:n], filterBitmap)
 	// Reset the bloom filter.
 	s.opts.Filter.Reset()
-
-	// Move the data of the block into the buffer.
-	s.prevBlockSize, _ = s.dataBlock.FlushTo(s.dataBuf)
 }

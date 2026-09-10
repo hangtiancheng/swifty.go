@@ -2,20 +2,29 @@ package redis_lock
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
 	"github.com/hangtiancheng/swifty.go/apps/redis_lock/internal/lua"
-	"github.com/hangtiancheng/swifty.go/apps/redis_lock/internal/osutil"
 )
 
 const RedisLockKeyPrefix = "REDIS_LOCK_PREFIX_"
 
 var ErrLockAcquiredByOthers = errors.New("lock is acquired by others")
+
+// errLockLost is returned by DelayExpire when the lock is no longer owned by
+// the caller, e.g. because it expired or was already released.
+var errLockLost = errors.New("can not expire lock without ownership of lock")
+
+// watchDogHeadroom is the extra TTL added to every watchdog renewal so that
+// the lock does not expire early due to network latency.
+const watchDogHeadroom = 5 * time.Second
 
 // ErrNil is returned when Redis replies with a nil value, e.g. GET on a
 // missing key.
@@ -29,16 +38,24 @@ func IsRetryableErr(err error) bool {
 
 // RedisLock is a Redis based distributed lock. It is not reentrant, but it
 // guarantees symmetric ownership: only the holder can release or renew it.
+// Every lock instance carries its own random token, so two locks can never
+// release or renew each other's lock.
 type RedisLock struct {
 	LockOptions
 	key    string
 	token  string
 	client LockClient
 
-	// Whether the watchdog is currently running.
-	runningDog atomic.Int32
-	// stopDog stops the watchdog.
-	stopDog context.CancelFunc
+	// dogInterval is the interval between two watchdog renewal rounds. It
+	// defaults to WatchDogWorkStepSeconds; the field exists so tests can
+	// shorten it.
+	dogInterval time.Duration
+
+	// dogMu guards the watchdog field below.
+	dogMu sync.Mutex
+	// dogCancel cancels the context of the watchdog started for the current
+	// acquisition. It is nil until the first watchdog has been started.
+	dogCancel context.CancelFunc
 }
 
 // NewRedisLock creates a distributed lock on key. client must satisfy the
@@ -46,9 +63,10 @@ type RedisLock struct {
 // mode is enabled and the lock is renewed automatically until Unlock.
 func NewRedisLock(key string, client LockClient, opts ...LockOption) *RedisLock {
 	r := RedisLock{
-		key:    key,
-		token:  osutil.GetProcessAndGoroutineIDStr(),
-		client: client,
+		key:         key,
+		token:       newLockToken(),
+		client:      client,
+		dogInterval: WatchDogWorkStepSeconds * time.Second,
 	}
 
 	for _, opt := range opts {
@@ -59,6 +77,15 @@ func NewRedisLock(key string, client LockClient, opts ...LockOption) *RedisLock 
 	return &r
 }
 
+// newLockToken returns a random token identifying the lock owner. Each lock
+// instance gets its own token so that ownership checks always refer to
+// exactly one lock.
+func newLockToken() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b) // crypto/rand.Read always succeeds.
+	return hex.EncodeToString(b)
+}
+
 // Lock acquires the lock.
 func (r *RedisLock) Lock(ctx context.Context) (err error) {
 	defer func() {
@@ -66,7 +93,8 @@ func (r *RedisLock) Lock(ctx context.Context) (err error) {
 			return
 		}
 		// On success the watchdog is started. The lock is not reentrant, so
-		// the watchdog can never be started twice for the same lock.
+		// while the lock is held a second Lock call fails with
+		// ErrLockAcquiredByOthers before it can reach this point.
 		r.watchDog(ctx)
 	}()
 
@@ -92,7 +120,8 @@ func (r *RedisLock) Lock(ctx context.Context) (err error) {
 }
 
 func (r *RedisLock) tryLock(ctx context.Context) error {
-	// First check whether the lock is already owned by this caller.
+	// A single atomic SET ... EX ... NX: the lock is only created when the
+	// key does not exist yet.
 	reply, err := r.client.SetNEX(ctx, r.getLockKey(), r.token, r.expireSeconds)
 	if err != nil {
 		return err
@@ -104,48 +133,81 @@ func (r *RedisLock) tryLock(ctx context.Context) error {
 	return nil
 }
 
-// watchDog starts the watchdog that renews the lock in the background.
+// watchDog starts the watchdog that renews the lock in the background. A
+// watchdog left over from a previous acquisition of this lock is stopped
+// first, so at most one watchdog is renewing at a time. Besides Unlock, the
+// watchdog stops by itself when ctx is canceled or the lock is lost.
 func (r *RedisLock) watchDog(ctx context.Context) {
 	// 1. Watchdog mode disabled, nothing to do.
 	if !r.watchDogMode {
 		return
 	}
 
-	// 2. Make sure a previously started watchdog has been fully reclaimed.
-	for !r.runningDog.CompareAndSwap(0, 1) {
+	r.dogMu.Lock()
+	defer r.dogMu.Unlock()
+
+	// 2. Stop a watchdog left over from a previous acquisition. Cancelling an
+	// already cancelled context is a no-op, so this is always safe.
+	if r.dogCancel != nil {
+		r.dogCancel()
 	}
 
 	// 3. Start the watchdog.
-	ctx, r.stopDog = context.WithCancel(ctx)
-	go func() {
-		defer func() {
-			r.runningDog.Store(0)
-		}()
-		r.runWatchDog(ctx)
-	}()
+	dogCtx, cancel := context.WithCancel(ctx)
+	r.dogCancel = cancel
+	go r.runWatchDog(dogCtx)
+}
+
+// stopWatchDog stops the watchdog of the current acquisition. It is safe to
+// call it more than once and when no watchdog has ever been started.
+func (r *RedisLock) stopWatchDog() {
+	r.dogMu.Lock()
+	defer r.dogMu.Unlock()
+
+	if r.dogCancel != nil {
+		r.dogCancel()
+	}
 }
 
 func (r *RedisLock) runWatchDog(ctx context.Context) {
-	ticker := time.NewTicker(WatchDogWorkStepSeconds * time.Second)
+	ticker := time.NewTicker(r.dogInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case <-ticker.C:
 		}
 
 		// The watchdog keeps renewing the lock while the user has not
 		// unlocked it explicitly. The Lua script guarantees the lock is still
 		// owned before extending it. To avoid the lock expiring early due to
-		// network latency, each renewal adds an extra 5 s of headroom.
-		_ = r.DelayExpire(ctx, WatchDogWorkStepSeconds+5)
+		// network latency, each renewal adds an extra headroom on top of the
+		// renewal interval.
+		if err := r.DelayExpire(ctx, delayExpireSeconds(r.dogInterval)); err != nil {
+			if errors.Is(err, errLockLost) {
+				// The lock is gone: it expired or was released. Stop the
+				// watchdog so that it never extends a lock that is owned by
+				// someone else.
+				return
+			}
+			// Transient errors (e.g. network failures) keep the watchdog
+			// running; the next tick retries the renewal.
+			continue
+		}
 	}
 }
 
+// delayExpireSeconds returns the TTL a watchdog renewal sets: the renewal
+// interval plus the headroom.
+func delayExpireSeconds(interval time.Duration) int64 {
+	return int64((interval + watchDogHeadroom) / time.Second)
+}
+
 // DelayExpire extends the expiry of the lock. The Lua script keeps the
-// check-and-extend operation atomic and verifies ownership first.
+// check-and-extend operation atomic and verifies ownership first. It returns
+// errLockLost when the lock is no longer owned by the caller.
 func (r *RedisLock) DelayExpire(ctx context.Context, expireSeconds int64) error {
 	keysAndArgs := []any{r.getLockKey(), r.token, expireSeconds}
 	reply, err := r.client.Eval(ctx, lua.LuaCheckAndExpireDistributedLock, 1, keysAndArgs)
@@ -154,7 +216,7 @@ func (r *RedisLock) DelayExpire(ctx context.Context, expireSeconds int64) error 
 	}
 
 	if ret, _ := reply.(int64); ret != 1 {
-		return errors.New("can not expire lock without ownership of lock")
+		return errLockLost
 	}
 
 	return nil
@@ -197,14 +259,12 @@ func (r *RedisLock) blockingLock(ctx context.Context) error {
 }
 
 // Unlock releases the lock. The Lua script keeps the check-and-delete
-// operation atomic and verifies ownership first.
+// operation atomic and verifies ownership first. Releasing a lock that is no
+// longer owned (e.g. it expired) returns an error, and the watchdog is
+// stopped in any case.
 func (r *RedisLock) Unlock(ctx context.Context) error {
-	defer func() {
-		// Stop the watchdog.
-		if r.stopDog != nil {
-			r.stopDog()
-		}
-	}()
+	// Stop the watchdog, no matter whether the lock could be released.
+	defer r.stopWatchDog()
 
 	keysAndArgs := []any{r.getLockKey(), r.token}
 	reply, err := r.client.Eval(ctx, lua.LuaCheckAndDeleteDistributedLock, 1, keysAndArgs)

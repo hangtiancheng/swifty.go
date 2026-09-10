@@ -2,9 +2,11 @@ package consistent_hash_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	consistenthash "github.com/hangtiancheng/swifty.go/apps/consistent_hash"
 	"github.com/hangtiancheng/swifty.go/apps/consistent_hash/internal/local"
@@ -304,5 +306,110 @@ func TestConsistentHash_GetNodeStripsVirtualSuffix(t *testing.T) {
 	}
 	if node != "node_a" {
 		t.Fatalf("GetNode returned the virtual node key %q instead of the node id", node)
+	}
+}
+
+// TestConsistentHash_ConcurrentOperations drives AddNode, GetNode and
+// RemoveNode from several goroutines at once. The ring lock serializes all
+// ring access, so the storm has to finish without deadlock (a regression
+// would hang the whole run) and the race detector has to stay quiet.
+func TestConsistentHash_ConcurrentOperations(t *testing.T) {
+	ring := local.NewSkiplistHashRing()
+	ch := consistenthash.NewConsistentHash(
+		ring,
+		consistenthash.NewFnvHasher(),
+		nil,
+		consistenthash.WithReplicas(3),
+		consistenthash.WithLockExpireSeconds(60),
+	)
+
+	const (
+		workers = 4
+		rounds  = 10
+	)
+	ctx := context.Background()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+		for w := range workers {
+			wg.Go(func() {
+				node := fmt.Sprintf("worker%d", w)
+				for i := range rounds {
+					// Each worker owns its node id, so AddNode either
+					// succeeds or fails only because the node from the
+					// previous round is still being removed.
+					_ = ch.AddNode(ctx, node, 1)
+					_, _ = ch.GetNode(ctx, fmt.Sprintf("key%d_%d", w, i))
+					_ = ch.RemoveNode(ctx, node)
+				}
+			})
+		}
+		wg.Wait()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("concurrent operations did not finish; the ring lock deadlocked")
+	}
+
+	// After the storm the ring must still work end to end.
+	if err := ch.AddNode(ctx, "node_final", 1); err != nil {
+		t.Fatalf("add node_final: %v", err)
+	}
+	node, err := ch.GetNode(ctx, "data_final")
+	if err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+	if node != "node_final" {
+		t.Fatalf("data_final owner: got %s, want node_final", node)
+	}
+	if err = ch.RemoveNode(ctx, "node_final"); err != nil {
+		t.Fatalf("remove node_final: %v", err)
+	}
+	nodes, err := ring.Nodes(ctx)
+	if err != nil {
+		t.Fatalf("nodes: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("nodes after cleanup: got %v, want empty", nodes)
+	}
+}
+
+// TestConsistentHash_RemoveNodeDropsDataKeysWithoutMigrator verifies that
+// removing a node also clears its recorded data keys when no migrator is
+// registered; stale records would resurface as wrong ownership if the same
+// node id was added again later.
+func TestConsistentHash_RemoveNodeDropsDataKeysWithoutMigrator(t *testing.T) {
+	encryptor := stubEncryptor{scores: map[string]int32{"nodeA_0": 100}}
+	ring := local.NewSkiplistHashRing()
+	ch := consistenthash.NewConsistentHash(ring, encryptor, nil, consistenthash.WithReplicas(1))
+
+	ctx := context.Background()
+	if err := ch.AddNode(ctx, "nodeA", 1); err != nil {
+		t.Fatalf("add nodeA: %v", err)
+	}
+	if _, err := ch.GetNode(ctx, "dataA"); err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+	keys, err := ring.DataKeys(ctx, "nodeA")
+	if err != nil {
+		t.Fatalf("data keys: %v", err)
+	}
+	if !equalSets(keys, setOf("dataA")) {
+		t.Fatalf("data keys before removal: got %v, want dataA", keys)
+	}
+
+	if err = ch.RemoveNode(ctx, "nodeA"); err != nil {
+		t.Fatalf("remove nodeA: %v", err)
+	}
+	keys, err = ring.DataKeys(ctx, "nodeA")
+	if err != nil {
+		t.Fatalf("data keys: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("data keys after removal: got %v, want empty", keys)
 	}
 }

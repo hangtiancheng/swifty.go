@@ -6,8 +6,6 @@ import (
 	"math"
 	"os"
 	"path"
-	"strconv"
-	"strings"
 
 	"github.com/hangtiancheng/swifty.go/apps/golsm/internal/memtable"
 	"github.com/hangtiancheng/swifty.go/apps/golsm/internal/sst"
@@ -20,6 +18,7 @@ type memTableCompactItem struct {
 
 // compact runs the background compaction goroutine.
 func (t *Tree) compact() {
+	defer close(t.compactDone)
 	for {
 		select {
 		// The stop signal of the lsm tree arrived, exit the goroutine.
@@ -39,22 +38,28 @@ func (t *Tree) compact() {
 
 // compactLevel runs the sorted merge of a given level.
 func (t *Tree) compactLevel(level int) {
+	// A queued compaction signal can outlive the nodes that triggered it: an
+	// earlier compaction may have merged and removed them already.
+	if len(t.nodes[level]) == 0 {
+		return
+	}
+
 	// Pick the nodes of level and level+1 taking part in this merge.
 	pickedNodes := t.pickCompactNodes(level)
 
-	// Write into the target sst writer of level+1.
-	seq := t.levelToSeq[level+1].Load() + 1
-	sstWriter, err := sst.NewSSTWriter(t.sstFile(level+1, seq), t.conf.sstOptions())
+	// Collect all key value pairs covered by this merge.
+	pickedKVs, err := t.pickedNodesToKVs(pickedNodes)
 	if err != nil {
 		return
 	}
 
 	// Size limit of each sst file in level+1.
 	sstLimit := t.conf.SSTSize * uint64(math.Pow10(level+1))
-	// Collect all key value pairs covered by this merge.
-	pickedKVs, err := t.pickedNodesToKVs(pickedNodes)
+
+	// Write into the target sst writer of level+1.
+	seq := t.levelToSeq[level+1].Load() + 1
+	sstWriter, err := sst.NewSSTWriter(t.sstFile(level+1, seq), t.conf.sstOptions())
 	if err != nil {
-		sstWriter.Close()
 		return
 	}
 
@@ -70,10 +75,15 @@ func (t *Tree) compactLevel(level int) {
 		// disk and start a new one.
 		if sstWriter.Size() > sstLimit {
 			// Flush the sst file to disk.
-			size, blockToFilter, index := sstWriter.Finish()
+			size, blockToFilter, index, err := sstWriter.Finish()
 			sstWriter.Close()
+			if err != nil {
+				return
+			}
 			// Insert the node matching the sst file into the lsm tree.
-			t.insertNode(level+1, seq, size, blockToFilter, index)
+			if err = t.insertNode(level+1, seq, size, blockToFilter, index); err != nil {
+				return
+			}
 			// Build a new level+1 sst writer.
 			seq = t.levelToSeq[level+1].Load() + 1
 			sstWriter, err = sst.NewSSTWriter(t.sstFile(level+1, seq), t.conf.sstOptions())
@@ -87,9 +97,14 @@ func (t *Tree) compactLevel(level int) {
 		// The last pair is responsible for flushing the sst writer to disk and
 		// inserting the matching node into the lsm tree.
 		if i == len(pickedKVs)-1 {
-			size, blockToFilter, index := sstWriter.Finish()
+			size, blockToFilter, index, err := sstWriter.Finish()
 			sstWriter.Close()
-			t.insertNode(level+1, seq, size, blockToFilter, index)
+			if err != nil {
+				return
+			}
+			if err = t.insertNode(level+1, seq, size, blockToFilter, index); err != nil {
+				return
+			}
 		}
 	}
 
@@ -182,13 +197,13 @@ outer:
 		}
 	}
 
-	go func() {
-		// Destroy the old nodes: close their sst readers and delete the
-		// matching sst files from disk.
-		for _, node := range nodes {
-			node.Destroy()
-		}
-	}()
+	// Destroy the old nodes: close their sst readers and delete the matching
+	// sst files from disk. This runs synchronously: a destroy goroutine could
+	// still delete files after the tree was closed and reopened, breaking the
+	// restore of the new instance.
+	for _, node := range nodes {
+		node.Destroy()
+	}
 }
 
 // compactMemTable flushes a read only memtable into a level 0 sstable file.
@@ -206,7 +221,9 @@ func (t *Tree) compactMemTable(memCompactItem *memTableCompactItem) {
 		if t.rOnlyMemTable[i].memTable != memCompactItem.memTable {
 			continue
 		}
-		t.rOnlyMemTable = t.rOnlyMemTable[i+1:]
+		// Remove exactly the matching item: every other item still holds data
+		// that has not been flushed yet and must stay readable.
+		t.rOnlyMemTable = append(t.rOnlyMemTable[:i], t.rOnlyMemTable[i+1:]...)
 		break
 	}
 	t.dataLock.Unlock()
@@ -240,11 +257,17 @@ func (t *Tree) flushMemTable(memTable memtable.MemTable) error {
 	}
 
 	// Flush the sstable to disk.
-	size, blockToFilter, index := sstWriter.Finish()
+	size, blockToFilter, index, err := sstWriter.Finish()
 	sstWriter.Close()
+	if err != nil {
+		return err
+	}
 
-	// Build the node and add it into the tree.
-	t.insertNode(0, seq, size, blockToFilter, index)
+	// Build the node and add it into the tree. On failure the sstable is not
+	// part of the tree yet, so the caller must keep the wal file.
+	if err = t.insertNode(0, seq, size, blockToFilter, index); err != nil {
+		return err
+	}
 	// Try to trigger a round of compaction.
 	t.tryTriggerCompact(0)
 	return nil
@@ -266,7 +289,10 @@ func (t *Tree) tryTriggerCompact(level int) {
 	}
 
 	go func() {
-		t.levelCompactC <- level
+		select {
+		case t.levelCompactC <- level:
+		case <-t.stopc:
+		}
 	}()
 }
 
@@ -308,14 +334,15 @@ func (t *Tree) insertNodeWithReader(sstReader *sst.SSTReader, level int, seq int
 	t.levelLocks[level].Unlock()
 }
 
-func (t *Tree) insertNode(level int, seq int32, size uint64, blockToFilter map[uint64][]byte, index []*sst.Index) {
+func (t *Tree) insertNode(level int, seq int32, size uint64, blockToFilter map[uint64][]byte, index []*sst.Index) error {
 	file := t.sstFile(level, seq)
 	sstReader, err := sst.NewSSTReader(file, t.conf.sstOptions())
 	if err != nil {
-		return
+		return err
 	}
 
 	t.insertNodeWithReader(sstReader, level, seq, size, blockToFilter, index)
+	return nil
 }
 
 func (t *Tree) sstFile(level int, seq int32) string {
@@ -324,10 +351,4 @@ func (t *Tree) sstFile(level int, seq int32) string {
 
 func (t *Tree) walFile() string {
 	return path.Join(t.conf.Dir, "walfile", fmt.Sprintf("%d.wal", t.memTableIndex))
-}
-
-func walFileToMemTableIndex(walFile string) int {
-	rawIndex := strings.ReplaceAll(walFile, ".wal", "")
-	index, _ := strconv.Atoi(rawIndex)
-	return index
 }

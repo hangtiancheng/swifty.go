@@ -3,6 +3,7 @@ package redis_lock
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -16,7 +17,10 @@ type RedLock struct {
 }
 
 // NewRedLock creates a red lock over the given nodes. A red lock needs at
-// least 3 nodes to be meaningful.
+// least 3 nodes to be meaningful, and it needs a fixed expiry of at least one
+// second (WithRedLockExpireDuration): a node lock without an expiry would
+// silently fall back to watchdog mode, which keeps renewing the node locks
+// forever and defeats the auto-expiry safety of the red lock.
 func NewRedLock(key string, confs []*SingleNodeConf, opts ...RedLockOption) (*RedLock, error) {
 	if len(confs) < 3 {
 		return nil, errors.New("can not use redLock less than 3 nodes")
@@ -28,7 +32,14 @@ func NewRedLock(key string, confs []*SingleNodeConf, opts ...RedLockOption) (*Re
 	}
 
 	repairRedLock(&r.RedLockOptions)
-	if r.expireDuration > 0 && time.Duration(len(confs))*r.singleNodesTimeout*10 > r.expireDuration {
+	if r.expireDuration <= 0 {
+		return nil, errors.New("red lock requires a positive expiry, use WithRedLockExpireDuration")
+	}
+	expireSeconds := int64(r.expireDuration.Seconds())
+	if expireSeconds <= 0 {
+		return nil, errors.New("red lock expiry must be at least one second")
+	}
+	if time.Duration(len(confs))*r.singleNodesTimeout*10 > r.expireDuration {
 		// The accumulated per-node timeout budget must stay below one tenth
 		// of the lock expiry.
 		return nil, errors.New("expire thresholds of single node is too long")
@@ -37,7 +48,7 @@ func NewRedLock(key string, confs []*SingleNodeConf, opts ...RedLockOption) (*Re
 	r.locks = make([]*RedisLock, 0, len(confs))
 	for _, conf := range confs {
 		client := NewClient(conf.Network, conf.Address, conf.Password, conf.Opts...)
-		r.locks = append(r.locks, NewRedisLock(key, client, WithExpireSeconds(int64(r.expireDuration.Seconds()))))
+		r.locks = append(r.locks, NewRedisLock(key, client, WithExpireSeconds(expireSeconds)))
 	}
 
 	return &r, nil
@@ -59,7 +70,7 @@ func (r *RedLock) Lock(ctx context.Context) error {
 
 	if successCnt < len(r.locks)>>1+1 {
 		r.unlockQuietly(ctx)
-		return errors.New("lock failed")
+		return fmt.Errorf("red lock failed to acquire a majority: %d of %d nodes", successCnt, len(r.locks))
 	}
 
 	return nil

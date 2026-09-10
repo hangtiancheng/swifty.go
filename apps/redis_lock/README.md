@@ -37,6 +37,16 @@ func repairLock(o *LockOptions) {
 }
 ```
 
+The watchdog stops by itself when the context passed to `Lock` is canceled or
+when the lock is lost (the atomic check-and-extend script reports that the
+lock is no longer owned), so it never extends a lock that is owned by someone
+else.
+
+Every lock instance carries its own random token, which the Lua scripts
+compare against the stored value before deleting or extending the key. That
+keeps ownership symmetric: two locks can never release or renew each other's
+lock, not even within a single process.
+
 ## Examples
 
 ### Non-blocking lock
@@ -128,32 +138,36 @@ go-redis default pool timeout) instead of failing fast.
 | `WithBlockWaitingSeconds(s)` | Upper bound of the blocking wait (default 5s in block mode) |
 
 Red lock options: `WithSingleNodesTimeout(d)` (per-node attempt budget,
-default `DefaultSingleLockTimeout`, 50ms) and
-`WithRedLockExpireDuration(d)` (lock expiry).
+default `DefaultSingleLockTimeout`, 50ms) and `WithRedLockExpireDuration(d)`
+(lock expiry, required and at least one second so that the node locks never
+fall back to watchdog mode).
 
 ## Project layout
 
 ```
 redis_lock/
-├── client.go          # Client over go-redis/v9 (Get/Set/SetNEX/SetNX/Del/Incr/Eval/GetConn)
-├── lock.go            # RedisLock with watchdog
-├── redlock.go         # RedLock multi-node lock
-├── option.go          # Client/Lock/RedLock options and defaults
-├── lock_test.go       # integration tests (require a live Redis)
+├── client.go               # Client over go-redis/v9 (Get/Set/SetNEX/SetNX/Del/Incr/Eval/GetConn)
+├── lock.go                 # RedisLock with watchdog
+├── redlock.go              # RedLock multi-node lock
+├── option.go               # Client/Lock/RedLock options and defaults
+├── lock_test.go            # integration tests (require a live Redis)
+├── lock_miniredis_test.go  # unit tests (run against an in-memory Redis)
 └── internal/
-    ├── lua/lua.go     # atomic check-and-delete / check-and-expire scripts
-    └── osutil/os.go   # process and goroutine id helpers
+    └── lua/lua.go          # atomic check-and-delete / check-and-expire scripts
 ```
 
 ## Tests
 
-The tests need a live Redis. They dial `REDIS_ADDR` (default
-`127.0.0.1:6379`) with password `REDIS_PASSWORD` and skip with a clear reason
-when the server is unreachable. `TestRedLock` runs the full acquire/release
-flow when `REDIS_ADDR1`, `REDIS_ADDR2` and `REDIS_ADDR3` point to three
-distinct nodes; otherwise it verifies against a single node that a failed
-red lock attempt cannot succeed and releases the partially acquired lock.
+The unit tests in `lock_miniredis_test.go` run against an in-memory Redis
+([miniredis](https://github.com/alicebob/miniredis)) and need no external
+services. The integration tests in `lock_test.go` need a live Redis: they dial
+`REDIS_ADDR` (default `127.0.0.1:6379`) with password `REDIS_PASSWORD` and
+skip with a clear reason when the server is unreachable. `TestRedLock` runs
+the full acquire/release flow when `REDIS_ADDR1`, `REDIS_ADDR2` and
+`REDIS_ADDR3` point to three distinct nodes; otherwise it verifies against a
+single node that a failed red lock attempt cannot succeed and releases the
+partially acquired lock.
 
 ```shell
-go test ./...
+go test -race ./...
 ```

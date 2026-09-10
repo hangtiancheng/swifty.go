@@ -58,11 +58,16 @@ type virtualNode struct {
 // Lock acquires the ring lock. When expireSeconds is positive, a guardian
 // goroutine releases the lock automatically once the expiry elapsed, so the
 // lock is never held longer than configured.
+//
+// The mutex is taken before doubleLock: a goroutine waiting for a held lock
+// must not hold doubleLock, because the holder's unlock path needs it too.
+// doubleLock only guards the short owner/cancel bookkeeping window.
 func (s *SkiplistHashRing) Lock(ctx context.Context, expireSeconds int) error {
+	s.lock.Lock()
+
 	s.doubleLock.Lock()
 	defer s.doubleLock.Unlock()
 
-	s.lock.Lock()
 	token := osutil.GetCurrentProcessAndGoroutineIDStr()
 	s.owner.Store(token)
 	if expireSeconds <= 0 {
@@ -245,13 +250,16 @@ func (s *SkiplistHashRing) DeleteNodeToReplica(_ context.Context, nodeID string)
 	return nil
 }
 
-// Node returns the raw virtual node keys registered under the given score.
+// Node returns a copy of the raw virtual node keys registered under the given
+// score.
 func (s *SkiplistHashRing) Node(_ context.Context, score int32) ([]string, error) {
 	targetNode, ok := s.get(score)
 	if !ok {
 		return nil, fmt.Errorf("score: %d not exist", score)
 	}
-	return targetNode.nodeIDs, nil
+	nodeIDs := make([]string, len(targetNode.nodeIDs))
+	copy(nodeIDs, targetNode.nodeIDs)
+	return nodeIDs, nil
 }
 
 // DataKeys returns a copy of the data keys currently assigned to the node.

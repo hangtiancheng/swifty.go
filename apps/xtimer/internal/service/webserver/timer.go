@@ -73,6 +73,7 @@ func (t *TimerService) UpdateTimer(ctx context.Context, timer *vo.Timer) error {
 	if err != nil {
 		return err
 	}
+	pTimer.ID = timer.ID
 	return t.dao.UpdateTimer(ctx, pTimer)
 }
 

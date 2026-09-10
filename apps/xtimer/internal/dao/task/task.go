@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/model/po"
 	"github.com/hangtiancheng/swifty.go/apps/xtimer/internal/mysql"
@@ -49,11 +48,4 @@ func (t *TaskDAO) Count(ctx context.Context, opts ...Option) (int64, error) {
 	}
 	var cnt int64
 	return cnt, db.Count(&cnt).Error
-}
-
-func (t *TaskDAO) CountGroupByMinute(ctx context.Context, startTimeStr, endTimeStr string) ([]*po.MinuteTaskCnt, error) {
-	query := fmt.Sprintf(SQLGetMinuteTaskCnt, startTimeStr, endTimeStr)
-
-	var res []*po.MinuteTaskCnt
-	return res, t.client.DB.Raw(query).Scan(&res).Error
 }

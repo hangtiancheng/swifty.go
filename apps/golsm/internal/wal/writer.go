@@ -14,8 +14,10 @@ type WALWriter struct {
 
 // NewWALWriter creates a wal writer.
 func NewWALWriter(file string) (*WALWriter, error) {
-	// Open the wal file, creating it if it does not exist.
-	dest, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
+	// Open the wal file, creating it if it does not exist. New records are
+	// always appended: a wal file that is being restored from is reopened by
+	// the lsm tree and its existing records must be preserved.
+	dest, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}

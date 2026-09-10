@@ -69,13 +69,15 @@ counts, lock expiries and bucket sizes) fall back to the defaults defined in
 | [gofiber/fiber/v3](https://github.com/gofiber/fiber/v3)   | HTTP framework for the webserver                |
 | [redis/go-redis/v9](https://github.com/redis/go-redis/v9) | Redis client, Lua scripts and distributed locks |
 | [gorm.io/gorm](https://gorm.io) + gorm.io/driver/mysql    | MySQL ORM                                       |
+| [robfig/cron/v3](https://github.com/robfig/cron/v3)       | Cron expression parsing and scheduling          |
+| [twmb/murmur3](https://github.com/twmb/murmur3)           | MurmurHash3 used by the bloom filter            |
 | go.uber.org/zap                                           | Structured logging (stdout only)                |
 | go.uber.org/dig                                           | Dependency injection container                  |
 | prometheus/client_golang                                  | Metrics                                         |
 
-Timer scheduling uses a self-contained cron parser (`internal/cron`), the
-worker pools are built on plain goroutines plus a semaphore (`internal/pool`),
-and the bloom filter hashes use an internal murmur3/SHA1 implementation
+The worker pools are built on plain goroutines plus a semaphore
+(`internal/pool`), the bloom filter is backed by Redis bitmaps
+(`internal/bloom`), and the bloom filter hashes use an internal SHA1 helper
 (`internal/hash`).
 
 ## Layout

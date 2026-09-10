@@ -1,6 +1,7 @@
 package golsm
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -67,6 +68,13 @@ func (t *Tree) getSortedSSTEntries() ([]fs.DirEntry, error) {
 
 // loadNode loads one sst file as a node into the topology of the lsm tree.
 func (t *Tree) loadNode(sstEntry fs.DirEntry) error {
+	// Parse the sst file name to learn the level and the seq of the file.
+	level, seq, _ := parseLevelSeqFromSSTFile(sstEntry.Name())
+	// A level outside the topology of the tree cannot be searched.
+	if level < 0 || level >= t.conf.MaxLevel {
+		return fmt.Errorf("sst file %s belongs to level %d, outside the configured %d levels", sstEntry.Name(), level, t.conf.MaxLevel)
+	}
+
 	// Create the reader of the sst file.
 	sstReader, err := sst.NewSSTReader(sstEntry.Name(), t.conf.sstOptions())
 	if err != nil {
@@ -76,23 +84,30 @@ func (t *Tree) loadNode(sstEntry fs.DirEntry) error {
 	// Read the filter information of each block.
 	blockToFilter, err := sstReader.ReadFilter()
 	if err != nil {
+		sstReader.Close()
 		return err
 	}
 
 	// Read the index information.
 	index, err := sstReader.ReadIndex()
 	if err != nil {
+		sstReader.Close()
 		return err
+	}
+
+	// An sstable without any index entry cannot be searched.
+	if len(index) == 0 {
+		sstReader.Close()
+		return fmt.Errorf("sst file %s holds no index entry", sstEntry.Name())
 	}
 
 	// Read the size of the sst file, in bytes.
 	size, err := sstReader.Size()
 	if err != nil {
+		sstReader.Close()
 		return err
 	}
 
-	// Parse the sst file name to learn the level and the seq of the file.
-	level, seq, _ := parseLevelSeqFromSSTFile(sstEntry.Name())
 	// Insert the sst file as a node into the lsm tree.
 	t.insertNodeWithReader(sstReader, level, seq, size, blockToFilter, index)
 	return nil
@@ -121,6 +136,22 @@ func parseLevelSeqFromSSTFile(file string) (level int, seq int32, ok bool) {
 	return _level, int32(_seq), true
 }
 
+// parseMemTableIndexFromWALFile parses the memtable index carried by a wal
+// file name such as 3.wal. The second result reports whether the name follows
+// the expected index.wal layout.
+func parseMemTableIndexFromWALFile(file string) (index int, ok bool) {
+	if !strings.HasSuffix(file, ".wal") {
+		return 0, false
+	}
+
+	index, err := strconv.Atoi(strings.TrimSuffix(file, ".wal"))
+	if err != nil || index < 0 {
+		return 0, false
+	}
+
+	return index, true
+}
+
 // constructMemtable restores the memtables from the wal files.
 func (t *Tree) constructMemtable() error {
 	// 1 Read the wal directory to get all wal files.
@@ -129,15 +160,15 @@ func (t *Tree) constructMemtable() error {
 		return err
 	}
 
-	// 2 Filter out everything that is not a wal file.
+	// 2 Filter out everything that is not a wal file following the
+	// index.wal layout.
 	var wals []fs.DirEntry
 	for _, entry := range raw {
 		if entry.IsDir() {
 			continue
 		}
 
-		// The file must be a .wal file.
-		if !strings.HasSuffix(entry.Name(), ".wal") {
+		if _, ok := parseMemTableIndexFromWALFile(entry.Name()); !ok {
 			continue
 		}
 
@@ -162,8 +193,8 @@ func (t *Tree) restoreMemTable(wals []fs.DirEntry) error {
 	// 1 Sort the wal files. Their indexes grow monotonically, and so does the
 	// freshness of the data.
 	sort.Slice(wals, func(i, j int) bool {
-		indexI := walFileToMemTableIndex(wals[i].Name())
-		indexJ := walFileToMemTableIndex(wals[j].Name())
+		indexI, _ := parseMemTableIndexFromWALFile(wals[i].Name())
+		indexJ, _ := parseMemTableIndexFromWALFile(wals[j].Name())
 		return indexI < indexJ
 	})
 
@@ -177,29 +208,44 @@ func (t *Tree) restoreMemTable(wals []fs.DirEntry) error {
 		if err != nil {
 			return err
 		}
-		defer walReader.Close()
 
 		// Read the content of the wal file through the reader and inject the
 		// data into the memtable.
 		memTable := t.conf.MemTableConstructor()
 		if err = walReader.RestoreToMemTable(memTable); err != nil {
+			walReader.Close()
 			return err
 		}
 
 		if i == len(wals)-1 { // The last wal file restores the active memtable.
 			t.memTable = memTable
-			t.memTableIndex = walFileToMemTableIndex(name)
+			t.memTableIndex, _ = parseMemTableIndexFromWALFile(name)
+
+			// Drop the tail of the wal file that a crash left incomplete, so
+			// new records are appended right after the last complete one.
+			walReader.Close()
+			if err = os.Truncate(file, walReader.ValidSize()); err != nil {
+				return err
+			}
+
 			t.walWriter, err = wal.NewWALWriter(file)
 			if err != nil {
 				return err
 			}
 		} else { // Every earlier wal file restores a read only memtable, appended to the read only slice and to the channel so its flush continues in the background.
+			walReader.Close()
+
 			memTableCompactItem := memTableCompactItem{
 				walFile:  file,
 				memTable: memTable,
 			}
 
+			// The compaction goroutine recycles read only memtables from the
+			// slice, so the append must not interleave with it.
+			t.dataLock.Lock()
 			t.rOnlyMemTable = append(t.rOnlyMemTable, &memTableCompactItem)
+			t.dataLock.Unlock()
+
 			t.memCompactC <- &memTableCompactItem
 		}
 	}

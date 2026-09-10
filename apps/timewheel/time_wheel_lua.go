@@ -31,9 +31,9 @@ const (
 	`
 
 	// LuaZrangeTasks fetches every task whose score falls into the given
-	// range, excluding the ones flagged as deleted, and removes the fetched
-	// entries from the zset so each task is fetched at most once. The reply
-	// is a single array: element 1 holds the delete set members, the
+	// inclusive range, excluding the ones flagged as deleted, and removes the
+	// fetched entries from the zset so each task is fetched at most once. The
+	// reply is a single array: element 1 holds the delete set members, the
 	// remaining elements hold the serialized tasks.
 	LuaZrangeTasks = `
 	   local zsetKey = KEYS[1]
@@ -41,7 +41,7 @@ const (
 	   local score1 = ARGV[1]
 	   local score2 = ARGV[2]
 	   local deleteSet = redis.call('smembers',deleteSetKey)
-	   local targets = redis.call('zrange',zsetKey,score1,score2,'byscore')
+	   local targets = redis.call('zrangebyscore',zsetKey,score1,score2)
 	   redis.call('zremrangebyscore',zsetKey,score1,score2)
 	   local reply = {}
 	   reply[1] = deleteSet

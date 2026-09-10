@@ -43,12 +43,12 @@ func (w *Worker) Start(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(conf.MigrateStepMinutes) * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
 		select {
 		case <-ctx.Done():
 			log.InfoContext(ctx, "migrator stopped")
 			return nil
-		default:
+		case <-ticker.C:
 		}
 
 		log.InfoContext(ctx, "migrator ticking...")
@@ -67,7 +67,6 @@ func (w *Worker) Start(ctx context.Context) error {
 
 		_ = locker.ExpireLock(ctx, int64(conf.MigrateSuccessExpireMinutes)*int64(time.Minute/time.Second))
 	}
-	return nil
 }
 
 func (w *Worker) migrate(ctx context.Context) error {
@@ -81,7 +80,11 @@ func (w *Worker) migrate(ctx context.Context) error {
 	start, end := utils.GetStartHour(now.Add(time.Duration(conf.MigrateStepMinutes)*time.Minute)), utils.GetStartHour(now.Add(2*time.Duration(conf.MigrateStepMinutes)*time.Minute))
 	// Migrations can proceed at a relaxed pace.
 	for _, timer := range timers {
-		nexts, _ := w.cronParser.NextsBetween(timer.Cron, start, end)
+		nexts, err := w.cronParser.NextsBetween(timer.Cron, start, end)
+		if err != nil {
+			log.ErrorContextf(ctx, "migrator compute execute times for timer: %d failed, cron: %s, err: %v", timer.ID, timer.Cron, err)
+			continue
+		}
 		if err := w.timerDAO.BatchCreateRecords(ctx, timer.BatchTasksFromTimer(nexts)); err != nil {
 			log.ErrorContextf(ctx, "migrator batch create records for timer: %d failed, err: %v", timer.ID, err)
 		}

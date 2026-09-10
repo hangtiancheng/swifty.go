@@ -444,3 +444,63 @@ func TestRegistryCenterRegisterDuplicate(t *testing.T) {
 		t.Fatal("registering a duplicate component id must fail")
 	}
 }
+
+// slowComponent is a TCCComponent whose try phase blocks until its context
+// is done.
+type slowComponent struct {
+	id string
+}
+
+func (s *slowComponent) ID() string { return s.id }
+
+func (s *slowComponent) Try(ctx context.Context, req *TCCReq) (*TCCResp, error) {
+	select {
+	case <-ctx.Done():
+		return &TCCResp{ComponentID: s.id, TXID: req.TXID}, ctx.Err()
+	case <-time.After(10 * time.Second):
+		return &TCCResp{ComponentID: s.id, ACK: true, TXID: req.TXID}, nil
+	}
+}
+
+func (s *slowComponent) Confirm(ctx context.Context, txID string) (*TCCResp, error) {
+	return &TCCResp{ComponentID: s.id, ACK: true, TXID: txID}, nil
+}
+
+func (s *slowComponent) Cancel(ctx context.Context, txID string) (*TCCResp, error) {
+	return &TCCResp{ComponentID: s.id, ACK: true, TXID: txID}, nil
+}
+
+// TestTXManagerTransactionTimeout verifies that the transaction timeout
+// bounds the try phase: a component whose try blocks longer than the
+// timeout must not keep the caller waiting, and the transaction must be
+// rolled back.
+func TestTXManagerTransactionTimeout(t *testing.T) {
+	txManager := NewTXManager(newMockTXStore(), WithTimeout(200*time.Millisecond))
+	defer txManager.Stop()
+
+	if err := txManager.Register(&slowComponent{id: "slow"}); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	txid, ok, err := txManager.Transaction(context.Background(), &RequestEntity{
+		ComponentID: "slow",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("transaction should fail")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("Transaction returned after %s, the timeout must bound the try phase", elapsed)
+	}
+
+	tx, err := txManager.txStore.GetTX(context.Background(), txid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tx.Status != TXFailure {
+		t.Fatalf("tx status = %s, want %s", tx.Status, TXFailure)
+	}
+}

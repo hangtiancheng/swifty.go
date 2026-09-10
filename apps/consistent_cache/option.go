@@ -23,7 +23,9 @@ type Options struct {
 
 // CacheExpireSeconds returns the effective cache expiry time in seconds.
 func (o *Options) CacheExpireSeconds() int64 {
-	if !o.cacheExpireRandomMode {
+	// A non-positive expiry has no sensible jitter range (rand.Int64N panics
+	// on a non-positive bound), so it is returned as is.
+	if !o.cacheExpireRandomMode || o.cacheExpireSeconds <= 0 {
 		return o.cacheExpireSeconds
 	}
 

@@ -33,7 +33,10 @@ func Test_SSTReader(t *testing.T) {
 		sstWriter.Append(kv.Key, kv.Value)
 	}
 
-	_, expectBlockToFilter, expectIndex := sstWriter.Finish()
+	_, expectBlockToFilter, expectIndex, err := sstWriter.Finish()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Build an sst reader and read the data back.
 	sstReader, err := NewSSTReader("test_write_read.sst", opts)

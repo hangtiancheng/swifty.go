@@ -11,6 +11,7 @@ const configFileName = "conf.json"
 
 func init() {
 	load()
+	validate()
 	defaultMigratorAppConfProvider = NewMigratorAppConfProvider(gConf.Migrator)
 	defaultMysqlConfProvider = NewMysqlConfProvider(gConf.Mysql)
 	defaultRedisConfProvider = NewRedisConfigProvider(gConf.Redis)
@@ -20,8 +21,10 @@ func init() {
 }
 
 // load reads conf.json from the current working directory and merges it on top
-// of the fallback defaults below. Values that are absent from the file keep
-// their default values.
+// of the fallback defaults below, field by field. Values that are absent from
+// the file keep their default values. A missing file is not fatal: the
+// built-in defaults are used and the app fails later with a clear message if a
+// required address (e.g. the Redis address) is still missing.
 func load() {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -30,11 +33,61 @@ func load() {
 
 	raw, err := os.ReadFile(filepath.Join(wd, configFileName))
 	if err != nil {
-		panic(fmt.Sprintf("failed to read %s from working directory %s: %v", configFileName, wd, err))
+		fmt.Printf("config: %v, falling back to built-in defaults\n", err)
+		return
 	}
 
-	if err := json.Unmarshal(raw, &gConf); err != nil {
+	if err := merge(raw); err != nil {
 		panic(fmt.Sprintf("failed to unmarshal %s: %v", configFileName, err))
+	}
+}
+
+// merge applies conf.json on top of the built-in defaults. Each section is
+// decoded into the pre-filled default struct, so a section present in the file
+// only overrides the fields it explicitly sets.
+func merge(raw []byte) error {
+	var sections map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &sections); err != nil {
+		return err
+	}
+
+	targets := map[string]any{
+		"migrator":  gConf.Migrator,
+		"mysql":     gConf.Mysql,
+		"redis":     gConf.Redis,
+		"trigger":   gConf.Trigger,
+		"scheduler": gConf.Scheduler,
+		"webServer": gConf.WebServer,
+	}
+	for name, section := range sections {
+		target, ok := targets[name]
+		if !ok || string(section) == "null" {
+			continue
+		}
+		if err := json.Unmarshal(section, target); err != nil {
+			return fmt.Errorf("section %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// validate fails fast on settings that would break arithmetic done on them
+// (bucket sharding, tickers) with a cryptic error later at runtime.
+func validate() {
+	if gConf.Scheduler.BucketsNum <= 0 {
+		panic(fmt.Sprintf("scheduler.bucketsNum must be positive, got %d", gConf.Scheduler.BucketsNum))
+	}
+	if gConf.Scheduler.TryLockGapMilliSeconds <= 0 {
+		panic(fmt.Sprintf("scheduler.tryLockGapMilliSeconds must be positive, got %d", gConf.Scheduler.TryLockGapMilliSeconds))
+	}
+	if gConf.Trigger.ZRangeGapSeconds <= 0 {
+		panic(fmt.Sprintf("trigger.zrangeGapSeconds must be positive, got %d", gConf.Trigger.ZRangeGapSeconds))
+	}
+	if gConf.Migrator.MigrateStepMinutes <= 0 {
+		panic(fmt.Sprintf("migrator.migrateStepMinutes must be positive, got %d", gConf.Migrator.MigrateStepMinutes))
+	}
+	if gConf.Migrator.TimerDetailCacheMinutes <= 0 {
+		panic(fmt.Sprintf("migrator.timerDetailCacheMinutes must be positive, got %d", gConf.Migrator.TimerDetailCacheMinutes))
 	}
 }
 

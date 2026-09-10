@@ -261,13 +261,15 @@ func TestMockComponentConfirm(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			name: "success",
+			name: "dataAlreadyCommitted",
 			setup: func(f *fakeRedis) {
-				f.store[pkg.BuildTXKey("id", "success")] = example.TXTried.String()
-				f.store[pkg.BuildTXDetailKey("id", "success")] = "successBiz"
-				f.store[pkg.BuildDataKey("id", "success", "successBiz")] = example.DataFrozen.String()
+				f.store[pkg.BuildTXKey("id", "dataAlreadyCommitted")] = example.TXTried.String()
+				f.store[pkg.BuildTXDetailKey("id", "dataAlreadyCommitted")] = "dataAlreadyCommittedBiz"
+				// A previous confirm attempt committed the data but could
+				// not record the confirmed status; the retry must ack.
+				f.store[pkg.BuildDataKey("id", "dataAlreadyCommitted", "dataAlreadyCommittedBiz")] = example.DataSuccessful.String()
 			},
-			txid: "success",
+			txid: "dataAlreadyCommitted",
 			ack:  true,
 		},
 	}
@@ -370,6 +372,17 @@ func TestMockComponentCancel(t *testing.T) {
 			ack:  true,
 		},
 		{
+			name: "alreadyCanceledIsAcked",
+			setup: func(f *fakeRedis) {
+				f.store[pkg.BuildTXKey("id", "alreadyCanceled")] = example.TXCanceled.String()
+				f.store[pkg.BuildTXDetailKey("id", "alreadyCanceled")] = "alreadyCanceledBiz"
+				// A canceled transaction must not run the rollback again.
+				f.store[pkg.BuildDataKey("id", "alreadyCanceled", "alreadyCanceledBiz")] = example.DataFrozen.String()
+			},
+			txid: "alreadyCanceled",
+			ack:  true,
+		},
+		{
 			name: "success",
 			setup: func(f *fakeRedis) {
 				f.store[pkg.BuildTXKey("id", "success")] = example.TXTried.String()
@@ -405,6 +418,11 @@ func TestMockComponentCancel(t *testing.T) {
 			if tt.name == "neverTriedIsAcked" {
 				if got := fake.store[pkg.BuildTXKey("id", "neverTried")]; got != example.TXCanceled.String() {
 					t.Fatalf("tx status after cancel = %q, want %q", got, example.TXCanceled.String())
+				}
+			}
+			if tt.name == "alreadyCanceledIsAcked" {
+				if _, ok := fake.store[pkg.BuildDataKey("id", "alreadyCanceled", "alreadyCanceledBiz")]; !ok {
+					t.Fatal("cancel of an already canceled transaction must not touch the data again")
 				}
 			}
 			if tt.name == "success" {

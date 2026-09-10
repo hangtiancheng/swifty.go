@@ -34,9 +34,12 @@ func (d *DB) Put(ctx context.Context, obj consistent_cache.Object) error {
 		return nil
 	}
 
-	// On a unique key conflict, fall back to an update.
+	// On a unique key conflict, fall back to an update. Select("*") makes the
+	// struct update write every column: without it, gorm skips zero-valued
+	// fields, so the record would not be fully overwritten (e.g. clearing a
+	// data field back to its empty value would be silently dropped).
 	if IsDuplicateEntryErr(err) {
-		return db.WithContext(ctx).Where(fmt.Sprintf("`%s` = ?", obj.KeyColumn()), obj.Key()).Updates(obj).Error
+		return db.WithContext(ctx).Where(fmt.Sprintf("`%s` = ?", obj.KeyColumn()), obj.Key()).Select("*").Updates(obj).Error
 	}
 	// Return any other error directly.
 	return err

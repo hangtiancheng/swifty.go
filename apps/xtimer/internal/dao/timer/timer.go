@@ -73,6 +73,9 @@ func (t *TimerDAO) Transaction(ctx context.Context, do func(ctx context.Context,
 }
 
 func (t *TimerDAO) BatchCreateRecords(ctx context.Context, tasks []*po.Task) error {
+	if len(tasks) == 0 {
+		return nil
+	}
 	return t.client.DB.Model(&po.Task{}).WithContext(ctx).CreateInBatches(tasks, len(tasks)).Error
 }
 

@@ -117,3 +117,73 @@ func TestNextsBetweenEndBeforeStart(t *testing.T) {
 		t.Fatal("expected error when end is before start")
 	}
 }
+
+func TestQuestionMarkWildcard(t *testing.T) {
+	parser := NewCronParser()
+	if !parser.IsValidCronExpr("0 0 0 * * ?") {
+		t.Fatal("expected ? to be accepted as an any-value marker")
+	}
+
+	start := mustTime(t, "2026-09-01 10:00:00")
+	end := mustTime(t, "2026-09-03 00:00:00")
+	nexts, err := parser.NextsBetween("0 0 0 * * ?", start, end)
+	if err != nil {
+		t.Fatalf("NextsBetween: %v", err)
+	}
+	if len(nexts) != 1 || nexts[0].Format("2006-01-02 15:04:05") != "2026-09-02 00:00:00" {
+		t.Fatalf("unexpected nexts: %v", nexts)
+	}
+}
+
+func TestUppercaseDescriptor(t *testing.T) {
+	parser := NewCronParser()
+	if !parser.IsValidCronExpr("@DAILY") {
+		t.Fatal("expected uppercase descriptors to be accepted")
+	}
+}
+
+func TestDayOfWeekSevenIsSunday(t *testing.T) {
+	parser := NewCronParser()
+	for _, expr := range []string{"0 0 0 * * 7", "0 0 0 * * 5-7", "0 0 0 * * sat,7"} {
+		if !parser.IsValidCronExpr(expr) {
+			t.Fatalf("expected %q to be valid (7 aliases Sunday)", expr)
+		}
+	}
+
+	start := mustTime(t, "2026-09-01 00:00:00")
+	end := mustTime(t, "2026-09-14 00:00:00")
+	nexts, err := parser.NextsBetween("0 0 0 * * 7", start, end)
+	if err != nil {
+		t.Fatalf("NextsBetween: %v", err)
+	}
+	// Sundays within the range: Sep 6 and Sep 13.
+	if len(nexts) != 2 {
+		t.Fatalf("got %d nexts, want 2: %v", len(nexts), nexts)
+	}
+	for _, next := range nexts {
+		if next.Weekday() != time.Sunday {
+			t.Errorf("expected Sunday, got %v", next)
+		}
+	}
+}
+
+func TestPlainValueWithStep(t *testing.T) {
+	parser := NewCronParser()
+	// "5/15" starts a range at 5 and runs to the field maximum with step 15:
+	// minutes 5, 20, 35 and 50.
+	start := mustTime(t, "2026-09-01 10:00:00")
+	end := mustTime(t, "2026-09-01 11:00:00")
+	nexts, err := parser.NextsBetween("5/15 * * * *", start, end)
+	if err != nil {
+		t.Fatalf("NextsBetween: %v", err)
+	}
+	want := []string{"2026-09-01 10:05:00", "2026-09-01 10:20:00", "2026-09-01 10:35:00", "2026-09-01 10:50:00"}
+	if len(nexts) != len(want) {
+		t.Fatalf("got %d nexts, want %d: %v", len(nexts), len(want), nexts)
+	}
+	for i, w := range want {
+		if got := nexts[i].Format("2006-01-02 15:04:05"); got != w {
+			t.Errorf("nexts[%d] = %s, want %s", i, got, w)
+		}
+	}
+}

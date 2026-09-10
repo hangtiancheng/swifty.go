@@ -65,9 +65,9 @@ func (m *MockTXStore) TXUpdate(ctx context.Context, txID string, componentID str
 	if err != nil {
 		return fmt.Errorf("invalid txid: %s, err: %w", txID, err)
 	}
-	status := gotcc.TXFailure.String()
+	status := gotcc.TryFailure.String()
 	if accept {
-		status = gotcc.TXSuccessful.String()
+		status = gotcc.TrySuccessful.String()
 	}
 	return m.dao.UpdateComponentStatus(ctx, uint(id), componentID, status)
 }

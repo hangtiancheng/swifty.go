@@ -142,14 +142,6 @@ func (c *Client) MGet(ctx context.Context, keys ...string) ([]string, error) {
 	return res, nil
 }
 
-// NewSetCommand builds a SET command for use with Transaction.
-func NewSetCommand(args ...any) *Command {
-	return &Command{
-		Name: "SET",
-		Args: args,
-	}
-}
-
 // NewZAddCommand builds a ZADD command for use with Transaction.
 func NewZAddCommand(args ...any) *Command {
 	return &Command{

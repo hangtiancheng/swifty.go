@@ -31,6 +31,11 @@ func Test_GetSeparatorBetween(t *testing.T) {
 		a, b, want []byte
 	}{
 		{name: "empty a", a: nil, b: []byte("b"), want: []byte("a")},
+		// The separator must stay smaller than b even when b ends with zero
+		// bytes: decrementing the last byte unconditionally would underflow.
+		{name: "empty a, b ends with zero byte", a: nil, b: []byte{1, 0}, want: []byte{0}},
+		{name: "empty a, b is a single zero byte", a: nil, b: []byte{0}, want: nil},
+		{name: "empty a, b is only zero bytes", a: nil, b: []byte{0, 0, 0}, want: nil},
 		{name: "a is prefix of b", a: []byte("abcd"), b: []byte("abcde"), want: []byte("abcd")},
 		{name: "a shares prefix with b", a: []byte("abcd"), b: []byte("abce"), want: []byte("abcd")},
 		{name: "empty b", a: nil, b: nil, want: nil},

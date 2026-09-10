@@ -64,15 +64,19 @@ func (w *Worker) Work(ctx context.Context, minuteBucketKey string, ack func()) e
 			notifier.Put(err)
 		}
 	})
-	for range ticker.C {
+	for {
 		select {
+		case <-ctx.Done():
+			wg.Wait()
+			return ctx.Err()
 		case e := <-notifier.GetChan():
+			wg.Wait()
 			err, _ = e.(error)
 			return err
-		default:
+		case <-ticker.C:
 		}
 
-		if startTime = startTime.Add(gap); startTime.Equal(endTime) || startTime.After(endTime) {
+		if startTime = startTime.Add(gap); !startTime.Before(endTime) {
 			break
 		}
 
