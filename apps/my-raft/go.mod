@@ -1,3 +1,3 @@
 module github.com/hangtiancheng/swifty.go/apps/my-raft
 
-go 1.25
+go 1.25.0
