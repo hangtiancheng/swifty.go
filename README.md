@@ -1,6 +1,6 @@
 <div align="center">
 
-# swifty.go
+# Swifty.go
 
 **A family of elegant, production-oriented Go infrastructure libraries.**
 
