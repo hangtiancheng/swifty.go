@@ -1,5 +1,4 @@
-import { LitElement, html } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { LitElement, customElement, property } from "@swifty.js/lit-jsx";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { renderMarkdown } from "./markdown.js";
 
@@ -28,9 +27,11 @@ export class MdRender extends LitElement {
     const classes =
       this.mdClass ??
       "max-w-none text-sm leading-relaxed wrap-break-word text-ink";
-    return html`<div class="md-content ${classes}">
-      ${unsafeHTML(renderMarkdown(this.content))}
-    </div>`;
+    return (
+      <div class={`md-content ${classes}`}>
+        {unsafeHTML(renderMarkdown(this.content))}
+      </div>
+    );
   }
 }
 

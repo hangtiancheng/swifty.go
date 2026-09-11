@@ -1,5 +1,4 @@
-import { LitElement, html, nothing } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { LitElement, customElement, property } from "@swifty.js/lit-jsx";
 import { repeat } from "lit/directives/repeat.js";
 import { Plus, Sparkles, X } from "lucide";
 import { icon } from "./icons.js";
@@ -17,7 +16,7 @@ export class ChatSidebar extends LitElement {
   onNewChat?: () => void;
 
   @property({ attribute: false })
-  onLoad?: (id: string) => void;
+  onSelectHistory?: (id: string) => void;
 
   @property({ attribute: false })
   onDelete?: (id: string) => void;
@@ -33,17 +32,11 @@ export class ChatSidebar extends LitElement {
   }
 
   render() {
-    return html`
-      <aside
-        class="border-blush-200 bg-blush-100/70 flex w-60 flex-col border-r"
-      >
-        <div
-          class="border-blush-200 flex items-center gap-2.5 border-b px-4 py-3"
-        >
-          <div
-            class="from-blush-400 to-blush-600 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-linear-to-br shadow-sm"
-          >
-            ${icon(Sparkles, "h-4 w-4 text-white")}
+    return (
+      <aside class="border-blush-200 bg-blush-100/70 flex w-60 flex-col border-r">
+        <div class="border-blush-200 flex items-center gap-2.5 border-b px-4 py-3">
+          <div class="from-blush-400 to-blush-600 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-linear-to-br shadow-sm">
+            {icon(Sparkles, "h-4 w-4 text-white")}
           </div>
           <h2 class="text-ink text-sm font-semibold tracking-tight">
             Swifty Agent
@@ -51,10 +44,10 @@ export class ChatSidebar extends LitElement {
         </div>
         <div class="flex flex-1 flex-col gap-1.5 p-2.5">
           <button
-            @click=${() => this.onNewChat?.()}
+            onClick={() => this.onNewChat?.()}
             class="border-blush-300/80 text-blush-700 hover:border-blush-400 hover:text-blush-600 flex w-full items-center justify-center gap-1.5 rounded-xl border bg-white/70 px-3 py-2 text-sm font-medium shadow-sm transition hover:bg-white"
           >
-            ${icon(Plus, "h-4 w-4")}
+            {icon(Plus, "h-4 w-4")}
             <span>New chat</span>
           </button>
           <div class="mt-1 flex-1 overflow-y-auto">
@@ -62,49 +55,39 @@ export class ChatSidebar extends LitElement {
               Recent
             </div>
             <div class="flex flex-col gap-0.5">
-              ${
-                this.histories.length === 0
-                  ? html`<div class="text-ink-soft/80 px-2.5 py-2 text-xs">
-                      No conversations yet
-                    </div>`
-                  : nothing
-              }
-              ${repeat(
+              {this.histories.length === 0 ? (
+                <div class="text-ink-soft/80 px-2.5 py-2 text-xs">
+                  No conversations yet
+                </div>
+              ) : null}
+              {repeat(
                 this.histories,
                 (h) => h.id,
-                (h) => html`
+                (h) => (
                   <div
-                    class="group ${
-                      h.id === this.activeId
-                        ? "bg-white ring-1 ring-blush-200"
-                        : ""
-                    } hover:bg-blush-200/50 flex items-center rounded-lg px-2.5 py-1.5 shadow-sm transition"
+                    class={`group ${h.id === this.activeId ? "ring-blush-200 bg-white ring-1" : ""} hover:bg-blush-200/50 flex items-center rounded-lg px-2.5 py-1.5 shadow-sm transition`}
                   >
                     <button
-                      @click=${() => this.onLoad?.(h.id)}
-                      class="${
-                        h.id === this.activeId
-                          ? "font-medium text-ink"
-                          : "text-ink/80"
-                      } flex-1 truncate text-left text-sm"
+                      onClick={() => this.onSelectHistory?.(h.id)}
+                      class={`${h.id === this.activeId ? "text-ink font-medium" : "text-ink/80"} flex-1 truncate text-left text-sm`}
                     >
-                      ${h.title}
+                      {h.title}
                     </button>
                     <button
-                      @click=${() => this.onDelete?.(h.id)}
+                      onClick={() => this.onDelete?.(h.id)}
                       class="text-blush-400 ml-1.5 opacity-0 transition group-hover:opacity-100 hover:text-red-500"
                       aria-label="Delete"
                     >
-                      ${icon(X, "h-3.5 w-3.5")}
+                      {icon(X, "h-3.5 w-3.5")}
                     </button>
                   </div>
-                `,
+                ),
               )}
             </div>
           </div>
         </div>
       </aside>
-    `;
+    );
   }
 }
 

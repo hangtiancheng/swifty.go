@@ -1,5 +1,11 @@
-import { LitElement, html, nothing, type PropertyValues } from "lit";
-import { customElement, property, query, state } from "lit/decorators.js";
+import {
+  LitElement,
+  customElement,
+  property,
+  query,
+  state,
+  type PropertyValues,
+} from "@swifty.js/lit-jsx";
 import { ChevronDown, Ellipsis, Paperclip, Send } from "lucide";
 import { icon } from "./icons.js";
 import type { Mode } from "../chat/chat-store.js";
@@ -92,108 +98,91 @@ export class ChatInput extends LitElement {
   }
 
   render() {
-    return html`
+    return (
       <div
         data-input-container
         class="border-blush-200 shadow-blush-200/50 focus-within:border-blush-400 relative rounded-3xl border bg-white/85 p-3 shadow-xl backdrop-blur-md transition"
       >
         <textarea
-          .value=${this._text}
-          @input=${(e: Event) => {
+          value={this._text}
+          onInput={(e: Event) => {
             this._text = (e.target as HTMLTextAreaElement).value;
           }}
-          @keydown=${(e: KeyboardEvent) => {
+          onKeyDown={(e: KeyboardEvent) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               this.#send();
             }
           }}
-          ?disabled=${this.isStreaming}
+          disabled={this.isStreaming}
           placeholder="Ask the Swifty Agent OnCall assistant"
           class="text-ink placeholder:text-blush-400 max-h-40 w-full resize-none bg-transparent text-base outline-none"
-          rows="1"
+          rows={1}
         ></textarea>
         <div class="mt-2 flex items-center justify-between">
           <div class="relative">
             <button
-              @click=${() => {
+              onClick={() => {
                 this._showTools = !this._showTools;
               }}
               class="text-ink-soft hover:bg-blush-100 hover:text-ink flex h-9 w-9 items-center justify-center rounded-full transition"
               aria-label="Tools"
-              aria-expanded=${this._showTools}
+              aria-expanded={this._showTools}
             >
-              ${icon(Ellipsis, "h-5 w-5")}
+              {icon(Ellipsis, "h-5 w-5")}
             </button>
-            ${
-              this._showTools
-                ? html`
-                    <div
-                      class="border-blush-200 shadow-blush-300/30 absolute bottom-full left-0 mb-2 rounded-2xl border bg-white p-1.5 shadow-xl"
-                    >
-                      <button
-                        @click=${() => {
-                          this._fileInput?.click();
-                          this._showTools = false;
-                        }}
-                        class="text-ink hover:bg-blush-50 flex w-48 items-center gap-3 rounded-xl px-3 py-2 text-sm transition"
-                      >
-                        ${icon(Paperclip, "h-5 w-5 text-blush-500")}
-                        <span>Upload file</span>
-                      </button>
-                    </div>
-                  `
-                : nothing
-            }
+            {this._showTools ? (
+              <div class="border-blush-200 shadow-blush-300/30 absolute bottom-full left-0 mb-2 rounded-2xl border bg-white p-1.5 shadow-xl">
+                <button
+                  onClick={() => {
+                    this._fileInput?.click();
+                    this._showTools = false;
+                  }}
+                  class="text-ink hover:bg-blush-50 flex w-48 items-center gap-3 rounded-xl px-3 py-2 text-sm transition"
+                >
+                  {icon(Paperclip, "h-5 w-5 text-blush-500")}
+                  <span>Upload file</span>
+                </button>
+              </div>
+            ) : null}
           </div>
           <div class="flex items-center gap-2">
             <div class="relative">
               <button
-                @click=${() => {
+                onClick={() => {
                   this._showMode = !this._showMode;
                 }}
                 class="text-ink-soft hover:text-ink flex items-center gap-1 text-sm transition"
-                aria-expanded=${this._showMode}
+                aria-expanded={this._showMode}
                 aria-label="Chat mode"
               >
-                <span>${this.mode === "quick" ? "Quick" : "Stream"}</span>
-                ${icon(ChevronDown)}
+                <span>{this.mode === "quick" ? "Quick" : "Stream"}</span>
+                {icon(ChevronDown)}
               </button>
-              ${
-                this._showMode
-                  ? html`
-                      <div
-                        class="border-blush-200 shadow-blush-300/30 absolute right-0 bottom-full mb-2 rounded-2xl border bg-white p-1.5 shadow-xl"
-                      >
-                        ${MODES.map(
-                          (m) => html`
-                            <button
-                              @click=${() => {
-                                this.onModeChange?.(m);
-                                this._showMode = false;
-                              }}
-                              class="${
-                                m === this.mode
-                                  ? "bg-blush-100 font-medium text-blush-700"
-                                  : "text-ink hover:bg-blush-50"
-                              } block w-40 rounded-xl px-3 py-2 text-left text-sm"
-                            >
-                              ${m === "quick" ? "Quick" : "Stream"}
-                            </button>
-                          `,
-                        )}
-                      </div>
-                    `
-                  : nothing
-              }
+              {this._showMode ? (
+                <div class="border-blush-200 shadow-blush-300/30 absolute right-0 bottom-full mb-2 rounded-2xl border bg-white p-1.5 shadow-xl">
+                  {MODES.map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        this.onModeChange?.(m);
+                        this._showMode = false;
+                      }}
+                      class={`${m === this.mode ? "bg-blush-100 text-blush-700 font-medium" : "text-ink hover:bg-blush-50"} block w-40 rounded-xl px-3 py-2 text-left text-sm`}
+                    >
+                      {m === "quick" ? "Quick" : "Stream"}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <button
-              @click=${() => this.#send()}
-              ?disabled=${this.isStreaming || !this._text.trim()}
+              onClick={() => this.#send()}
+              disabled={this.isStreaming || !this._text.trim()}
               class="from-blush-500 to-blush-600 shadow-blush-500/30 hover:from-blush-400 hover:to-blush-500 flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br text-white shadow-md transition active:scale-95 disabled:opacity-40"
               aria-label="Send"
             >
-              ${icon(Send, "h-5 w-5")}
+              {icon(Send, "h-5 w-5")}
             </button>
           </div>
         </div>
@@ -201,7 +190,7 @@ export class ChatInput extends LitElement {
           type="file"
           accept=".txt,.md,.markdown"
           class="hidden"
-          @change=${(e: Event) => {
+          onChange={(e: Event) => {
             const input = e.target as HTMLInputElement;
             const f = input.files?.[0];
             if (f) this.onUpload?.(f);
@@ -209,7 +198,7 @@ export class ChatInput extends LitElement {
           }}
         />
       </div>
-    `;
+    );
   }
 }
 

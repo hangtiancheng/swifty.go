@@ -11,8 +11,7 @@
  * Mount once anywhere in the tree (DEV only) to seed probabilistic
  * render-crash-equivalent reports.
  */
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { LitElement, customElement } from "@swifty.js/lit-jsx";
 
 /** Interval between crash probability rolls. */
 const ROLL_INTERVAL_MS = 20_000;

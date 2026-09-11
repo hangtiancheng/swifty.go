@@ -1,5 +1,4 @@
-import { LitElement, html } from "lit";
-import { customElement } from "lit/decorators.js";
+import { LitElement, customElement } from "@swifty.js/lit-jsx";
 import { setupSentry } from "./sentry.js";
 import "./index.css";
 import "./components/chat-app.js";
@@ -22,9 +21,12 @@ export class AppRouter extends LitElement {
   }
 
   render() {
-    return html`<chat-app></chat-app>${
-        import.meta.env.DEV ? html`<random-crash></random-crash>` : ""
-      }`;
+    return (
+      <>
+        <chat-app></chat-app>
+        {import.meta.env.DEV ? <random-crash></random-crash> : null}
+      </>
+    );
   }
 }
 

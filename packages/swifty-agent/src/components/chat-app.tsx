@@ -1,5 +1,4 @@
-import { LitElement, html, nothing } from "lit";
-import { customElement } from "lit/decorators.js";
+import { LitElement, customElement } from "@swifty.js/lit-jsx";
 import {
   ChatStore,
   type ChatMessage,
@@ -60,43 +59,39 @@ export class ChatApp extends LitElement {
 
   render() {
     const chat = this.#chat;
-    return html`
-      <chat-sidebar
-        .histories=${chat.histories}
-        .activeId=${chat.sessionId}
-        .onNewChat=${chat.newChat}
-        .onLoad=${chat.loadChatHistory}
-        .onDelete=${chat.deleteChatHistory}
-      ></chat-sidebar>
-      <main class="bg-blush-50 relative flex flex-1 flex-col overflow-hidden">
-        <ai-ops-btn
-          .onTrigger=${this.#handleAIOps}
-          .disabled=${chat.isStreaming}
-        ></ai-ops-btn>
-        <chat-container
-          .messages=${chat.messages}
-          .isStreaming=${chat.isStreaming}
-          .mode=${chat.mode}
-          .onModeChange=${chat.setMode}
-          .onSend=${chat.sendMessage}
-          .onUpload=${this.#handleUpload}
-        ></chat-container>
-      </main>
-      <loading-overlay .overlay=${chat.overlay}></loading-overlay>
-      ${
-        chat.notification
-          ? html`
-              <div
-                class="${
-                  NOTIFY_COLORS[chat.notification.type]
-                } fixed top-5 right-5 z-10000 max-w-xs rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg ring-1 ring-black/5"
-              >
-                ${chat.notification.message}
-              </div>
-            `
-          : nothing
-      }
-    `;
+    return (
+      <>
+        <chat-sidebar
+          histories={chat.histories}
+          activeId={chat.sessionId}
+          onNewChat={chat.newChat}
+          onSelectHistory={chat.loadChatHistory}
+          onDelete={chat.deleteChatHistory}
+        ></chat-sidebar>
+        <main class="bg-blush-50 relative flex flex-1 flex-col overflow-hidden">
+          <ai-ops-btn
+            onTrigger={this.#handleAIOps}
+            disabled={chat.isStreaming}
+          ></ai-ops-btn>
+          <chat-container
+            messages={chat.messages}
+            isStreaming={chat.isStreaming}
+            mode={chat.mode}
+            onModeChange={chat.setMode}
+            onSend={chat.sendMessage}
+            onUpload={this.#handleUpload}
+          ></chat-container>
+        </main>
+        <loading-overlay overlay={chat.overlay}></loading-overlay>
+        {chat.notification ? (
+          <div
+            class={`${NOTIFY_COLORS[chat.notification.type]} fixed top-5 right-5 z-10000 max-w-xs rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg ring-1 ring-black/5`}
+          >
+            {chat.notification.message}
+          </div>
+        ) : null}
+      </>
+    );
   }
 }
 
