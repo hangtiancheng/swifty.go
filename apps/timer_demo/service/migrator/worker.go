@@ -63,13 +63,14 @@ func (w *Worker) Start(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(conf.MigrateStepMinutes) * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		log.InfoContext(ctx, "migrator ticking...")
+	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		default:
+		case <-ticker.C:
 		}
+
+		log.InfoContext(ctx, "migrator ticking...")
 
 		locker := w.lockService.GetDistributionLock(utils.GetMigratorLockKey(utils.GetStartHour(time.Now())))
 		if err := locker.Lock(ctx, int64(conf.MigrateTryLockMinutes)*int64(time.Minute/time.Second)); err != nil {
@@ -84,7 +85,6 @@ func (w *Worker) Start(ctx context.Context) error {
 
 		_ = locker.ExpireLock(ctx, int64(conf.MigrateSuccessExpireMinutes)*int64(time.Minute/time.Second))
 	}
-	return nil
 }
 
 func (w *Worker) migrate(ctx context.Context) error {

@@ -53,7 +53,7 @@ func NewRClient(config *Config) *RClient {
 }
 
 func getRedisClient(config *Config) *go_redis.Client {
-	if config.Address == "" {
+	if config == nil || config.Address == "" {
 		panic("redis address is required")
 	}
 
@@ -112,8 +112,15 @@ func (r *RClient) Del(ctx context.Context, key string) error {
 
 // Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
 func (r *RClient) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
+	if keyCount < 0 {
+		keyCount = 0
+	}
+	argCount := len(keysAndArgs) - keyCount
+	if argCount < 0 {
+		argCount = 0
+	}
 	keys := make([]string, 0, keyCount)
-	args := make([]any, 0, len(keysAndArgs)-keyCount)
+	args := make([]any, 0, argCount)
 	for i, v := range keysAndArgs {
 		if i < keyCount {
 			keys = append(keys, fmt.Sprintf("%v", v))
@@ -125,6 +132,10 @@ func (r *RClient) Eval(ctx context.Context, src string, keyCount int, keysAndArg
 }
 
 func (r *RClient) PExpire(ctx context.Context, key string, expireMillis int64) error {
+	if key == "" {
+		return errors.New("redis PEXPIRE key can't be empty")
+	}
+
 	return r.client.PExpire(ctx, key, time.Duration(expireMillis)*time.Millisecond).Err()
 }
 

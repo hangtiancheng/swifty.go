@@ -37,10 +37,14 @@ func main() {
 	monitor := app.GetMonitorApp()
 
 	migratorApp.Start()
+	defer migratorApp.Stop()
+
 	schedulerApp.Start()
 	defer schedulerApp.Stop()
 
 	monitor.Start()
+	defer monitor.Stop()
+
 	webServer.Start()
 
 	// pprof server

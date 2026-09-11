@@ -22,6 +22,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"io"
 	"os"
 )
 
@@ -33,8 +34,10 @@ type WALWriter struct {
 }
 
 // NewWALWriter opens the WAL file for writing, creating it if it does not exist.
+// Appends are used so that re-opening an existing WAL (crash recovery of the
+// active memtable) never overwrites the records already stored in it.
 func NewWALWriter(file string) (*WALWriter, error) {
-	dest, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0644)
+	dest, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +60,14 @@ func (w *WALWriter) Write(key, value []byte) error {
 	buf = append(buf, key...)
 	buf = append(buf, value...)
 	// Write everything to the WAL file.
-	_, err := w.dest.Write(buf)
-	return err
+	n, err := w.dest.Write(buf)
+	if err != nil {
+		return err
+	}
+	if n != len(buf) {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func (w *WALWriter) Close() {

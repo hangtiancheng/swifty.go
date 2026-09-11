@@ -100,7 +100,11 @@ type cronSchedule struct {
 
 func (s *cronSchedule) Next(t time.Time) time.Time {
 	origin := t
-	t = t.Add(time.Second - time.Duration(t.Nanosecond()))
+	// A 5-field cron only fires on whole minutes. Start from the next minute
+	// boundary strictly after t; otherwise a query landing inside a scheduled
+	// minute (e.g. 10:05:30 for "*/5 * * * *") matches on every following
+	// second and NextsBetween emits one task per second.
+	t = t.Truncate(time.Minute).Add(time.Minute)
 
 	for {
 		if t.Year() > origin.Year()+5 {

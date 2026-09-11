@@ -59,6 +59,11 @@ func (r *ReentrantDistributeLock) Lock(ctx context.Context, expireSeconds int64)
 	}
 
 	if res == r.token {
+		// Reentrant acquisition: refresh the expiration so a long hold does
+		// not let the lock expire while it is still owned.
+		if err := r.ExpireLock(ctx, expireSeconds); err != nil {
+			return err
+		}
 		return nil
 	}
 

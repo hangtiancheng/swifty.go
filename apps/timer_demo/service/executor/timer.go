@@ -39,9 +39,12 @@ type TimerService struct {
 	confProvider *conf.MigratorAppConfProvider
 	ctx          context.Context
 	stop         func()
-	timers       map[uint]*vo.Timer
-	timerDAO     timerDAO
-	taskDAO      *task_dao.TaskDAO
+	// mu guards timers: the refresh goroutine replaces the map while
+	// GetTimer reads it concurrently from request goroutines.
+	mu       sync.RWMutex
+	timers   map[uint]*vo.Timer
+	timerDAO timerDAO
+	taskDAO  *task_dao.TaskDAO
 }
 
 func NewTimerService(timerDAO *timer_dao.TimerDAO, taskDAO *task_dao.TaskDAO, confProvider *conf.MigratorAppConfProvider) *TimerService {
@@ -55,27 +58,38 @@ func NewTimerService(timerDAO *timer_dao.TimerDAO, taskDAO *task_dao.TaskDAO, co
 
 func (t *TimerService) Start(ctx context.Context) {
 	t.Do(func() {
-		go func() {
-			t.ctx, t.stop = context.WithCancel(ctx)
+		// Assign synchronously so Stop() never races the assignment or calls
+		// a nil stop func when Stop happens right after Start.
+		t.ctx, t.stop = context.WithCancel(ctx)
 
+		go func() {
 			stepMinutes := t.confProvider.Get().TimerDetailCacheMinutes
 			ticker := time.NewTicker(time.Duration(stepMinutes) * time.Minute)
 			defer ticker.Stop()
 
-			for range ticker.C {
+			for {
 				select {
 				case <-t.ctx.Done():
 					return
-				default:
+				case <-ticker.C:
 				}
 
-				go func() {
-					start := time.Now()
-					t.timers, _ = t.getTimersByTime(ctx, start, start.Add(time.Duration(stepMinutes)*time.Minute))
-				}()
+				go t.refreshTimers(ctx, stepMinutes)
 			}
 		}()
 	})
+}
+
+func (t *TimerService) refreshTimers(ctx context.Context, stepMinutes int) {
+	start := time.Now()
+	timers, err := t.getTimersByTime(ctx, start, start.Add(time.Duration(stepMinutes)*time.Minute))
+	if err != nil {
+		log.ErrorContextf(ctx, "refresh timers failed, start: %v, err: %v", start, err)
+	}
+
+	t.mu.Lock()
+	t.timers = timers
+	t.mu.Unlock()
 }
 
 func (t *TimerService) getTimersByTime(ctx context.Context, start, end time.Time) (map[uint]*vo.Timer, error) {
@@ -125,7 +139,10 @@ func getTimersMap(pTimers []*po.Timer) (map[uint]*vo.Timer, error) {
 }
 
 func (t *TimerService) GetTimer(ctx context.Context, id uint) (*vo.Timer, error) {
-	if vTimer, ok := t.timers[id]; ok {
+	t.mu.RLock()
+	vTimer, ok := t.timers[id]
+	t.mu.RUnlock()
+	if ok {
 		// log.InfoContextf(ctx, "get timer from local cache success, timer: %+v", vTimer)
 		return vTimer, nil
 	}
@@ -141,7 +158,9 @@ func (t *TimerService) GetTimer(ctx context.Context, id uint) (*vo.Timer, error)
 }
 
 func (t *TimerService) Stop() {
-	t.stop()
+	if t.stop != nil {
+		t.stop()
+	}
 }
 
 type timerDAO interface {

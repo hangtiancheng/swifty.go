@@ -237,13 +237,16 @@ func (c *ConsistentHash) GetNode(ctx context.Context, dataKey string) (string, e
 	}
 
 	// 2. Persist the data-key-to-node mapping.
-	if err = c.hashRing.AddNodeToDataKeys(ctx, c.getNodeID(nodes[0]), map[string]struct{}{
+	nodeID := c.getNodeID(nodes[0])
+	if err = c.hashRing.AddNodeToDataKeys(ctx, nodeID, map[string]struct{}{
 		dataKey: {},
 	}); err != nil {
 		return "", err
 	}
 
-	return nodes[0], nil
+	// Return the physical node id, consistent with the ownership index above,
+	// so the result can be fed back into RemoveNode.
+	return nodeID, nil
 }
 
 func (c *ConsistentHash) getValidWeight(weight int) int {
@@ -264,5 +267,8 @@ func (c *ConsistentHash) getRawNodeKey(nodeID string, index int) string {
 
 func (c *ConsistentHash) getNodeID(rawNodeKey string) string {
 	index := strings.LastIndex(rawNodeKey, "_")
+	if index < 0 {
+		return rawNodeKey
+	}
 	return rawNodeKey[:index]
 }

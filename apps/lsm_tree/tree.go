@@ -67,6 +67,17 @@ type Tree struct {
 
 	// Per-level sstable seq counters. sst files are named level_seq.sst.
 	levelToSeq []atomic.Int32
+
+	// closeOnce guarantees the shutdown sequence runs exactly once.
+	closeOnce sync.Once
+
+	// Closed by the compaction goroutine on exit; nil until the goroutine starts.
+	// Close waits on it so in-flight flushes finish before readers are closed.
+	compactDone chan struct{}
+
+	// Tracks node-destroy goroutines spawned by compaction; Close waits for
+	// them so no sst file is deleted after (or during) a reopen.
+	destroyWG sync.WaitGroup
 }
 
 // NewTree constructs an lsm tree.
@@ -84,14 +95,17 @@ func NewTree(conf *Config) (*Tree, error) {
 
 	// 2. Read sst files and reconstruct the tree.
 	if err := t.constructTree(); err != nil {
+		t.Close()
 		return nil, err
 	}
 
 	// 3. Start the compaction goroutine.
+	t.compactDone = make(chan struct{})
 	go t.compact()
 
 	// 4. Read wal files and reconstruct the memtable.
 	if err := t.constructMemtable(); err != nil {
+		t.Close()
 		return nil, err
 	}
 
@@ -100,12 +114,36 @@ func NewTree(conf *Config) (*Tree, error) {
 }
 
 func (t *Tree) Close() {
-	close(t.stopChan)
-	for i := 0; i < len(t.nodes); i++ {
-		for j := 0; j < len(t.nodes[i]); j++ {
-			t.nodes[i][j].Close()
+	t.closeOnce.Do(func() {
+		// Signal the compaction goroutine to exit.
+		close(t.stopChan)
+
+		// Wait for in-flight flushes/compactions to finish so no sst file is
+		// left half-written and no node is inserted after readers are closed.
+		if t.compactDone != nil {
+			<-t.compactDone
 		}
-	}
+
+		// Wait for node-destroy goroutines so no sst file is deleted after
+		// (or while) the directory is reused by a new tree.
+		t.destroyWG.Wait()
+
+		// Close the active wal writer; dataLock keeps this exclusive with Put.
+		t.dataLock.Lock()
+		if t.walWriter != nil {
+			t.walWriter.Close()
+		}
+		t.dataLock.Unlock()
+
+		// Close all sst readers; level locks keep this exclusive with compaction.
+		for i := 0; i < len(t.nodes); i++ {
+			t.levelLocks[i].Lock()
+			for j := 0; j < len(t.nodes[i]); j++ {
+				t.nodes[i][j].Close()
+			}
+			t.levelLocks[i].Unlock()
+		}
+	})
 }
 
 // Put writes a key-value pair to the lsm tree. The pair goes directly into the active memtable.
@@ -129,8 +167,7 @@ func (t *Tree) Put(key, value []byte) error {
 	}
 
 	// 5. Rotate the memtable.
-	t.refreshMemTableLocked()
-	return nil
+	return t.refreshMemTableLocked()
 }
 
 // Get reads the value for a key.
@@ -193,7 +230,7 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 }
 
 // refreshMemTableLocked rotates the active memtable to read-only and builds a new active memtable.
-func (t *Tree) refreshMemTableLocked() {
+func (t *Tree) refreshMemTableLocked() error {
 	// Rotate: move the active memtable to the read-only slice and send it to the compaction goroutine.
 	oldItem := memTableCompactItem{
 		walFile:  t.walFile(),
@@ -202,12 +239,16 @@ func (t *Tree) refreshMemTableLocked() {
 	t.rOnlyMemTable = append(t.rOnlyMemTable, &oldItem)
 	t.walWriter.Close()
 	go func() {
-		t.memCompactC <- &oldItem
+		select {
+		case t.memCompactC <- &oldItem:
+		// Tree closed before the item was handed over: give up instead of leaking.
+		case <-t.stopChan:
+		}
 	}()
 
 	// Build a new active memtable and its WAL.
 	t.memTableIndex++
-	t.newMemTable()
+	return t.newMemTable()
 }
 
 func (t *Tree) levelBinarySearch(level int, key []byte, start, end int) (*Node, bool) {
@@ -215,19 +256,28 @@ func (t *Tree) levelBinarySearch(level int, key []byte, start, end int) (*Node, 
 		return nil, false
 	}
 
+	// A node's range is half-open: (startKey, endKey]. startKey is the index
+	// separator (one byte below the node's real first key), so the next node's
+	// startKey can equal this node's endKey; a key equal to startKey belongs to
+	// the node on the LEFT.
 	mid := start + (end-start)>>1
-	if bytes.Compare(t.nodes[level][start].endKey, key) < 0 {
+	if bytes.Compare(t.nodes[level][mid].endKey, key) < 0 {
 		return t.levelBinarySearch(level, key, mid+1, end)
 	}
 
-	if bytes.Compare(t.nodes[level][start].startKey, key) > 0 {
+	if bytes.Compare(t.nodes[level][mid].startKey, key) >= 0 {
 		return t.levelBinarySearch(level, key, start, mid-1)
 	}
 
 	return t.nodes[level][mid], true
 }
 
-func (t *Tree) newMemTable() {
-	t.walWriter, _ = wal.NewWALWriter(t.walFile())
+func (t *Tree) newMemTable() error {
+	walWriter, err := wal.NewWALWriter(t.walFile())
+	if err != nil {
+		return err
+	}
+	t.walWriter = walWriter
 	t.memTable = t.conf.MemTableConstructor()
+	return nil
 }

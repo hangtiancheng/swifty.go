@@ -186,25 +186,19 @@ rules.ninja
 *.swp
 *.swo
 
-*_cpp/
-
-.claude/skills/langchaingo
-
 *.local.yml
 *.local.yaml
 **/*.local.yml
 **/*.local.yaml
 raw
 
-!swifty_cli/internal/remote/fe/dist
 swifty_agent/config.json
-
-.swiftx/
-**/.swiftx/
-!swiftx/.swiftx/config.yaml
 
 .swifty/
 **/.swifty/
 
 .playwright-cli/
 **/.playwright-cli/
+
+*.wal
+*.sst

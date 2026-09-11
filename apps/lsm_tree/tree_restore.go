@@ -145,7 +145,10 @@ func getLevelSeqFromSSTFile(file string) (level int, seq int32) {
 // constructMemtable reads wal files and reconstructs the memtable.
 func (t *Tree) constructMemtable() error {
 	// 1. Read the wal directory.
-	raw, _ := os.ReadDir(path.Join(t.conf.Dir, "walfile"))
+	raw, err := os.ReadDir(path.Join(t.conf.Dir, "walfile"))
+	if err != nil {
+		return err
+	}
 
 	// 2. Filter to .wal files.
 	var wals []fs.DirEntry
@@ -163,8 +166,7 @@ func (t *Tree) constructMemtable() error {
 
 	// 3. If no wal files exist, create a fresh memtable.
 	if len(wals) == 0 {
-		t.newMemTable()
-		return nil
+		return t.newMemTable()
 	}
 
 	// 4. Restore memtables. The last one becomes the active memtable;
@@ -202,14 +204,21 @@ func (t *Tree) restoreMemTable(wals []fs.DirEntry) error {
 		if i == len(wals)-1 { // Last wal: the memtable becomes the active read-write memtable.
 			t.memTable = memtable
 			t.memTableIndex = walFileToMemTableIndex(name)
-			t.walWriter, _ = wal.NewWALWriter(file)
+			t.walWriter, err = wal.NewWALWriter(file)
+			if err != nil {
+				return err
+			}
 		} else { // Earlier wals: read-only memtables sent to the compaction channel.
 			memTableCompactItem := memTableCompactItem{
 				walFile:  file,
 				memTable: memtable,
 			}
 
+			// The compaction goroutine may already be reclaiming earlier items;
+			// dataLock keeps this append exclusive with it (same as the Put path).
+			t.dataLock.Lock()
 			t.rOnlyMemTable = append(t.rOnlyMemTable, &memTableCompactItem)
+			t.dataLock.Unlock()
 			t.memCompactC <- &memTableCompactItem
 		}
 	}

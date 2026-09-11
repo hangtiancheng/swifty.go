@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,7 +33,11 @@ import (
 
 const RedisLockKeyPrefix = "REDIS_LOCK_PREFIX_"
 
-var ErrLockAcquiredByOthers = errors.New("lock is acquired by others")
+var (
+	ErrLockAcquiredByOthers = errors.New("lock is acquired by others")
+	// errLockLost reports that the lock is no longer owned by this client.
+	errLockLost = errors.New("can not expire lock without ownership of lock")
+)
 
 func IsRetryableErr(err error) bool {
 	return errors.Is(err, ErrLockAcquiredByOthers)
@@ -47,6 +52,9 @@ type RedisLock struct {
 
 	// runningDog flags whether the watchdog goroutine is running.
 	runningDog atomic.Int32
+	// watchDogMu guards stopDog: Lock (watchDog) writes it and Unlock reads it,
+	// possibly from different goroutines.
+	watchDogMu sync.Mutex
 	// stopDog cancels the watchdog goroutine.
 	stopDog context.CancelFunc
 }
@@ -118,17 +126,25 @@ func (r *RedisLock) watchDog(ctx context.Context) {
 		return
 	}
 
-	// 2. Make sure any previous watchdog has been recycled.
-	for !r.runningDog.CompareAndSwap(0, 1) {
+	// 2. Cancel any previous watchdog and register the new cancel func atomically.
+	// Waiting for the previous dog to recycle here could deadlock Lock forever if
+	// a concurrent Unlock already consumed (or is about to consume) the old
+	// stopDog, so the old dog is cancelled instead and exits immediately.
+	r.watchDogMu.Lock()
+	if r.stopDog != nil {
+		r.stopDog()
 	}
+	dogCtx, cancel := context.WithCancel(ctx)
+	r.stopDog = cancel
+	r.watchDogMu.Unlock()
 
 	// 3. Start the watchdog.
-	ctx, r.stopDog = context.WithCancel(ctx)
+	r.runningDog.Store(1)
 	go func() {
 		defer func() {
 			r.runningDog.Store(0)
 		}()
-		r.runWatchDog(ctx)
+		r.runWatchDog(dogCtx)
 	}()
 }
 
@@ -136,17 +152,27 @@ func (r *RedisLock) runWatchDog(ctx context.Context) {
 	ticker := time.NewTicker(WatchDogWorkStepSeconds * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		// React to cancellation immediately instead of waiting for the next tick.
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case <-ticker.C:
 		}
 
-		// The watchdog keeps renewing the lock when the caller forgets to unlock.
+		// The watchdog keeps renewing the lock while the caller holds it.
 		// Renewal is done via a Lua script that verifies ownership before extending the TTL.
 		// Add an extra 5s to the TTL so that network latency does not cause premature expiry.
-		_ = r.DelayExpire(ctx, WatchDogWorkStepSeconds+5)
+		err := r.DelayExpire(ctx, WatchDogWorkStepSeconds+5)
+		if err == nil {
+			continue
+		}
+
+		// The lock is no longer ours: renewing is pointless, so stop the watchdog
+		// instead of looping forever. Transient errors are retried on the next tick.
+		if errors.Is(err, errLockLost) {
+			return
+		}
 	}
 }
 
@@ -159,7 +185,7 @@ func (r *RedisLock) DelayExpire(ctx context.Context, expireSeconds int64) error 
 	}
 
 	if ret, _ := reply.(int64); ret != 1 {
-		return errors.New("can not expire lock without ownership of lock")
+		return errLockLost
 	}
 
 	return nil
@@ -200,9 +226,13 @@ func (r *RedisLock) blockingLock(ctx context.Context) error {
 // Unlock releases the lock. Atomicity is guaranteed by a Lua script that checks ownership first.
 func (r *RedisLock) Unlock(ctx context.Context) error {
 	defer func() {
-		// Stop the watchdog.
-		if r.stopDog != nil {
-			r.stopDog()
+		// Stop the watchdog. stopDog may be written concurrently by watchDog
+		// (a Lock on another goroutine), so read it under the mutex.
+		r.watchDogMu.Lock()
+		stopDog := r.stopDog
+		r.watchDogMu.Unlock()
+		if stopDog != nil {
+			stopDog()
 		}
 	}()
 

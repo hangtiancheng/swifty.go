@@ -58,17 +58,16 @@ func (w *Worker) Start(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(w.appConfProvider.Get().TryLockGapMilliSeconds) * time.Millisecond)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
 		select {
 		case <-ctx.Done():
 			log.WarnContext(ctx, "stopped")
 			return nil
-		default:
+		case <-ticker.C:
 		}
 
 		w.handleSlices(ctx)
 	}
-	return nil
 }
 
 func (w *Worker) handleSlices(ctx context.Context) {

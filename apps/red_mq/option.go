@@ -86,11 +86,14 @@ func WithHandleMsgsTimeout(timeout time.Duration) ConsumerOption {
 }
 
 func repairConsumer(opts *ConsumerOptions) {
-	if opts.receiveTimeout < 0 {
+	// receiveTimeout == 0 maps to XREADGROUP BLOCK 0 (block forever) and a
+	// negative value maps to a non-blocking hot poll, so anything <= 0 is
+	// replaced with the documented default.
+	if opts.receiveTimeout <= 0 {
 		opts.receiveTimeout = 2 * time.Second
 	}
 
-	if opts.maxRetryLimit < 0 {
+	if opts.maxRetryLimit <= 0 {
 		opts.maxRetryLimit = 3
 	}
 

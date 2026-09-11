@@ -23,6 +23,8 @@ package redis_lock
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,8 +32,11 @@ import (
 
 func Test_blockingLock(t *testing.T) {
 	// Fill in the redis node address and password.
-	addr := "xxxx:xx"
-	passwd := ""
+	addr := os.Getenv("REDIS_LOCK_ADDR")
+	passwd := os.Getenv("REDIS_LOCK_PASSWORD")
+	if addr == "" {
+		t.Skip("set REDIS_LOCK_ADDR (and optional REDIS_LOCK_PASSWORD) to run this test against a real redis")
+	}
 
 	client := NewClient("tcp", addr, passwd)
 	lock1 := NewRedisLock("test_key", client, WithExpireSeconds(1))
@@ -60,8 +65,11 @@ func Test_blockingLock(t *testing.T) {
 
 func Test_nonBlockingLock(t *testing.T) {
 	// Fill in the redis node address and password.
-	addr := "xxxx:xx"
-	passwd := ""
+	addr := os.Getenv("REDIS_LOCK_ADDR")
+	passwd := os.Getenv("REDIS_LOCK_PASSWORD")
+	if addr == "" {
+		t.Skip("set REDIS_LOCK_ADDR (and optional REDIS_LOCK_PASSWORD) to run this test against a real redis")
+	}
 
 	client := NewClient("tcp", addr, passwd)
 	lock1 := NewRedisLock("test_key", client, WithExpireSeconds(1))
@@ -89,32 +97,20 @@ func Test_nonBlockingLock(t *testing.T) {
 
 func Test_redLock(t *testing.T) {
 	// Fill in the addresses and passwords of three redis nodes.
-	addr1 := "xxxx:xx"
-	passwd1 := ""
-
-	addr2 := "yyyy:yy"
-	passwd2 := ""
-
-	addr3 := "zzzz:zz"
-	passwd3 := ""
+	addrs := strings.Split(os.Getenv("REDIS_LOCK_ADDRS"), ",")
+	passwd := os.Getenv("REDIS_LOCK_PASSWORD")
+	if len(addrs) < 3 || addrs[0] == "" {
+		t.Skip("set REDIS_LOCK_ADDRS (comma separated, at least 3 nodes) and optional REDIS_LOCK_PASSWORD to run this test against real redis nodes")
+	}
 
 	// Three locks, one per direct redis node.
-	confs := []*SingleNodeConf{
-		{
+	confs := make([]*SingleNodeConf, 0, len(addrs))
+	for _, addr := range addrs {
+		confs = append(confs, &SingleNodeConf{
 			Network:  "tcp",
-			Address:  addr1,
-			Password: passwd1,
-		},
-		{
-			Network:  "tcp",
-			Address:  addr2,
-			Password: passwd2,
-		},
-		{
-			Network:  "tcp",
-			Address:  addr3,
-			Password: passwd3,
-		},
+			Address:  addr,
+			Password: passwd,
+		})
 	}
 
 	redLock, err := NewRedLock("test_key", confs, WithRedLockExpireDuration(10*time.Second), WithSingleNodesTimeout(100*time.Millisecond))

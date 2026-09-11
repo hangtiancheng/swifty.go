@@ -227,7 +227,8 @@ func (c *ConsistentHash) migrateOut(ctx context.Context, virtualScore int32, nod
 
 	// Find the successor node.
 	if to, err = c.getValidNextNode(ctx, virtualScore, nodeID, nil); err != nil {
-		err = _err
+		// Keep the fresh error: _err is the stale (nil) Floor error, and
+		// overwriting err with it would mask the real failure below.
 		return
 	}
 

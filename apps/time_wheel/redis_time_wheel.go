@@ -76,8 +76,11 @@ func (r *RTimeWheel) AddTask(ctx context.Context, key string, task *RTaskElement
 	}
 
 	task.Key = key
-	taskBody, _ := json.Marshal(task)
-	_, err := r.redisClient.Eval(ctx, LuaAddTasks, 2, []any{
+	taskBody, err := json.Marshal(task)
+	if err != nil {
+		return fmt.Errorf("marshal task %s: %w", key, err)
+	}
+	_, err = r.redisClient.Eval(ctx, LuaAddTasks, 2, []any{
 		// Minute-level zset time slice.
 		r.getMinuteSlice(executeAt),
 		// Set marking tasks for deletion.
@@ -155,6 +158,9 @@ func (r *RTimeWheel) executeTask(ctx context.Context, task *RTaskElement) error 
 }
 
 func (r *RTimeWheel) addTaskPreCheck(task *RTaskElement) error {
+	if task == nil {
+		return fmt.Errorf("nil task")
+	}
 	if task.Method != http.MethodGet && task.Method != http.MethodPost {
 		return fmt.Errorf("invalid method: %s", task.Method)
 	}

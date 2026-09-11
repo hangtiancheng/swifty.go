@@ -25,6 +25,7 @@ import (
 	"errors"
 	"math/rand"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -41,6 +42,14 @@ const (
 	mysqlDSN = "please fill in mysql dsn"
 )
 
+// requireInfra skips the test while the redis/mysql endpoints are unconfigured placeholders.
+func requireInfra(t *testing.T) {
+	t.Helper()
+	if strings.Contains(redisAddress, "please fill in") || strings.Contains(mysqlDSN, "please fill in") {
+		t.Skip("redis/mysql endpoints not configured; fill in redisAddress/mysqlDSN to run this integration test")
+	}
+}
+
 func newService() *consistent_cache.Service {
 	cache := redis.NewRedisCache(&redis.Config{
 		Address:  redisAddress,
@@ -54,6 +63,7 @@ func newService() *consistent_cache.Service {
 }
 
 func Test_consistent_Cache(t *testing.T) {
+	requireInfra(t)
 	service := consistent_cache.NewService(
 		redis.NewRedisCache(&redis.Config{
 			Address:  redisAddress,
@@ -87,9 +97,9 @@ func Test_consistent_Cache(t *testing.T) {
 
 // Verifies: 1) data correctness 2) cache hit ratio.
 func Test_Consistent_Cache_Correct(t *testing.T) {
+	requireInfra(t)
 	service := newService()
 	ctx := context.Background()
-	randInst := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// 100 concurrent writers, with a local backup of every written record.
 	prefix := time.Now().String() + "-"
@@ -98,8 +108,8 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 		var wg sync.WaitGroup
 		for range 100 {
 			wg.Go(func() {
-				k := prefix + strconv.Itoa(randInst.Intn(100))
-				v := prefix + strconv.Itoa(randInst.Intn(100))
+				k := prefix + strconv.Itoa(rand.Intn(100))
+				v := prefix + strconv.Itoa(rand.Intn(100))
 				data := Example{
 					Key_: k,
 					Data: v,
@@ -128,7 +138,7 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 	var expectUseCacheCnt int
 	querySet := make(map[string]struct{}, 100)
 	for range 100 {
-		k := strconv.Itoa(randInst.Intn(100))
+		k := strconv.Itoa(rand.Intn(100))
 		data := Example{
 			Key_: prefix + k,
 		}
@@ -167,6 +177,7 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 
 // Concurrent read/write. Verifies: 1) disable mechanism works 2) read result correctness.
 func Test_Consistent_Cache_Read_Write(t *testing.T) {
+	requireInfra(t)
 	service := newService()
 
 	ctx := context.Background()

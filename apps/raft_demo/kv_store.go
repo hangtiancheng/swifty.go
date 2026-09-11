@@ -48,9 +48,17 @@ func newKVStore(proposeC chan<- string, commitC <-chan *string) *kvStore {
 
 func (k *kvStore) readCommit(commitC <-chan *string) {
 	for data := range commitC {
+		// Skip nil markers and malformed payloads instead of applying a
+		// zero-valued entry to the state machine
+		if data == nil {
+			continue
+		}
+
 		// Apply committed data to the state machine
 		var kv kv
-		_ = json.Unmarshal([]byte(*data), &kv)
+		if err := json.Unmarshal([]byte(*data), &kv); err != nil {
+			continue
+		}
 
 		k.Lock()
 		k.core[kv.Key] = kv.Val

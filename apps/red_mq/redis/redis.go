@@ -67,9 +67,13 @@ func NewClient(network, address, password string, opts ...ClientOption) *Client 
 		MinIdleConns:    c.opts.maxIdle,
 		ConnMaxIdleTime: time.Duration(c.opts.idleTimeoutSeconds) * time.Second,
 	})
-	return &Client{
-		client: client,
-	}
+	c.client = client
+	return &c
+}
+
+// Close releases the underlying redis connections.
+func (c *Client) Close() error {
+	return c.client.Close()
 }
 
 // XADD appends a message to the stream, capping it at maxLen entries. Returns the generated message ID.
@@ -247,6 +251,15 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 
 // Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
 func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
+	// Clamp keyCount: out of bounds values would make the capacity of args
+	// below negative and panic.
+	if keyCount < 0 {
+		keyCount = 0
+	}
+	if keyCount > len(keysAndArgs) {
+		keyCount = len(keysAndArgs)
+	}
+
 	keys := make([]string, 0, keyCount)
 	args := make([]any, 0, len(keysAndArgs)-keyCount)
 	for i, v := range keysAndArgs {

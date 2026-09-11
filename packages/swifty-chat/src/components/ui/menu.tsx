@@ -65,9 +65,9 @@ export class XMenu extends TwElement {
         this.open
           ? html`<div
               class=${cn(
-              "bg-popover text-popover-foreground animate-in fade-in zoom-in-95 border-border absolute top-full z-50 mt-1.5 min-w-44 overflow-hidden rounded-xl border p-1 shadow-lg duration-150",
-              this.align === "end" ? "right-0" : "left-0",
-            )}
+                "bg-popover text-popover-foreground animate-in fade-in zoom-in-95 border-border absolute top-full z-50 mt-1.5 min-w-44 overflow-hidden rounded-xl border p-1 shadow-lg duration-150",
+                this.align === "end" ? "right-0" : "left-0",
+              )}
               @click=${() => (this.open = false)}
             >
               <slot></slot>

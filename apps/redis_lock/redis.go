@@ -67,7 +67,8 @@ func NewClient(network, address, password string, opts ...ClientOption) *Client 
 		ConnMaxIdleTime: time.Duration(c.idleTimeoutSeconds) * time.Second,
 	})
 	return &Client{
-		client: client,
+		ClientOptions: c.ClientOptions,
+		client:        client,
 	}
 }
 
@@ -97,6 +98,11 @@ func (c *Client) Set(ctx context.Context, key, value string) (int64, error) {
 func (c *Client) SetNEX(ctx context.Context, key, value string, expireSeconds int64) (int64, error) {
 	if key == "" || value == "" {
 		return -1, errors.New("redis SET keyNX or value can't be empty")
+	}
+	// expireSeconds <= 0 would create a key that never expires (or is rejected),
+	// leaving a lock stuck forever after the holder crashes.
+	if expireSeconds <= 0 {
+		return -1, errors.New("redis SET NX expireSeconds must be positive")
 	}
 
 	ok, err := c.client.SetNX(ctx, key, value, time.Duration(expireSeconds)*time.Second).Result()
@@ -140,6 +146,10 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 
 // Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
 func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
+	// Guard against keyCount out of range: a negative capacity below would panic.
+	if keyCount < 0 || keyCount > len(keysAndArgs) {
+		return nil, fmt.Errorf("redis EVAL keyCount %d out of range [0, %d]", keyCount, len(keysAndArgs))
+	}
 	keys := make([]string, 0, keyCount)
 	args := make([]any, 0, len(keysAndArgs)-keyCount)
 	for i, v := range keysAndArgs {

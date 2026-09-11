@@ -23,6 +23,7 @@ package red_mq
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/hangtiancheng/swifty.go/apps/red_mq/log"
 	"github.com/hangtiancheng/swifty.go/apps/red_mq/redis"
@@ -75,6 +76,8 @@ func NewConsumer(client *redis.Client, topic, groupID, consumerID string, callba
 	}
 
 	if err := c.checkParam(); err != nil {
+		// Release the context created above, otherwise it leaks.
+		stop()
 		return nil, err
 	}
 
@@ -109,6 +112,21 @@ func (c *Consumer) Stop() {
 	c.stop()
 }
 
+// retryBackoff is the pause between receive attempts after an error, so a
+// persistently failing redis does not turn run into a hot error loop.
+const retryBackoff = time.Second
+
+// backoff waits before the next receive attempt. It reports false when the
+// consumer was stopped while waiting.
+func (c *Consumer) backoff() bool {
+	select {
+	case <-c.ctx.Done():
+		return false
+	case <-time.After(retryBackoff):
+		return true
+	}
+}
+
 // run is the consumer main loop.
 func (c *Consumer) run() {
 	for {
@@ -122,6 +140,9 @@ func (c *Consumer) run() {
 		msgs, err := c.receive()
 		if err != nil {
 			log.ErrorContextf(c.ctx, "receive msg failed, err: %v", err)
+			if !c.backoff() {
+				return
+			}
 			continue
 		}
 
@@ -138,6 +159,9 @@ func (c *Consumer) run() {
 		pendingMsgs, err := c.receivePending()
 		if err != nil {
 			log.ErrorContextf(c.ctx, "pending msg received failed, err: %v", err)
+			if !c.backoff() {
+				return
+			}
 			continue
 		}
 
@@ -193,6 +217,9 @@ func (c *Consumer) deliverDeadLetter(ctx context.Context) {
 		// Deliver to the dead-letter mailbox.
 		if err := c.opts.deadLetterMailbox.Deliver(ctx, &msg); err != nil {
 			log.ErrorContextf(c.ctx, "dead letter deliver failed, msg id: %s, err: %v", msg.MsgID, err)
+			// Keep the message around, it must not be acked before it
+			// reached the dead-letter mailbox.
+			continue
 		}
 
 		// Ack the message.

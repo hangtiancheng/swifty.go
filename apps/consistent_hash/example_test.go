@@ -57,6 +57,9 @@ const (
 )
 
 func Test_redis_consistent_hash(t *testing.T) {
+	if address == "redis address" {
+		t.Skip("fill in a real redis address to run this test")
+	}
 	redisClient := redis.NewClient(network, address, password)
 	hashRing := redis.NewRedisHashRing(hashRingKey, redisClient)
 	consistentHash := NewConsistentHash(hashRing, NewFnvHasher(), nil)
@@ -154,7 +157,7 @@ func test(t *testing.T, consistentHash *ConsistentHash) {
 		return
 	}
 	t.Logf("data: %s belongs to node: %s", dataKeyD, node)
-	t.Error("ok")
+	t.Log("ok")
 }
 
 func Test_local_lock(t *testing.T) {

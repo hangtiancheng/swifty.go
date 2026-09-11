@@ -90,6 +90,7 @@ func (j *JSONClient) Do(ctx context.Context, method string, url string, header m
 	if err != nil {
 		return err
 	}
+	defer response.Body.Close()
 
 	respBody, err := io.ReadAll(io.LimitReader(response.Body, j.readLimitBytes))
 	if err != nil {
@@ -105,7 +106,9 @@ func getCompleteURL(originURL string, params map[string]string) string {
 		values.Add(k, v)
 	}
 
-	queriesStr, _ := net_url.QueryUnescape(values.Encode())
+	// Keep the encoded form: unescaping here would break params containing
+	// reserved characters such as '&' or '='.
+	queriesStr := values.Encode()
 	if len(queriesStr) == 0 {
 		return originURL
 	}

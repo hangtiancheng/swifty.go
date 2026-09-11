@@ -87,7 +87,7 @@ func (t *TXManager) Transaction(ctx context.Context, reqs ...*RequestEntity) (st
 	}
 
 	// 2. Two-phase commit: try-confirm/cancel
-	return txID, t.twoPhaseCommit(ctx, txID, componentEntities), nil
+	return txID, t.twoPhaseCommit(ctx2, txID, componentEntities), nil
 }
 
 func (t *TXManager) backOffTick(tick time.Duration) time.Duration {
@@ -222,7 +222,7 @@ func (t *TXManager) advanceProgress(tx *Transaction) error {
 		if err != nil {
 			return err
 		}
-		if !resp.ACK {
+		if resp == nil || !resp.ACK {
 			return fmt.Errorf("component: %s ack failed", component.ComponentID)
 		}
 	}
@@ -250,7 +250,7 @@ func (t *TXManager) twoPhaseCommit(ctx context.Context, txID string, componentEn
 					Data:        componentEntity.Request,
 				})
 				// Any component try error or rejection triggers cancel, handled in advanceProgressByTXID
-				if err != nil || !resp.ACK {
+				if err != nil || resp == nil || !resp.ACK {
 					log.ErrorContextf(ctx2, "tx try failed, tx id: %s, component id: %s, err: %v", txID, componentEntity.Component.ID(), err)
 					// Update the transaction
 					if _err := t.txStore.TXUpdate(ctx2, txID, componentEntity.Component.ID(), false); _err != nil {
@@ -276,6 +276,12 @@ func (t *TXManager) twoPhaseCommit(ctx context.Context, txID string, componentEn
 		// If any try request fails, cancel all others
 		cancel()
 		successful = false
+	}
+
+	// Wait for the remaining try goroutines to finish, so that the transaction
+	// log is consistent before advancing progress (they may still be writing
+	// statuses concurrently).
+	for range errCh {
 	}
 
 	// Execute second phase; failures are tolerated and handled by the polling task

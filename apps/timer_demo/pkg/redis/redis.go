@@ -23,6 +23,7 @@ package redis
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/apps/timer_demo/common/conf"
@@ -74,6 +75,10 @@ func (c *Client) SetNX(ctx context.Context, key, value string, expireSeconds int
 
 // Eval executes a Lua script.
 func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
+	if keyCount < 0 || keyCount > len(keysAndArgs) {
+		return nil, fmt.Errorf("redis Eval invalid keyCount: %d, len of keysAndArgs: %d", keyCount, len(keysAndArgs))
+	}
+
 	keys := make([]string, 0, keyCount)
 	args := make([]any, 0, len(keysAndArgs)-keyCount)
 	for i, v := range keysAndArgs {
@@ -198,6 +203,8 @@ func (c *Client) Transaction(ctx context.Context, commands ...*Command) ([]any, 
 				key := cmd.Args[0].(string)
 				seconds := toInt64(cmd.Args[1])
 				pipe.Expire(ctx, key, time.Duration(seconds)*time.Second)
+			default:
+				return fmt.Errorf("unsupported redis command: %s", cmd.Name)
 			}
 		}
 		return nil

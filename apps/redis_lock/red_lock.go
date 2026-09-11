@@ -62,16 +62,25 @@ func NewRedLock(key string, confs []*SingleNodeConf, opts ...RedLockOption) (*Re
 
 func (r *RedLock) Lock(ctx context.Context) error {
 	var successCnt int
+	var acquired []*RedisLock
 	for _, lock := range r.locks {
 		startTime := time.Now()
 		err := lock.Lock(ctx)
 		cost := time.Since(startTime)
 		if err == nil && cost <= r.singleNodesTimeout {
 			successCnt++
+			acquired = append(acquired, lock)
 		}
 	}
 
 	if successCnt < len(r.locks)>>1+1 {
+		// Majority not reached: release the nodes that were acquired, otherwise
+		// they stay locked until their TTL expires.
+		// ctx may be the reason the acquire failed, so unlock with a live context.
+		unlockCtx := context.WithoutCancel(ctx)
+		for _, lock := range acquired {
+			_ = lock.Unlock(unlockCtx)
+		}
 		return errors.New("lock failed")
 	}
 

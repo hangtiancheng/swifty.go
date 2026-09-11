@@ -22,6 +22,7 @@ package consistent_cache
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/apps/consistent_cache/lib/log"
@@ -36,8 +37,10 @@ type Options struct {
 	disableExpireSeconds int64
 	// enableDelayMillis is the delay applied to re-enabling the read path after a write, in milliseconds.
 	enableDelayMillis int64
-	// randInst is the RNG used for TTL jitter.
+	// randInst is the RNG used for TTL jitter. Guarded by randMu, because
+	// rand.Rand is not safe for concurrent use.
 	randInst *rand.Rand
+	randMu   sync.Mutex
 	// logger handles diagnostic output.
 	logger Logger
 }
@@ -46,6 +49,9 @@ func (o *Options) CacheExpireSeconds() int64 {
 	if !o.cacheExpireRandomMode {
 		return o.cacheExpireSeconds
 	}
+
+	o.randMu.Lock()
+	defer o.randMu.Unlock()
 
 	// Jitter between 1x and 2x the base TTL.
 	return o.cacheExpireSeconds + o.randInst.Int63n(o.cacheExpireSeconds+1)

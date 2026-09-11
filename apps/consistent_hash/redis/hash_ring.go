@@ -281,13 +281,16 @@ func (r *RedisHashRing) AddNodeToDataKeys(ctx context.Context, nodeID string, da
 
 func (r *RedisHashRing) DeleteNodeToDataKeys(ctx context.Context, nodeID string, dataKeys map[string]struct{}) error {
 	resStr, err := r.redisClient.Get(ctx, r.getNodeDataKey(nodeID))
-	if err != nil {
-		return fmt.Errorf("redis ring addNodeToDataKey get failed, err: %w", err)
+	// A missing key just means there is nothing to delete, same as in AddNodeToDataKeys.
+	if err != nil && !errors.Is(err, go_redis.Nil) {
+		return fmt.Errorf("redis ring deleteNodeToDataKey get failed, err: %w", err)
 	}
 
 	var oldDataKeys map[string]struct{}
-	if err = json.Unmarshal([]byte(resStr), &oldDataKeys); err != nil {
-		return err
+	if len(resStr) > 0 {
+		if err = json.Unmarshal([]byte(resStr), &oldDataKeys); err != nil {
+			return err
+		}
 	}
 
 	for dataKey := range dataKeys {

@@ -30,6 +30,9 @@ type SafeChan struct {
 	ctx   context.Context
 	close func()
 	ch    chan any
+	// mu guards ch against sends racing with close: Put holds the read lock
+	// while sending, Close holds the write lock while closing the channel.
+	mu sync.RWMutex
 }
 
 func NewSafeChan(size int) *SafeChan {
@@ -41,8 +44,21 @@ func NewSafeChan(size int) *SafeChan {
 }
 
 func (s *SafeChan) Put(element any) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Check Done first, in its own select. Once the channel is closed, a
+	// send is "ready" and panics, and select picks randomly among ready
+	// cases, so the send case must not share a select with the Done case.
+	// Holding the read lock guarantees Close (which takes the write lock)
+	// cannot run between this check and the send below.
 	select {
 	case <-s.ctx.Done():
+		return
+	default:
+	}
+
+	select {
 	case s.ch <- element:
 	default:
 	}
@@ -58,6 +74,9 @@ func (s *SafeChan) Get() any {
 
 func (s *SafeChan) Close() {
 	s.Do(func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
 		s.close()
 		close(s.ch)
 	})

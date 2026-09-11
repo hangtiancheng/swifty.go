@@ -70,7 +70,11 @@ func (c *Client) SAdd(ctx context.Context, key, val string) (int, error) {
 // Eval runs the given Lua script. The first keyCount entries of keysAndArgs are KEYS, the rest are ARGV.
 func (c *Client) Eval(ctx context.Context, src string, keyCount int, keysAndArgs []any) (any, error) {
 	keys := make([]string, 0, keyCount)
-	args := make([]any, 0, len(keysAndArgs)-keyCount)
+	argsLen := len(keysAndArgs) - keyCount
+	if argsLen < 0 {
+		argsLen = 0
+	}
+	args := make([]any, 0, argsLen)
 	for i, v := range keysAndArgs {
 		if i < keyCount {
 			keys = append(keys, fmt.Sprintf("%v", v))

@@ -39,6 +39,8 @@ type memTableCompactItem struct {
 
 // compact runs the compaction goroutine.
 func (t *Tree) compact() {
+	defer close(t.compactDone)
+
 	for {
 		select {
 		// Tree shutdown signal: exit.
@@ -56,12 +58,20 @@ func (t *Tree) compact() {
 
 // compactLevel runs a sorted merge between level and level+1.
 func (t *Tree) compactLevel(level int) {
+	// A queued trigger may fire after the level was emptied by an earlier compaction.
+	if len(t.nodes[level]) == 0 {
+		return
+	}
+
 	// Pick the nodes to merge from level and level+1.
 	pickedNodes := t.pickCompactNodes(level)
 
 	// Create the sstWriter for the level+1 output.
 	seq := t.levelToSeq[level+1].Load() + 1
-	sstWriter, _ := NewSSTWriter(t.sstFile(level+1, seq), t.conf)
+	sstWriter, err := NewSSTWriter(t.sstFile(level+1, seq), t.conf)
+	if err != nil {
+		return
+	}
 	defer sstWriter.Close()
 
 	// Size limit for each level+1 sst file.
@@ -75,7 +85,10 @@ func (t *Tree) compactLevel(level int) {
 			size, blockToFilter, index := sstWriter.Finish()
 			t.insertNode(level+1, seq, size, blockToFilter, index)
 			seq = t.levelToSeq[level+1].Load() + 1
-			sstWriter, _ = NewSSTWriter(t.sstFile(level+1, seq), t.conf)
+			sstWriter, err = NewSSTWriter(t.sstFile(level+1, seq), t.conf)
+			if err != nil {
+				return
+			}
 			defer sstWriter.Close()
 		}
 
@@ -170,7 +183,9 @@ outer:
 		}
 	}
 
+	t.destroyWG.Add(1)
 	go func() {
+		defer t.destroyWG.Done()
 		// Destroy old nodes: close the sst reader and delete the sst file.
 		for _, node := range nodes {
 			node.Destroy()
@@ -181,7 +196,10 @@ outer:
 // compactMemTable flushes a read-only memtable to a level-0 sstable.
 func (t *Tree) compactMemTable(memCompactItem *memTableCompactItem) {
 	// 1. Flush the memtable to a level-0 sstable.
-	t.flushMemTable(memCompactItem.memTable)
+	if err := t.flushMemTable(memCompactItem.memTable); err != nil {
+		// Keep the item in rOnlyMemTable so its data stays readable and the wal is preserved.
+		return
+	}
 
 	// 2. Reclaim the memtable from the read-only slice.
 	t.dataLock.Lock()
@@ -190,6 +208,7 @@ func (t *Tree) compactMemTable(memCompactItem *memTableCompactItem) {
 			continue
 		}
 		t.rOnlyMemTable = t.rOnlyMemTable[i+1:]
+		break
 	}
 	t.dataLock.Unlock()
 
@@ -198,11 +217,14 @@ func (t *Tree) compactMemTable(memCompactItem *memTableCompactItem) {
 }
 
 // flushMemTable writes the memtable to a new level-0 sst file.
-func (t *Tree) flushMemTable(memTable memtable.MemTable) {
+func (t *Tree) flushMemTable(memTable memtable.MemTable) error {
 	seq := t.levelToSeq[0].Load() + 1
 
 	// Create the sst writer.
-	sstWriter, _ := NewSSTWriter(t.sstFile(0, seq), t.conf)
+	sstWriter, err := NewSSTWriter(t.sstFile(0, seq), t.conf)
+	if err != nil {
+		return err
+	}
 	defer sstWriter.Close()
 
 	// Write all memtable entries to the sst writer.
@@ -217,6 +239,7 @@ func (t *Tree) flushMemTable(memTable memtable.MemTable) {
 	t.insertNode(0, seq, size, blockToFilter, index)
 	// Try to trigger compaction.
 	t.tryTriggerCompact(0)
+	return nil
 }
 
 func (t *Tree) tryTriggerCompact(level int) {
@@ -235,7 +258,11 @@ func (t *Tree) tryTriggerCompact(level int) {
 	}
 
 	go func() {
-		t.levelCompactC <- level
+		select {
+		case t.levelCompactC <- level:
+		// Tree closed before the trigger was handed over: give up instead of leaking.
+		case <-t.stopChan:
+		}
 	}()
 }
 
@@ -275,7 +302,10 @@ func (t *Tree) insertNodeWithReader(sstReader *SSTReader, level int, seq int32, 
 
 func (t *Tree) insertNode(level int, seq int32, size uint64, blockToFilter map[uint64][]byte, index []*Index) {
 	file := t.sstFile(level, seq)
-	sstReader, _ := NewSSTReader(file, t.conf)
+	sstReader, err := NewSSTReader(file, t.conf)
+	if err != nil {
+		return
+	}
 
 	t.insertNodeWithReader(sstReader, level, seq, size, blockToFilter, index)
 }

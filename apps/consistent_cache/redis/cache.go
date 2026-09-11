@@ -50,7 +50,7 @@ func NewRedisCache(config *Config) *Cache {
 // Enable re-enables the read-path write cache for a key by expiring the disable marker shortly.
 // The disable marker is considered absent once it expires, which means the read path is enabled.
 func (c *Cache) Enable(ctx context.Context, key string, delayMillis int64) error {
-	return c.client.PExpire(ctx, key, delayMillis)
+	return c.client.PExpire(ctx, c.disableKey(key), delayMillis)
 }
 
 // Disable turns off the read-path write cache for a key by setting a short-lived disable marker.

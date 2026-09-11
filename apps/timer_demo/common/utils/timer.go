@@ -39,8 +39,15 @@ func SplitTimerIDUnix(str string) (uint, int64, error) {
 		return 0, 0, fmt.Errorf("invalid timerID unix str: %s", str)
 	}
 
-	timerID, _ := strconv.ParseInt(timerIDUnix[0], 10, 64)
-	unix, _ := strconv.ParseInt(timerIDUnix[1], 10, 64)
+	timerID, err := strconv.ParseUint(timerIDUnix[0], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid timerID in str: %s, err: %w", str, err)
+	}
+
+	unix, err := strconv.ParseInt(timerIDUnix[1], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid unix in str: %s, err: %w", str, err)
+	}
 	return uint(timerID), unix, nil
 }
 

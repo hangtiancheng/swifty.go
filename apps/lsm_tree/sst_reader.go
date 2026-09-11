@@ -28,6 +28,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync"
 )
 
 // KV is a key-value pair.
@@ -45,6 +46,10 @@ type SSTReader struct {
 	filterSize   uint64        // filter-block size in bytes
 	indexOffset  uint64        // index-block offset within the sstable
 	indexSize    uint64        // index-block size in bytes
+
+	// mu serializes file reads: the file offset and buffered reader are shared
+	// state, and readers may run concurrently (per-level locks are read locks).
+	mu sync.Mutex
 }
 
 // NewSSTReader opens an sstable for reading.
@@ -63,8 +68,11 @@ func NewSSTReader(file string, conf *Config) (*SSTReader, error) {
 
 // Size returns the sstable data size in bytes.
 func (s *SSTReader) Size() (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.indexOffset == 0 {
-		if err := s.ReadFooter(); err != nil {
+		if err := s.readFooterLocked(); err != nil {
 			return 0, err
 		}
 	}
@@ -72,12 +80,23 @@ func (s *SSTReader) Size() (uint64, error) {
 }
 
 func (s *SSTReader) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.reader.Reset(s.src)
 	_ = s.src.Close()
 }
 
 // ReadFooter reads the sstable footer and populates the reader fields.
 func (s *SSTReader) ReadFooter() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.readFooterLocked()
+}
+
+// readFooterLocked reads the sstable footer; s.mu must be held.
+func (s *SSTReader) readFooterLocked() error {
 	// Seek back from the end by the footer size.
 	if _, err := s.src.Seek(-int64(s.conf.SSTFooterSize), io.SeekEnd); err != nil {
 		return err
@@ -107,15 +126,18 @@ func (s *SSTReader) ReadFooter() error {
 
 // ReadFilter reads the filter block.
 func (s *SSTReader) ReadFilter() (map[uint64][]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Load the footer first if needed.
 	if s.filterOffset == 0 || s.filterSize == 0 {
-		if err := s.ReadFooter(); err != nil {
+		if err := s.readFooterLocked(); err != nil {
 			return nil, err
 		}
 	}
 
 	// Read the filter-block content.
-	filterBlock, err := s.ReadBlock(s.filterOffset, s.filterSize)
+	filterBlock, err := s.readBlockLocked(s.filterOffset, s.filterSize)
 	if err != nil {
 		return nil, err
 	}
@@ -126,15 +148,18 @@ func (s *SSTReader) ReadFilter() (map[uint64][]byte, error) {
 
 // ReadIndex reads the index block.
 func (s *SSTReader) ReadIndex() ([]*Index, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Load the footer first if needed.
 	if s.indexOffset == 0 || s.indexSize == 0 {
-		if err := s.ReadFooter(); err != nil {
+		if err := s.readFooterLocked(); err != nil {
 			return nil, err
 		}
 	}
 
 	// Read the index-block content.
-	indexBlock, err := s.ReadBlock(s.indexOffset, s.indexSize)
+	indexBlock, err := s.readBlockLocked(s.indexOffset, s.indexSize)
 	if err != nil {
 		return nil, err
 	}
@@ -145,15 +170,18 @@ func (s *SSTReader) ReadIndex() ([]*Index, error) {
 
 // ReadData reads all key-value pairs from the sstable.
 func (s *SSTReader) ReadData() ([]*KV, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Load the footer first if needed.
 	if s.indexOffset == 0 || s.indexSize == 0 || s.filterOffset == 0 || s.filterSize == 0 {
-		if err := s.ReadFooter(); err != nil {
+		if err := s.readFooterLocked(); err != nil {
 			return nil, err
 		}
 	}
 
 	// Read all data blocks.
-	dataBlock, err := s.ReadBlock(0, s.filterOffset)
+	dataBlock, err := s.readBlockLocked(0, s.filterOffset)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +192,14 @@ func (s *SSTReader) ReadData() ([]*KV, error) {
 
 // ReadBlock reads a block at the given offset and size.
 func (s *SSTReader) ReadBlock(offset, size uint64) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.readBlockLocked(offset, size)
+}
+
+// readBlockLocked reads a block at the given offset and size; s.mu must be held.
+func (s *SSTReader) readBlockLocked(offset, size uint64) ([]byte, error) {
 	// Seek to the start offset.
 	if _, err := s.src.Seek(int64(offset), io.SeekStart); err != nil {
 		return nil, err

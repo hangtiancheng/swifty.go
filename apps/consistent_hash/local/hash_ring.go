@@ -78,6 +78,10 @@ func (l *LockEntityV2) Unlock(ctx context.Context) error {
 // SkiplistHashRing is a local in-memory hash ring backed by a skip list.
 type SkiplistHashRing struct {
 	LockEntity
+	// mu guards the ring state below. It is independent of the lease held via
+	// Lock/Unlock, so the ring stays race-free even when the lease TTL expires
+	// mid-operation and another goroutine starts mutating concurrently.
+	mu   sync.RWMutex
 	root *virtualNode
 	// nodeToReplicas maps each node to its virtual-node count.
 	nodeToReplicas map[string]int
@@ -109,11 +113,13 @@ type virtualNode struct {
 
 // Lock acquires the hash-ring lock with the given TTL. The lock auto-releases on expiry.
 func (s *SkiplistHashRing) Lock(ctx context.Context, expireSeconds int) error {
-	// Hold the lock for the specified duration only.
+	// Acquire the ring mutex before doubleLock: unlock (and the TTL watchdog)
+	// needs doubleLock, so blocking on the ring mutex while holding doubleLock
+	// would deadlock as soon as two goroutines contend for the lock.
+	s.lock.Lock()
 	s.doubleLock.Lock()
 	defer s.doubleLock.Unlock()
 
-	s.lock.Lock()
 	token := os.GetCurrentProcessAndGoroutineIDStr()
 	s.owner.Store(token)
 	if expireSeconds <= 0 {
@@ -161,6 +167,9 @@ func (s *SkiplistHashRing) Unlock(ctx context.Context) error {
 }
 
 func (s *SkiplistHashRing) Add(ctx context.Context, score int32, nodeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	targetNode, ok := s.get(score)
 	if ok {
 		if slices.Contains(targetNode.nodeIDs, nodeID) {
@@ -196,6 +205,9 @@ func (s *SkiplistHashRing) Add(ctx context.Context, score int32, nodeID string) 
 }
 
 func (s *SkiplistHashRing) Ceiling(ctx context.Context, score int32) (int32, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	target, ok := s.ceiling(score)
 	if ok {
 		return target, nil
@@ -206,6 +218,9 @@ func (s *SkiplistHashRing) Ceiling(ctx context.Context, score int32) (int32, err
 }
 
 func (s *SkiplistHashRing) Floor(ctx context.Context, score int32) (int32, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	target, ok := s.floor(score)
 	if ok {
 		return target, nil
@@ -216,6 +231,9 @@ func (s *SkiplistHashRing) Floor(ctx context.Context, score int32) (int32, error
 }
 
 func (s *SkiplistHashRing) Rem(ctx context.Context, score int32, nodeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	targetNode, ok := s.get(score)
 	if !ok {
 		return fmt.Errorf("score: %d not exist", score)
@@ -264,32 +282,68 @@ func (s *SkiplistHashRing) Rem(ctx context.Context, score int32, nodeID string) 
 }
 
 func (s *SkiplistHashRing) Nodes(ctx context.Context) (map[string]int, error) {
-	return s.nodeToReplicas, nil
+	// Return a copy so callers can iterate it while the ring mutates.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	nodes := make(map[string]int, len(s.nodeToReplicas))
+	for node, replicas := range s.nodeToReplicas {
+		nodes[node] = replicas
+	}
+	return nodes, nil
 }
 
 func (s *SkiplistHashRing) AddNodeToReplica(ctx context.Context, nodeID string, replicas int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.nodeToReplicas[nodeID] = replicas
 	return nil
 }
 
 func (s *SkiplistHashRing) DeleteNodeToReplica(ctx context.Context, nodeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	delete(s.nodeToReplicas, nodeID)
 	return nil
 }
 
 func (s *SkiplistHashRing) Node(ctx context.Context, score int32) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	targetNode, ok := s.get(score)
 	if !ok {
 		return nil, fmt.Errorf("score: %d not exist", score)
 	}
-	return targetNode.nodeIDs, nil
+	// Return a copy: the caller keeps reading the list while a concurrent Rem
+	// may shift the original backing array.
+	nodeIDs := make([]string, len(targetNode.nodeIDs))
+	copy(nodeIDs, targetNode.nodeIDs)
+	return nodeIDs, nil
 }
 
 func (s *SkiplistHashRing) DataKeys(ctx context.Context, nodeID string) (map[string]struct{}, error) {
-	return s.nodeToDataKey[nodeID], nil
+	// Return a copy so callers can iterate it while the ring mutates.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	dataKeys := s.nodeToDataKey[nodeID]
+	if dataKeys == nil {
+		return nil, nil
+	}
+	copied := make(map[string]struct{}, len(dataKeys))
+	for dataKey := range dataKeys {
+		copied[dataKey] = struct{}{}
+	}
+	return copied, nil
 }
 
 func (s *SkiplistHashRing) AddNodeToDataKeys(ctx context.Context, nodeID string, dataKeys map[string]struct{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	oldDataKeys := s.nodeToDataKey[nodeID]
 	if oldDataKeys == nil {
 		oldDataKeys = make(map[string]struct{})
@@ -302,6 +356,9 @@ func (s *SkiplistHashRing) AddNodeToDataKeys(ctx context.Context, nodeID string,
 }
 
 func (s *SkiplistHashRing) DeleteNodeToDataKeys(ctx context.Context, nodeID string, dataKeys map[string]struct{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	oldDataKeys := s.nodeToDataKey[nodeID]
 	if oldDataKeys == nil {
 		return nil

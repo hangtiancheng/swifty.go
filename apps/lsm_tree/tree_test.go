@@ -30,7 +30,7 @@ import (
 
 func Test_LSM_UseCase(t *testing.T) {
 	// 1. Build the config.
-	conf, _ := NewConfig("./lsm", // directory for sst files
+	conf, _ := NewConfig(t.TempDir(), // directory for sst files
 		WithMaxLevel(7),               // 7-level lsm tree
 		WithSSTSize(1024*1024),        // level-0 sstable size: 1MB
 		WithSSTDataBlockSize(16*1024), // sstable block size: 16KB
@@ -38,7 +38,11 @@ func Test_LSM_UseCase(t *testing.T) {
 	)
 
 	// 2. Create the lsm tree.
-	lsmTree, _ := NewTree(conf)
+	lsmTree, err := NewTree(conf)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	defer lsmTree.Close()
 
 	// 3. Write data.
@@ -52,7 +56,7 @@ func Test_LSM_UseCase(t *testing.T) {
 
 func Test_LSM(t *testing.T) {
 	// Build the config.
-	conf, err := NewConfig("./lsm", // directory for sst files
+	conf, err := NewConfig(t.TempDir(), // directory for sst files
 		WithMaxLevel(7),              // 7-level lsm tree
 		WithSSTSize(32*1024),         // level-0 sstable size: 32KB
 		WithSSTDataBlockSize(2*1024), // sstable block size: 2KB

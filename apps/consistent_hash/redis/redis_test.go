@@ -31,7 +31,16 @@ const (
 	password = "please fill in redis password, empty string if none"
 )
 
+// skipWithoutRedis skips the test when the redis address is still the placeholder.
+func skipWithoutRedis(t *testing.T) {
+	t.Helper()
+	if address == "please fill in redis address {ip}:{port}" {
+		t.Skip("fill in a real redis address to run this test")
+	}
+}
+
 func Test_ZRangeByScore(t *testing.T) {
+	skipWithoutRedis(t)
 	client := NewClient(network, address, password)
 	ctx := context.Background()
 	scoreEntity, err := client.ZRangeByScore(ctx, "my_zset", 1, 1)
@@ -43,6 +52,7 @@ func Test_ZRangeByScore(t *testing.T) {
 }
 
 func Test_Ceiling(t *testing.T) {
+	skipWithoutRedis(t)
 	client := NewClient(network, address, password)
 	ctx := context.Background()
 	scoreEntity, err := client.Ceiling(ctx, "my_zset", 3)
@@ -54,6 +64,7 @@ func Test_Ceiling(t *testing.T) {
 }
 
 func Test_Floor(t *testing.T) {
+	skipWithoutRedis(t)
 	client := NewClient(network, address, password)
 	ctx := context.Background()
 	scoreEntity, err := client.Floor(ctx, "my_zset", 0)
@@ -65,6 +76,7 @@ func Test_Floor(t *testing.T) {
 }
 
 func Test_Last(t *testing.T) {
+	skipWithoutRedis(t)
 	client := NewClient(network, address, password)
 	ctx := context.Background()
 	scoreEntity, err := client.FirstOrLast(ctx, "my_zset", false)
@@ -76,6 +88,7 @@ func Test_Last(t *testing.T) {
 }
 
 func Test_HGetAll(t *testing.T) {
+	skipWithoutRedis(t)
 	client := NewClient(network, address, password)
 	ctx := context.Background()
 	res, err := client.HGetAll(ctx, "my_hset")

@@ -155,6 +155,12 @@ func (r *raft) Step(m Message) error {
 		if r.state == StateLeader {
 			break
 		}
+		// A node that is no longer a cluster member must not campaign:
+		// becoming leader with an empty progress map would nil-deref its own
+		// Progress in appendEntry
+		if !r.promotable(r.id) {
+			break
+		}
 		// Cannot campaign with unapplied configuration changes
 		entries, err := r.raftLog.slice(r.raftLog.applyIndex+1, r.raftLog.commitIndex+1)
 		if err != nil {
@@ -218,7 +224,12 @@ func (r *raft) reset(term uint64) {
 }
 
 func (r *raft) resetRandomizedElectionTimeout() {
-	r.randomizedElectionTimeout = r.electionTimeout + int32(rand.Intn(int(r.electionTimeout)))
+	// Guard against a zero/negative election tick so rand.Intn cannot panic
+	n := r.electionTimeout
+	if n <= 0 {
+		n = 1
+	}
+	r.randomizedElectionTimeout = n + int32(rand.Intn(int(n)))
 }
 
 func (r *raft) softState() *SoftState {

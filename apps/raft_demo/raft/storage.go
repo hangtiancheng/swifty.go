@@ -59,6 +59,8 @@ func NewMemoryStorage() *MemoryStorage {
 }
 
 func (m *MemoryStorage) InitialState() (HardState, ConfState, error) {
+	m.Lock()
+	defer m.Unlock()
 	return m.hardState, ConfState{}, nil
 }
 

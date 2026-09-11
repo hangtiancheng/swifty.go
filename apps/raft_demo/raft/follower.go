@@ -83,6 +83,9 @@ func (r *raft) handleAppendEntries(m Message) {
 }
 
 func (r *raft) handleHeartbeat(m Message) {
-	r.raftLog.commitTo(m.CommitIndex)
+	// Clamp to the local last index: a reordered or stale heartbeat may carry
+	// a commit index the local log has not replicated yet, and commitTo would
+	// panic on it
+	r.raftLog.commitTo(min(m.CommitIndex, r.raftLog.lastIndex()))
 	r.send(Message{To: m.From, Type: MsgHeartbeatResp, Context: m.Context})
 }

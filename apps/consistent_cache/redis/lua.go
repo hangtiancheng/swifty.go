@@ -30,9 +30,8 @@ const (
 	end
 	local key = KEYS[2];
 	local value = ARGV[1];
-	redis.call("set",key,value);
 	local cache_expire_seconds = tonumber(ARGV[2]);
-	redis.call("expire",key,cache_expire_seconds);
+	redis.call("set",key,value,"ex",cache_expire_seconds);
 	return 1;
 `
 )

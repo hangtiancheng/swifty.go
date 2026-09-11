@@ -28,10 +28,11 @@ import (
 )
 
 type taskElement struct {
-	task  func()
-	pos   int
-	cycle int
-	key   string
+	task      func()
+	pos       int
+	cycle     int
+	key       string
+	executeAt time.Time
 }
 
 type TimeWheel struct {
@@ -78,17 +79,24 @@ func (t *TimeWheel) Stop() {
 }
 
 func (t *TimeWheel) AddTask(key string, task func(), executeAt time.Time) {
-	pos, cycle := t.getPosAndCircle(executeAt)
-	t.addTaskCh <- &taskElement{
-		pos:   pos,
-		cycle: cycle,
-		task:  task,
-		key:   key,
+	select {
+	case <-t.stopChan:
+		// The wheel is stopped: drop the task instead of blocking forever.
+		return
+	case t.addTaskCh <- &taskElement{
+		task:      task,
+		key:       key,
+		executeAt: executeAt,
+	}:
 	}
 }
 
 func (t *TimeWheel) RemoveTask(key string) {
-	t.removeTaskCh <- key
+	select {
+	case <-t.stopChan:
+		return
+	case t.removeTaskCh <- key:
+	}
 }
 
 func (t *TimeWheel) run() {
@@ -148,12 +156,19 @@ func (t *TimeWheel) execute(l *list.List) {
 
 func (t *TimeWheel) getPosAndCircle(executeAt time.Time) (int, int) {
 	delay := int(time.Until(executeAt))
+	// A past-due deadline must not produce a negative slot index.
+	if delay < 0 {
+		delay = 0
+	}
 	cycle := delay / (len(t.slots) * int(t.interval))
 	pos := (t.curSlot + delay/int(t.interval)) % len(t.slots)
 	return pos, cycle
 }
 
 func (t *TimeWheel) addTask(task *taskElement) {
+	// Compute the slot here, inside the run goroutine, so curSlot is never
+	// read concurrently with circularIncr advancing it.
+	task.pos, task.cycle = t.getPosAndCircle(task.executeAt)
 	list := t.slots[task.pos]
 	if _, ok := t.keyToETask[task.key]; ok {
 		t.removeTask(task.key)

@@ -55,8 +55,19 @@ func (d *DemoDeadLetterMailbox) Deliver(ctx context.Context, msg *redis.MsgEntit
 	return nil
 }
 
+// skipWithoutRedis skips the integration tests until the connection
+// constants above are filled in with a real redis.
+func skipWithoutRedis(t *testing.T) {
+	t.Helper()
+	if address == "please fill in redis address" {
+		t.Skip("redis address not configured, fill in the placeholders to run the integration tests")
+	}
+}
+
 func Test_Consumer(t *testing.T) {
+	skipWithoutRedis(t)
 	client := redis.NewClient(network, address, password)
+	defer client.Close()
 
 	// Message handler.
 	callbackFunc := func(ctx context.Context, msg *redis.MsgEntity) error {

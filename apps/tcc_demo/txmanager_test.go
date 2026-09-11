@@ -118,6 +118,24 @@ func (m *mockTXStore) TXSubmit(ctx context.Context, txID string, success bool) e
 	return nil
 }
 
+// copyTransaction returns a deep copy so that readers outside the store lock
+// never share mutable state with concurrent TXUpdate writers.
+func copyTransaction(tx *Transaction) *Transaction {
+	components := make([]*ComponentTryEntity, 0, len(tx.Components))
+	for _, component := range tx.Components {
+		components = append(components, &ComponentTryEntity{
+			ComponentID: component.ComponentID,
+			TryStatus:   component.TryStatus,
+		})
+	}
+	return &Transaction{
+		TXID:       tx.TXID,
+		Status:     tx.Status,
+		CreatedAt:  tx.CreatedAt,
+		Components: components,
+	}
+}
+
 // Retrieves all incomplete transactions
 func (m *mockTXStore) GetHangingTXs(ctx context.Context) ([]*Transaction, error) {
 	m.mutex.Lock()
@@ -127,7 +145,7 @@ func (m *mockTXStore) GetHangingTXs(ctx context.Context) ([]*Transaction, error)
 		if tx.Status != TXHanging {
 			continue
 		}
-		hangingTXs = append(hangingTXs, tx)
+		hangingTXs = append(hangingTXs, copyTransaction(tx))
 	}
 	return hangingTXs, nil
 }
@@ -140,7 +158,7 @@ func (m *mockTXStore) GetTX(ctx context.Context, txID string) (*Transaction, err
 	if !ok {
 		return nil, fmt.Errorf("[GetTX]invalid txid: %s", txID)
 	}
-	return tx, nil
+	return copyTransaction(tx), nil
 }
 
 // Locks the entire TXStore module

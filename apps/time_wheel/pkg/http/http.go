@@ -51,7 +51,10 @@ func (c *Client) JSONPost(ctx context.Context, url string, header map[string]str
 func (c *Client) JSONDo(ctx context.Context, method, url string, header map[string]string, req, resp any) error {
 	var reqReader io.Reader
 	if req != nil {
-		body, _ := json.Marshal(req)
+		body, err := json.Marshal(req)
+		if err != nil {
+			return err
+		}
 		reqReader = bytes.NewReader(body)
 	}
 
@@ -99,6 +102,7 @@ func getCompleteURL(origin string, params map[string]string) string {
 		values.Add(k, v)
 	}
 
-	queriesStr, _ := url.QueryUnescape(values.Encode())
-	return fmt.Sprintf("%s?%s", origin, queriesStr)
+	// values.Encode() is already a valid query string; unescaping it would
+	// corrupt values (e.g. "+"-encoded spaces).
+	return fmt.Sprintf("%s?%s", origin, values.Encode())
 }

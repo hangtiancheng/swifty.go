@@ -61,6 +61,11 @@ func (n *Node) GetAll() ([]*KV, error) {
 
 // Get looks up a key in the node.
 func (n *Node) Get(key []byte) ([]byte, bool, error) {
+	// An empty index means the sstable has no entries.
+	if len(n.index) == 0 {
+		return nil, false, nil
+	}
+
 	// Locate the block via the index.
 	index, ok := n.binarySearchIndex(key, 0, len(n.index)-1)
 	if !ok {
@@ -69,6 +74,9 @@ func (n *Node) Get(key []byte) ([]byte, bool, error) {
 
 	// Use the bloom filter to check if the key may exist.
 	bitmap := n.blockToFilter[index.PrevBlockOffset]
+	if bitmap == nil {
+		return nil, false, nil
+	}
 	if ok = n.conf.Filter.Exist(bitmap, key); !ok {
 		return nil, false, nil
 	}

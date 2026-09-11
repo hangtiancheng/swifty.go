@@ -49,19 +49,28 @@ func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 		v, err := io.ReadAll(r.Body)
 		if err != nil {
-			panic(err)
+			http.Error(w, "read request body: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
 		s.kvStore.Propose(url, string(v))
 
 	case http.MethodPost:
 		v, err := io.ReadAll(r.Body)
 		if err != nil {
-			panic(err)
+			http.Error(w, "read request body: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
 
+		// The node id is the path without the leading slash; reject requests
+		// without one instead of slicing out of range
+		if len(url) < 2 {
+			http.Error(w, "missing node id", http.StatusBadRequest)
+			return
+		}
 		nodeID, err := strconv.ParseUint(url[1:], 0, 64)
 		if err != nil {
-			panic(err)
+			http.Error(w, "invalid node id: "+err.Error(), http.StatusBadRequest)
+			return
 		}
 		s.confChangeC <- raft.ConfChange{
 			NodeID:  nodeID,
