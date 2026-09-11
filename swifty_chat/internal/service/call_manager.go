@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -126,13 +127,8 @@ func CanSeeCallRoom(ctx context.Context, roomId, uuid string) bool {
 	if Calls.InRoom(roomId, uuid) {
 		return true
 	}
-	if strings.HasPrefix(roomId, "P:") {
-		for _, part := range strings.Split(strings.TrimPrefix(roomId, "P:"), ":") {
-			if part == uuid {
-				return true
-			}
-		}
-		return false
+	if pair, ok := strings.CutPrefix(roomId, "P:"); ok {
+		return slices.Contains(strings.Split(pair, ":"), uuid)
 	}
 	if roomId[0] != 'G' {
 		return false
@@ -141,10 +137,5 @@ func CanSeeCallRoom(ctx context.Context, roomId, uuid string) bool {
 	if err := dao.ActiveQuery(&group).Where("uuid", roomId).First(ctx, &group); err != nil {
 		return false
 	}
-	for _, member := range group.Members {
-		if member == uuid {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(group.Members, uuid)
 }
