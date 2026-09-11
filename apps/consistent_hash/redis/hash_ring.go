@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/hangtiancheng/swifty.go/apps/redis_lock"
@@ -87,10 +88,8 @@ func (r *RedisHashRing) Add(ctx context.Context, score int32, nodeID string) err
 		if err = json.Unmarshal([]byte(scoreEntities[0].Val), &nodeIDs); err != nil {
 			return err
 		}
-		for _, _nodeID := range nodeIDs {
-			if _nodeID == nodeID {
-				return nil
-			}
+		if slices.Contains(nodeIDs, nodeID) {
+			return nil
 		}
 
 		if err = r.redisClient.ZRem(ctx, r.getTableKey(), scoreEntities[0].Score); err != nil {

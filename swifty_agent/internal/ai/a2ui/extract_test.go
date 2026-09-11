@@ -106,16 +106,16 @@ func TestStreamFilterChunkInvariance(t *testing.T) {
 
 	splitRun := func(size int) (string, []string) {
 		f := NewStreamFilter()
-		var text string
+		var text strings.Builder
 		var blocks []string
 		for i := 0; i < len(input); i += size {
 			end := min(i+size, len(input))
 			tx, bs := f.Push(input[i:end])
-			text += tx
+			text.WriteString(tx)
 			blocks = append(blocks, bs...)
 		}
-		text += f.Flush()
-		return text, blocks
+		text.WriteString(f.Flush())
+		return text.String(), blocks
 	}
 
 	wantText := "Intro text.  tail text."

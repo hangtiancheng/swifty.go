@@ -113,7 +113,7 @@ func (t *Tree) loadNode(sstEntry fs.DirEntry) error {
 }
 
 func getLevelSeqFromSSTFile(file string) (level int, seq int32) {
-	file = strings.Replace(file, ".sst", "", -1)
+	file = strings.ReplaceAll(file, ".sst", "")
 	arr := strings.Split(file, "_")
 	level, _ = strconv.Atoi(arr[0])
 	_seq, _ := strconv.Atoi(arr[1])
@@ -160,7 +160,7 @@ func (t *Tree) restoreMemTable(wals []fs.DirEntry) error {
 	})
 
 	// 2. Restore each memtable.
-	for i := 0; i < len(wals); i++ {
+	for i := range wals {
 		name := wals[i].Name()
 		file := path.Join(t.conf.Dir, "walfile", name)
 

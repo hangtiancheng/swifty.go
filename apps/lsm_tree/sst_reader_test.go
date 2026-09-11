@@ -131,7 +131,7 @@ func assertIndexEqual(expect, got []*Index) error {
 		return fmt.Errorf("expect len: %d, got len: %d", len(expect), len(got))
 	}
 
-	for i := 0; i < len(expect); i++ {
+	for i := range expect {
 		if !bytes.Equal(expect[i].Key, got[i].Key) {
 			return fmt.Errorf("index: %d, expect key: %s, got key: %s", i, expect[i].Key, got[i].Key)
 		}
@@ -152,7 +152,7 @@ func assertDataEqual(expect, got []*KV) error {
 		return fmt.Errorf("expect len: %d, got len: %d", len(expect), len(got))
 	}
 
-	for i := 0; i < len(expect); i++ {
+	for i := range expect {
 		if !bytes.Equal(expect[i].Key, got[i].Key) {
 			return fmt.Errorf("data: %d, data key: %s, got key: %s", i, expect[i].Key, got[i].Key)
 		}

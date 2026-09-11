@@ -252,7 +252,7 @@ func Test_txmanager_transaction_success(t *testing.T) {
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)
@@ -291,7 +291,7 @@ func Test_txmanager_transaction_fail(t *testing.T) {
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)
@@ -330,7 +330,7 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 
 	// Register 10 components
 	componentsCnt := 10
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)
@@ -343,10 +343,8 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 	concurrentTXs := 100
 	componentReqCnt := 3
 	var wg sync.WaitGroup
-	for i := 0; i < concurrentTXs; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range concurrentTXs {
+		wg.Go(func() {
 			randInst := rand.New(rand.NewSource(time.Now().UnixNano()))
 			componentSet := make(map[string]struct{}, componentReqCnt)
 			for len(componentSet) < componentReqCnt {
@@ -377,7 +375,7 @@ func Test_txmanager_transaction_concurrent(t *testing.T) {
 			if tx.Status != TXSuccessful {
 				t.Errorf("expected %s, got %s", TXSuccessful, tx.Status)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -391,7 +389,7 @@ func Test_txmanager_transaction_advance_progress(t *testing.T) {
 	componentsCnt := 5
 	componentReqs := make([]*RequestEntity, 0, componentsCnt)
 	ctx := context.Background()
-	for i := 0; i < componentsCnt; i++ {
+	for i := range componentsCnt {
 		componentID := strconv.Itoa(i)
 		if err := txmanager.Register(newMockComponent(componentID)); err != nil {
 			t.Error(err)

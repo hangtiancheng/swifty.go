@@ -133,11 +133,9 @@ func (bf *BloomFilter) bitmap(k uint8) []byte {
 // bestK derives the optimal k from m and n.
 func (bf *BloomFilter) bestK() uint8 {
 	// Optimal k formula: k = ln2 * m / n  (m = bitmap length, n = key count)
-	k := uint8(69 * bf.m / 100 / len(bf.hashedKeys))
-	// k in [1, 30]
-	if k < 1 {
-		k = 1
-	}
+	k := max(
+		// k in [1, 30]
+		uint8(69*bf.m/100/len(bf.hashedKeys)), 1)
 	if k > 30 {
 		k = 30
 	}

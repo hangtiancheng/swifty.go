@@ -132,7 +132,7 @@ func (h *Handler) handleDroplet(ctx context.Context, conn io.ReadWriter, droplet
 }
 
 func (h *Handler) Close() {
-	h.Once.Do(func() {
+	h.Do(func() {
 		h.logger.Warnf("[handler]handler closing...")
 		h.closed.Store(true)
 		h.mu.RLock()

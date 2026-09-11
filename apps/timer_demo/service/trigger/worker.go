@@ -82,17 +82,15 @@ func (w *Worker) Work(ctx context.Context, minuteBucketKey string, ack func()) e
 	defer notifier.Close()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		// log.InfoContextf(ctx, "trigger_2 start: %v", time.Now())
 		// defer func() {
 		// 	log.InfoContextf(ctx, "trigger_2 end: %v", time.Now())
 		// }()
-		defer wg.Done()
 		if err := w.handleBatch(ctx, minuteBucketKey, startTime, startTime.Add(time.Duration(conf.ZRangeGapSeconds)*time.Second)); err != nil {
 			notifier.Put(err)
 		}
-	}()
+	})
 	for range ticker.C {
 		select {
 		case e := <-notifier.GetChan():
@@ -150,7 +148,6 @@ func (w *Worker) handleBatch(ctx context.Context, key string, start, end time.Ti
 	}
 	// log.InfoContextf(ctx, "key: %s, get tasks: %+v, start: %v, end: %v", key, timerIDs, start, end)
 	for _, task := range tasks {
-		task := task
 		if err := w.pool.Submit(func() {
 			// log.InfoContextf(ctx, "trigger_3 start: %v", time.Now())
 			// defer func() {

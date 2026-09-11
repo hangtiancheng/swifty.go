@@ -23,7 +23,7 @@ package datastore
 import (
 	"math/rand"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -35,7 +35,7 @@ func Test_list_crud(t *testing.T) {
 	list := newListEntity("")
 	l := make([][]byte, 0, 1000)
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		member1 := randInst.Intn(1000)
 		member2 := randInst.Intn(1000)
 		list.LPush([]byte(strconv.Itoa(member1)))
@@ -45,7 +45,7 @@ func Test_list_crud(t *testing.T) {
 	}
 
 	t.Run("range", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			start := randInst.Intn(1001)
 			end := start + randInst.Intn(1000)
 			actual := list.Range(int64(start), int64(end))
@@ -57,7 +57,7 @@ func Test_list_crud(t *testing.T) {
 	})
 
 	t.Run("pop", func(t *testing.T) {
-		for i := 0; i < 500; i++ {
+		for range 500 {
 			actual := list.LPop(2)
 			expect := l[:2]
 			l = l[2:]
@@ -80,7 +80,7 @@ func Test_list_to_cmds(t *testing.T) {
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	l := make([]int, 0, 1000)
 	// Insert 1000 entries.
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		member := randInst.Intn(1000)
 		list.LPush([]byte(strconv.Itoa(member)))
 		l = append(l, member)
@@ -98,7 +98,7 @@ func Test_list_to_cmds(t *testing.T) {
 		}
 	})
 	t.Run("key", func(t *testing.T) {
-		if "" != string(cmd[1]) {
+		if string(cmd[1]) != "" {
 			t.Errorf("key, expect: empty, got: %s", string(cmd[1]))
 		}
 	})
@@ -108,14 +108,10 @@ func Test_list_to_cmds(t *testing.T) {
 		v, _ := strconv.Atoi(string(cmd[i]))
 		actual = append(actual, v)
 	}
-	sort.Slice(actual, func(i, j int) bool {
-		return actual[i] < actual[j]
-	})
+	slices.Sort(actual)
 
 	expect := l
-	sort.Slice(expect, func(i, j int) bool {
-		return expect[i] < expect[j]
-	})
+	slices.Sort(expect)
 
 	t.Run("member", func(t *testing.T) {
 		if !reflect.DeepEqual(expect, actual) {

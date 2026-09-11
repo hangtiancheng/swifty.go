@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,7 +37,7 @@ import (
 func Test_skiplist_add_rem_range(t *testing.T) {
 	skiplist := newSkiplist("")
 	// Add 1000 entries.
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		skiplist.Add(int64(i), fmt.Sprintf("%d_0", i))
 		skiplist.Add(int64(i), fmt.Sprintf("%d_1", i))
 	}
@@ -44,7 +45,7 @@ func Test_skiplist_add_rem_range(t *testing.T) {
 	// Randomly remove 1000 members.
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	remSet := make(map[string]struct{}, 1000)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		score := randInst.Intn(1000)
 		index := randInst.Intn(2)
 		member := fmt.Sprintf("%d_%d", score, index)
@@ -53,12 +54,10 @@ func Test_skiplist_add_rem_range(t *testing.T) {
 	}
 
 	t.Run("single_score", func(t *testing.T) {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			score := int64(randInst.Intn(1000))
 			member := skiplist.Range(score, score)
-			sort.Slice(member, func(i, j int) bool {
-				return member[i] < member[j]
-			})
+			slices.Sort(member)
 			expected := make([]string, 0, 2)
 			member1 := fmt.Sprintf("%d_0", score)
 			member2 := fmt.Sprintf("%d_1", score)
@@ -76,7 +75,7 @@ func Test_skiplist_add_rem_range(t *testing.T) {
 	})
 
 	t.Run("normal_score_range", func(t *testing.T) {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			leftScore := int64(randInst.Intn(501))
 			rightScore := leftScore + int64(randInst.Intn(500))
 			member := skiplist.Range(leftScore, rightScore)
@@ -111,7 +110,7 @@ func Test_skiplist_add_rem_range(t *testing.T) {
 	})
 
 	t.Run("with_maximum_right_range", func(t *testing.T) {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			leftScore := int64(randInst.Intn(1000))
 			rightScore := int64(-1)
 			member := skiplist.Range(leftScore, rightScore)
@@ -151,7 +150,7 @@ func Test_skiplist_upsert_member_with_dif_score(t *testing.T) {
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	scoreToMembers := make(map[int64][]string)
 	memberSet := make(map[string]struct{})
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		score1 := int64(randInst.Intn(1000))
 		member := strconv.FormatInt(score1, 10)
 		if _, ok := memberSet[member]; ok {
@@ -205,7 +204,7 @@ func Test_skiplist_to_cmd(t *testing.T) {
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	memberToScore := make(map[int]int, 1000)
 	// Insert 1000 entries.
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		score := randInst.Intn(1000)
 		member := randInst.Intn(1000)
 		skiplist.Add(int64(score), strconv.Itoa(member))
@@ -224,7 +223,7 @@ func Test_skiplist_to_cmd(t *testing.T) {
 		}
 	})
 	t.Run("key", func(t *testing.T) {
-		if "" != string(cmd[1]) {
+		if string(cmd[1]) != "" {
 			t.Errorf("key, expect: empty, got: %s", string(cmd[1]))
 		}
 	})

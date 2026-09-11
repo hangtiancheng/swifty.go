@@ -96,10 +96,8 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 	dataChan := make(chan *Example)
 	go func() {
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 100 {
+			wg.Go(func() {
 				k := prefix + strconv.Itoa(randInst.Intn(100))
 				v := prefix + strconv.Itoa(randInst.Intn(100))
 				data := Example{
@@ -111,7 +109,7 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 					return
 				}
 				dataChan <- &data
-			}()
+			})
 		}
 		wg.Wait()
 		close(dataChan)
@@ -129,7 +127,7 @@ func Test_Consistent_Cache_Correct(t *testing.T) {
 	var useCacheCnt int
 	var expectUseCacheCnt int
 	querySet := make(map[string]struct{}, 100)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		k := strconv.Itoa(randInst.Intn(100))
 		data := Example{
 			Key_: prefix + k,
@@ -184,9 +182,7 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 	go func() {
 		for i := startV; i <= endV; i++ {
 			i := i // shadow
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				k := prefix
 				v := prefix + strconv.Itoa(i)
 				data := Example{
@@ -197,16 +193,14 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 					t.Error(err)
 				}
 				dataChan <- &data
-			}()
+			})
 		}
 	}()
 
 	// Double the readers targeting the same key.
 	go func() {
 		for i := 0; i < 10*(endV-startV+1); i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				data := Example{
 					Key_: prefix,
 				}
@@ -230,7 +224,7 @@ func Test_Consistent_Cache_Read_Write(t *testing.T) {
 				if gotData < startV || gotData > endV {
 					t.Errorf("expected gotData in [%d, %d], got %d", startV, endV, gotData)
 				}
-			}()
+			})
 		}
 	}()
 

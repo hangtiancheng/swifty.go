@@ -23,7 +23,7 @@ package datastore
 import (
 	"math/rand"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -37,7 +37,7 @@ func Test_set_crud(t *testing.T) {
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 
 	t.Run("add", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			member := randInst.Intn(1000)
 			_, ok := s[member]
 			success := set.Add(strconv.Itoa(member))
@@ -49,7 +49,7 @@ func Test_set_crud(t *testing.T) {
 	})
 
 	t.Run("rem", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			member := randInst.Intn(1000)
 			_, ok := s[member]
 			exist := set.Rem(strconv.Itoa(member))
@@ -61,7 +61,7 @@ func Test_set_crud(t *testing.T) {
 	})
 
 	t.Run("exist", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			member := randInst.Intn(1000)
 			_, ok := s[member]
 			exist := set.Exist(strconv.Itoa(member))
@@ -77,7 +77,7 @@ func Test_set_to_cmd(t *testing.T) {
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	s := make(map[int]struct{}, 1000)
 	// Insert 1000 entries.
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		member := randInst.Intn(1000)
 		set.Add(strconv.Itoa(member))
 		s[member] = struct{}{}
@@ -95,7 +95,7 @@ func Test_set_to_cmd(t *testing.T) {
 		}
 	})
 	t.Run("key", func(t *testing.T) {
-		if "" != string(cmd[1]) {
+		if string(cmd[1]) != "" {
 			t.Errorf("key, expect: empty, got: %s", string(cmd[1]))
 		}
 	})
@@ -105,17 +105,13 @@ func Test_set_to_cmd(t *testing.T) {
 		v, _ := strconv.Atoi(string(cmd[i]))
 		actual = append(actual, v)
 	}
-	sort.Slice(actual, func(i, j int) bool {
-		return actual[i] < actual[j]
-	})
+	slices.Sort(actual)
 
 	expect := make([]int, 0, len(s))
 	for member := range s {
 		expect = append(expect, member)
 	}
-	sort.Slice(expect, func(i, j int) bool {
-		return expect[i] < expect[j]
-	})
+	slices.Sort(expect)
 
 	t.Run("member", func(t *testing.T) {
 		if !reflect.DeepEqual(expect, actual) {

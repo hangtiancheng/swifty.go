@@ -90,10 +90,10 @@ func (q *QualityInspector) execSet(w io.Writer) {
 		_, _ = writer.WriteString("*3\r\n")
 		_, _ = writer.WriteString("$3\r\n")
 		_, _ = writer.WriteString("set\r\n")
-		_, _ = writer.WriteString(fmt.Sprintf("$%d\r\n", len(k)))
-		_, _ = writer.WriteString(fmt.Sprintf("%s\r\n", k))
-		_, _ = writer.WriteString(fmt.Sprintf("$%d\r\n", len(v)))
-		_, _ = writer.WriteString(fmt.Sprintf("%s\r\n", v))
+		_, _ = fmt.Fprintf(writer, "$%d\r\n", len(k))
+		_, _ = fmt.Fprintf(writer, "%s\r\n", k)
+		_, _ = fmt.Fprintf(writer, "$%d\r\n", len(v))
+		_, _ = fmt.Fprintf(writer, "%s\r\n", v)
 		if err := writer.Flush(); err != nil {
 			q.t.Error(err)
 		}
@@ -116,8 +116,8 @@ func (q *QualityInspector) execGet(w io.Writer) {
 		_, _ = writer.WriteString("*2\r\n")
 		_, _ = writer.WriteString("$3\r\n")
 		_, _ = writer.WriteString("get\r\n")
-		_, _ = writer.WriteString(fmt.Sprintf("$%d\r\n", len(k)))
-		_, _ = writer.WriteString(fmt.Sprintf("%s\r\n", k))
+		_, _ = fmt.Fprintf(writer, "$%d\r\n", len(k))
+		_, _ = fmt.Fprintf(writer, "%s\r\n", k)
 		if err := writer.Flush(); err != nil {
 			q.t.Error(err)
 		}

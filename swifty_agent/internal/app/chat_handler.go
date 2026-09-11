@@ -186,10 +186,10 @@ func (a *App) handleChatStream(ctx *swifty_http.Context, next func()) {
 		chunk, err := sr.Recv()
 		if errors.Is(err, io.EOF) {
 			rest := filter.Flush()
-			if strings.HasPrefix(rest, a2ui.OpenTag) {
+			if after, ok := strings.CutPrefix(rest, a2ui.OpenTag); ok {
 				// Unterminated block at stream end: treat as an invalid block
 				// instead of leaking raw JSON into the visible text.
-				emitBlock(strings.TrimPrefix(rest, a2ui.OpenTag))
+				emitBlock(after)
 			} else if rest != "" {
 				sse.Event("message", rest)
 			}

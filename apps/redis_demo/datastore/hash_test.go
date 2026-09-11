@@ -36,7 +36,7 @@ func Test_hashmap_crud(t *testing.T) {
 	mp := make(map[int]int, 1000)
 
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		k := randInst.Intn(1000)
 		v := randInst.Intn(1000)
 		hashmap.Put(strconv.Itoa(k), []byte(strconv.Itoa(v)))
@@ -44,7 +44,7 @@ func Test_hashmap_crud(t *testing.T) {
 	}
 
 	t.Run("delete", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			k := randInst.Intn(1000)
 			_, ok := mp[k]
 			exist := hashmap.Del(strconv.Itoa(k))
@@ -56,7 +56,7 @@ func Test_hashmap_crud(t *testing.T) {
 	})
 
 	t.Run("get", func(t *testing.T) {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			k := randInst.Intn(1000)
 			value := hashmap.Get(strconv.Itoa(k))
 			v, ok := mp[k]
@@ -78,7 +78,7 @@ func Test_hashmap_to_cmd(t *testing.T) {
 	randInst := rand.New(rand.NewSource(lib.TimeNow().UnixNano()))
 	mp := make(map[int]int, 1000)
 	// Insert 1000 entries.
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		k := randInst.Intn(1000)
 		v := randInst.Intn(1000)
 		hashmap.Put(strconv.Itoa(k), []byte(strconv.Itoa(v)))
@@ -97,7 +97,7 @@ func Test_hashmap_to_cmd(t *testing.T) {
 		}
 	})
 	t.Run("key", func(t *testing.T) {
-		if "" != string(cmd[1]) {
+		if string(cmd[1]) != "" {
 			t.Errorf("key, expect: empty, got: %s", string(cmd[1]))
 		}
 	})

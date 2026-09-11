@@ -118,7 +118,7 @@ func setUpConfig(src io.Reader) *Config {
 
 	conf := &Config{}
 	// set config fields via reflection
-	t := reflect.TypeOf(conf)
+	t := reflect.TypeFor[*Config]()
 	v := reflect.ValueOf(conf)
 	for i := 0; i < t.Elem().NumField(); i++ {
 		field := t.Elem().Field(i)

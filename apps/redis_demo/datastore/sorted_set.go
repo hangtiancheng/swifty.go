@@ -23,6 +23,7 @@ package datastore
 import (
 	"math"
 	"math/rand"
+	"slices"
 	"strconv"
 
 	"github.com/hangtiancheng/swifty.go/apps/redis_demo/database"
@@ -133,7 +134,7 @@ func (s *skiplist) Range(score1, score2 int64) []string {
 	}
 
 	move := s.head
-	for i := len(s.head.nexts) - 1; i >= 0; i-- {
+	for i := range slices.Backward(s.head.nexts) {
 		for move.nexts[i] != nil && move.nexts[i].score < score1 {
 			move = move.nexts[i]
 		}
@@ -173,7 +174,7 @@ func (s *skiplist) rem(score int64, member string) {
 
 	delete(s.scoreToNode, score)
 	move := s.head
-	for i := len(s.head.nexts) - 1; i >= 0; i-- {
+	for i := range slices.Backward(s.head.nexts) {
 		for move.nexts[i] != nil && move.nexts[i].score < score {
 			move = move.nexts[i]
 		}

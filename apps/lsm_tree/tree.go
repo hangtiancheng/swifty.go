@@ -22,6 +22,7 @@ package lsm_tree
 
 import (
 	"bytes"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -143,8 +144,8 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 	}
 
 	// 2. Check read-only memtables in reverse index order (newest first).
-	for i := len(t.rOnlyMemTable) - 1; i >= 0; i-- {
-		value, ok = t.rOnlyMemTable[i].memTable.Get(key)
+	for _, v := range slices.Backward(t.rOnlyMemTable) {
+		value, ok = v.memTable.Get(key)
 		if ok {
 			t.dataLock.RUnlock()
 			return value, true, nil
@@ -155,8 +156,8 @@ func (t *Tree) Get(key []byte) ([]byte, bool, error) {
 	// 3. Check level-0 sstables in reverse index order (newest first).
 	var err error
 	t.levelLocks[0].RLock()
-	for i := len(t.nodes[0]) - 1; i >= 0; i-- {
-		if value, ok, err = t.nodes[0][i].Get(key); err != nil {
+	for _, v := range slices.Backward(t.nodes[0]) {
+		if value, ok, err = v.Get(key); err != nil {
 			t.levelLocks[0].RUnlock()
 			return nil, false, err
 		}

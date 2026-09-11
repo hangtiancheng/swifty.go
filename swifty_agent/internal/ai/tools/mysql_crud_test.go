@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"slices"
 	"testing"
 )
 
@@ -18,7 +19,7 @@ func TestMysqlCrudToolSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Info: %v", err)
 	}
-	js, err := info.ParamsOneOf.ToJSONSchema()
+	js, err := info.ToJSONSchema()
 	if err != nil {
 		t.Fatalf("ToJSONSchema: %v", err)
 	}
@@ -60,13 +61,7 @@ func TestMysqlCrudToolSchema(t *testing.T) {
 	}
 
 	for _, name := range []string{"dsn", "sql", "operate_type"} {
-		found := false
-		for _, r := range js.Required {
-			if r == name {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(js.Required, name)
 		if !found {
 			t.Errorf("%s should be required (required=%v)", name, js.Required)
 		}

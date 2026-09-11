@@ -39,23 +39,19 @@ func Test_blockingLock(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := lock1.Lock(ctx); err != nil {
 			t.Error(err)
 			return
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := lock2.Lock(ctx); err != nil {
 			t.Error(err)
 			return
 		}
-	}()
+	})
 
 	wg.Wait()
 
@@ -73,23 +69,19 @@ func Test_nonBlockingLock(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := lock1.Lock(ctx); err != nil {
 			t.Error(err)
 			return
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := lock2.Lock(ctx); err == nil || !errors.Is(err, ErrLockAcquiredByOthers) {
 			t.Errorf("got err: %v, expect: %v", err, ErrLockAcquiredByOthers)
 			return
 		}
-	}()
+	})
 
 	wg.Wait()
 	t.Log("success")

@@ -129,7 +129,6 @@ func Test_Tree_getSortedSSTEntries(t *testing.T) {
 
 	files := []string{"1_1.sst", "1_2.ab", "10_0.sst", "2_3.sst", "1_5.sst", "10_10.sst", "10_5.sst"}
 	for _, file := range files {
-		file := file
 		fd, err := os.Create(path.Join("test", file))
 		if err != nil {
 			t.Error(err)
@@ -164,7 +163,7 @@ func Test_Tree_getSortedSSTEntries(t *testing.T) {
 		return
 	}
 
-	for i := 0; i < len(gotEntries); i++ {
+	for i := range gotEntries {
 		if gotEntries[i].Name() != expectEntries[i] {
 			t.Errorf("index: %d, got entries: %s, expect: %s", i, gotEntries[i].Name(), expectEntries[i])
 		}

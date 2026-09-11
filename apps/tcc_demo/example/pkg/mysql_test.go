@@ -50,7 +50,7 @@ func Test_NewDB(t *testing.T) {
 	debounce = sync.Once{}
 
 	defaultDB := GetDB()
-	if reflect.TypeOf(defaultDB) != reflect.TypeOf(db) {
+	if reflect.TypeFor[*gorm.DB]() != reflect.TypeFor[*gorm.DB]() {
 		t.Errorf("expected %T, got %T", db, defaultDB)
 	}
 }

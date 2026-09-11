@@ -38,7 +38,7 @@ func Test_WAL(t *testing.T) {
 	skiplist := memtable.NewSkiplist()
 
 	kvs := make([]*memtable.KV, 0, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		kvs = append(kvs, &memtable.KV{
 			Key:   []byte{'a' + uint8(i)},
 			Value: []byte{'b' + uint8(i)},
@@ -71,7 +71,7 @@ func Test_WAL(t *testing.T) {
 		return
 	}
 
-	for i := 0; i < len(originKVs); i++ {
+	for i := range originKVs {
 		if !bytes.Equal(originKVs[i].Key, restoredKVs[i].Key) {
 			t.Errorf("not equal, index: %d, got key: %s, expect: %s", i, restoredKVs[i].Key, originKVs[i].Key)
 		}

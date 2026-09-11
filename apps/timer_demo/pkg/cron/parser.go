@@ -22,6 +22,7 @@ package cron
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -145,12 +146,7 @@ func (s *cronSchedule) dayMatches(t time.Time) bool {
 }
 
 func contains(slice []int, val int) bool {
-	for _, v := range slice {
-		if v == val {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, val)
 }
 
 var (
@@ -208,9 +204,9 @@ func parseField(field string, min, max int) ([]int, bool, error) {
 	hasStep := false
 	rangePart := field
 
-	if idx := strings.Index(field, "/"); idx >= 0 {
+	if before, _, ok := strings.Cut(field, "/"); ok {
 		hasStep = true
-		rangePart = field[:idx]
+		rangePart = before
 	}
 	if rangePart == "*" {
 		wildCard = true
@@ -219,7 +215,7 @@ func parseField(field string, min, max int) ([]int, bool, error) {
 	var result []int
 	seen := make(map[int]bool)
 
-	for _, part := range strings.Split(field, ",") {
+	for part := range strings.SplitSeq(field, ",") {
 		vals, err := parsePart(part, min, max)
 		if err != nil {
 			return nil, false, err
@@ -243,11 +239,11 @@ func parsePart(part string, min, max int) ([]int, error) {
 	step := 1
 	rangePart := part
 
-	if idx := strings.Index(part, "/"); idx >= 0 {
-		rangePart = part[:idx]
-		s, err := strconv.Atoi(part[idx+1:])
+	if before, after, ok := strings.Cut(part, "/"); ok {
+		rangePart = before
+		s, err := strconv.Atoi(after)
 		if err != nil || s <= 0 {
-			return nil, fmt.Errorf("invalid step value: %s", part[idx+1:])
+			return nil, fmt.Errorf("invalid step value: %s", after)
 		}
 		step = s
 	}
@@ -256,14 +252,14 @@ func parsePart(part string, min, max int) ([]int, error) {
 		return rangeList(min, max, step), nil
 	}
 
-	if idx := strings.Index(rangePart, "-"); idx >= 0 {
-		start, err := strconv.Atoi(rangePart[:idx])
+	if before, after, ok := strings.Cut(rangePart, "-"); ok {
+		start, err := strconv.Atoi(before)
 		if err != nil {
-			return nil, fmt.Errorf("invalid range start: %s", rangePart[:idx])
+			return nil, fmt.Errorf("invalid range start: %s", before)
 		}
-		end, err := strconv.Atoi(rangePart[idx+1:])
+		end, err := strconv.Atoi(after)
 		if err != nil {
-			return nil, fmt.Errorf("invalid range end: %s", rangePart[idx+1:])
+			return nil, fmt.Errorf("invalid range end: %s", after)
 		}
 		if start < min || end > max || start > end {
 			return nil, fmt.Errorf("range %d-%d out of bounds [%d,%d]", start, end, min, max)

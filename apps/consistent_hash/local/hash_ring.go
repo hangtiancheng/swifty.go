@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -162,10 +163,8 @@ func (s *SkiplistHashRing) Unlock(ctx context.Context) error {
 func (s *SkiplistHashRing) Add(ctx context.Context, score int32, nodeID string) error {
 	targetNode, ok := s.get(score)
 	if ok {
-		for _, _nodeID := range targetNode.nodeIDs {
-			if _nodeID == nodeID {
-				return nil
-			}
+		if slices.Contains(targetNode.nodeIDs, nodeID) {
+			return nil
 		}
 		targetNode.nodeIDs = append(targetNode.nodeIDs, nodeID)
 		return nil
@@ -243,7 +242,7 @@ func (s *SkiplistHashRing) Rem(ctx context.Context, score int32, nodeID string) 
 
 	// Top-down level traversal to unlink the node.
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}
@@ -332,7 +331,7 @@ func (s *SkiplistHashRing) ceiling(score int32) (int32, bool) {
 	}
 
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}
@@ -359,7 +358,7 @@ func (s *SkiplistHashRing) floor(score int32) (int32, bool) {
 	}
 
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}
@@ -380,7 +379,7 @@ func (s *SkiplistHashRing) floor(score int32) (int32, bool) {
 func (s *SkiplistHashRing) last() (int32, bool) {
 	// Top-down level traversal.
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil {
 			move = move.nexts[level]
 		}
@@ -395,7 +394,7 @@ func (s *SkiplistHashRing) last() (int32, bool) {
 
 func (s *SkiplistHashRing) get(score int32) (*virtualNode, bool) {
 	move := s.root
-	for level := len(s.root.nexts) - 1; level >= 0; level-- {
+	for level := range slices.Backward(s.root.nexts) {
 		for move.nexts[level] != nil && move.nexts[level].score < score {
 			move = move.nexts[level]
 		}

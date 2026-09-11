@@ -46,7 +46,7 @@ type RedisLock struct {
 	client LockClient
 
 	// runningDog flags whether the watchdog goroutine is running.
-	runningDog int32
+	runningDog atomic.Int32
 	// stopDog cancels the watchdog goroutine.
 	stopDog context.CancelFunc
 }
@@ -119,14 +119,14 @@ func (r *RedisLock) watchDog(ctx context.Context) {
 	}
 
 	// 2. Make sure any previous watchdog has been recycled.
-	for !atomic.CompareAndSwapInt32(&r.runningDog, 0, 1) {
+	for !r.runningDog.CompareAndSwap(0, 1) {
 	}
 
 	// 3. Start the watchdog.
 	ctx, r.stopDog = context.WithCancel(ctx)
 	go func() {
 		defer func() {
-			atomic.StoreInt32(&r.runningDog, 0)
+			r.runningDog.Store(0)
 		}()
 		r.runWatchDog(ctx)
 	}()

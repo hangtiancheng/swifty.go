@@ -178,7 +178,7 @@ func (p *Parser) parseMultiBulk(header []byte, reader *bufio.Reader) (droplet *h
 	}
 
 	lines := make([][]byte, 0, length)
-	for i := int64(0); i < length; i++ {
+	for range length {
 		// Read the first line of each bulk.
 		firstLine, err := reader.ReadBytes('\n')
 		if err != nil {

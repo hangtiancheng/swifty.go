@@ -82,7 +82,7 @@ func (c *ConsistentHash) AddNode(ctx context.Context, nodeID string, weight int)
 	}
 
 	var migrateTasks []func()
-	for i := 0; i < replicas; i++ {
+	for i := range replicas {
 		// 5. Hash the i-th virtual node key to get its score on the ring.
 		nodeKey := c.getRawNodeKey(nodeID, i)
 		virtualScore := c.encryptor.Encrypt(nodeKey)
@@ -192,7 +192,6 @@ func (c *ConsistentHash) batchExecuteMigrator(migrateTasks []func()) {
 	var wg sync.WaitGroup
 	for _, migrateTask := range migrateTasks {
 		// shadow
-		migrateTask := migrateTask
 		wg.Add(1)
 		go func() {
 			defer func() {
