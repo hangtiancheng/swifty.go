@@ -9,9 +9,6 @@ export const chatResponseSchema = z.object({
   data: z
     .object({
       answer: z.string(),
-      // A2UI protocol messages are validated per-message by the web_core
-      // schema at render time, so they stay unknown[] at this boundary.
-      a2ui: z.array(z.unknown()).optional(),
     })
     .optional(),
 });
@@ -22,7 +19,6 @@ export const aiOpsResponseSchema = z.object({
     .object({
       result: z.string(),
       detail: z.array(z.string()).optional(),
-      a2ui: z.array(z.unknown()).optional(),
     })
     .optional(),
 });

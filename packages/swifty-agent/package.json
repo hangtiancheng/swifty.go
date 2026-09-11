@@ -12,21 +12,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@a2ui/lit": "^0.10.4",
-    "@a2ui/markdown-it": "^0.1.1",
-    "@a2ui/web_core": "^0.10.7",
-    "@lit-labs/signals": "^0.3.0",
-    "@lit/context": "^1.1.6",
-    "@swifty.js/fonts": "^0.0.1",
-    "@swifty.js/sentry": "^0.0.5",
+    "@swifty.js/lit-jsx": "^0.0.2",
+    "@swifty.js/sentry": "^0.0.7",
+    "dompurify": "^3.4.15",
     "lit": "^3.3.3",
     "lucide": "^1.43.0",
+    "markdown-it": "^14.3.1",
     "tailwindcss": "^4.3.3",
     "zod": "^4.6.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^24.13.4",
+    "@types/markdown-it": "^14.2.0",
     "oxlint": "^1.82.0",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",

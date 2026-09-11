@@ -60,7 +60,6 @@ export class ChatContainer extends LitElement {
                 <msg-list
                   .messages=${this.messages}
                   .isStreaming=${this.isStreaming}
-                  .onAction=${this.onSend}
                 ></msg-list>
               `
         }

@@ -28,7 +28,7 @@ description: >
 # swifty_orm
 
 A Knex-inspired, chainable query builder ORM for MongoDB in Go, built directly
-on the official `go.mongodb.org/mongo-driver`. The design philosophy is a
+on the official `go.mongodb.org/mongo-driver/v2`. The design philosophy is a
 faithful mapping of Knex.js query semantics onto MongoDB: conditions on the
 same field AND-combine without silent overwrites, invalid builder input is
 recorded and surfaced as an error at execution time rather than panicking,
@@ -801,9 +801,9 @@ import (
     "time"
 
     "github.com/hangtiancheng/swifty.go/swifty_orm"
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
+    "go.mongodb.org/mongo-driver/v2/bson"
+    "go.mongodb.org/mongo-driver/v2/mongo"
+    "go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type User struct {
@@ -1236,13 +1236,13 @@ or point `MONGO_URI` at a replica set and run the whole suite.
 
 Direct:
 
-- `go.mongodb.org/mongo-driver` v1.17.9. The only direct requirement, used
+- `go.mongodb.org/mongo-driver/v2` v2.9.1. The only direct requirement, used
   throughout: `mongo.Connect`/`Client`/`Database`/`Collection` for connection
-  and CRUD, `mongo.Session` and `mongo.NewSessionContext` for transactions,
+  and CRUD, `*mongo.Session` and `mongo.NewSessionContext` for transactions,
   `mongo.Cursor` behind the `Cursor` type, `mongo.IndexModel` in
   `EnsureIndexes`, `mongo.ErrNoDocuments` as `ErrNotFound`, `bson.M`/`bson.D`/
   `bson.A`/`bson.E`/`bson.Raw` for documents and pipelines,
-  `bson/primitive.Regex` for LIKE translation, and `mongo/options` for find,
+  `bson.Regex` for LIKE translation, and `mongo/options` for find,
   update, index, and `FindOneAndUpdate` options.
 
 Standard library only otherwise: `context`, `errors`, `fmt`, `io`, `log`, `os`,

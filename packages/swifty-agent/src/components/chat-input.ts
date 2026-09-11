@@ -169,14 +169,14 @@ export class ChatInput extends LitElement {
                           (m) => html`
                             <button
                               @click=${() => {
-                              this.onModeChange?.(m);
-                              this._showMode = false;
-                            }}
+                                this.onModeChange?.(m);
+                                this._showMode = false;
+                              }}
                               class="${
-                              m === this.mode
-                                ? "bg-sky-50 text-sky-600"
-                                : "text-zinc-800 hover:bg-zinc-100"
-                            } block w-40 rounded-lg px-3 py-2 text-left text-sm"
+                                m === this.mode
+                                  ? "bg-sky-50 text-sky-600"
+                                  : "text-zinc-800 hover:bg-zinc-100"
+                              } block w-40 rounded-lg px-3 py-2 text-left text-sm"
                             >
                               ${m === "quick" ? "Quick" : "Stream"}
                             </button>

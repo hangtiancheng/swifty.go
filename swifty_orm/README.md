@@ -2,7 +2,7 @@
 
 A lightweight MongoDB ORM for Go, designed around a chainable query builder inspired by Knex.js. It provides a fluent, expressive API for developers accustomed to method chaining while retaining the full power of the official MongoDB driver underneath.
 
-Built on top of `go.mongodb.org/mongo-driver`, the library exposes two core abstractions: `Engine` (connection and session management) and `Query` (chainable query builder). The entire module is flat (no sub-packages), easy to read, and suitable as a direct dependency in application code or as a foundation for higher-level wrappers.
+Built on top of `go.mongodb.org/mongo-driver/v2`, the library exposes two core abstractions: `Engine` (connection and session management) and `Query` (chainable query builder). The entire module is flat (no sub-packages), easy to read, and suitable as a direct dependency in application code or as a foundation for higher-level wrappers.
 
 Module path: `github.com/hangtiancheng/swifty.go/swifty_orm`
 
@@ -39,7 +39,7 @@ import (
     "time"
 
     "github.com/hangtiancheng/swifty.go/swifty_orm"
-    "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type User struct {

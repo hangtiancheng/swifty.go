@@ -13,8 +13,6 @@ export interface ChatMessage {
   content: string;
   /** Optional step details for AI Ops results. */
   detail?: string[];
-  /** A2UI protocol messages attached to an assistant reply (unknown[] at this boundary; validated per-message by the web_core schema at render time). */
-  a2ui?: unknown[];
   /** Transient: reply not yet arrived — render a thinking placeholder. */
   pending?: boolean;
 }
@@ -30,7 +28,6 @@ export interface ChatHistory {
 export interface AIOpsResult {
   result: string;
   detail: string[];
-  a2ui?: unknown[];
 }
 
 export type NotificationType = "info" | "success" | "warning" | "error";
@@ -55,7 +52,6 @@ const chatMessageSchema = z.object({
   type: z.enum(["user", "assistant"]),
   content: z.string(),
   detail: z.array(z.string()).optional(),
-  a2ui: z.array(z.unknown()).optional(),
 });
 
 const chatHistorySchema = z.object({
@@ -239,15 +235,10 @@ export class ChatStore implements ReactiveController {
         const parsed = chatResponseSchema.safeParse(await resp.json());
         if (!parsed.success) throw new Error("invalid chat response");
         const answer = parsed.data.data?.answer;
-        const a2ui = parsed.data.data?.a2ui;
         if (parsed.data.message === "OK" && answer) {
           currentMsgs = [
             ...currentMsgs.slice(0, -1),
-            {
-              type: "assistant",
-              content: answer,
-              ...(a2ui && a2ui.length > 0 ? { a2ui } : {}),
-            },
+            { type: "assistant", content: answer },
           ];
           setMessages(currentMsgs);
         } else {
@@ -288,40 +279,14 @@ export class ChatStore implements ReactiveController {
           currentEvent = "";
           if (event === "message") {
             full += payload;
-            const last = currentMsgs.at(-1);
             currentMsgs = [
               ...currentMsgs.slice(0, -1),
               {
                 type: "assistant" as const,
                 content: full,
-                ...(last?.a2ui ? { a2ui: last.a2ui } : {}),
               },
             ];
             setMessages(currentMsgs);
-          } else if (event === "a2ui") {
-            // Payload is a JSON array of A2UI protocol messages; contents
-            // are validated per-message by the web_core schema at render
-            // time, so treat them as unknown[] here.
-            try {
-              const messages = z
-                .array(z.unknown())
-                .min(1)
-                .safeParse(JSON.parse(payload));
-              if (!messages.success)
-                throw new Error("payload is not a non-empty array");
-              const last = currentMsgs.at(-1);
-              currentMsgs = [
-                ...currentMsgs.slice(0, -1),
-                {
-                  type: "assistant" as const,
-                  content: full,
-                  a2ui: [...(last?.a2ui ?? []), ...messages.data],
-                },
-              ];
-              setMessages(currentMsgs);
-            } catch (err) {
-              console.error("invalid a2ui event payload:", err);
-            }
           } else if (event === "error") {
             // Surface server-side error events instead of silently ignoring.
             throw new Error(payload || "Stream error");
@@ -403,11 +368,9 @@ export class ChatStore implements ReactiveController {
       if (!parsed.success) throw new Error("invalid ai ops response");
       const result = parsed.data.data?.result;
       if (parsed.data.message === "OK" && result) {
-        const a2ui = parsed.data.data?.a2ui;
         return {
           result,
           detail: parsed.data.data?.detail ?? [],
-          ...(a2ui && a2ui.length > 0 ? { a2ui } : {}),
         };
       }
       throw new Error(parsed.data.message || "Unknown error");

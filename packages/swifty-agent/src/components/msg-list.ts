@@ -5,7 +5,6 @@ import { LoaderCircle, Sparkles } from "lucide";
 import { icon } from "./icons.js";
 import type { ChatMessage } from "../chat/chat-store.js";
 import "./md-render.js";
-import "./a2ui-view.js";
 
 @customElement("msg-list")
 export class MsgList extends LitElement {
@@ -14,10 +13,6 @@ export class MsgList extends LitElement {
 
   @property({ type: Boolean })
   isStreaming = false;
-
-  /** Receives serialized A2UI surface actions to auto-send as chat messages. */
-  @property({ attribute: false })
-  onAction?: (query: string) => void;
 
   @query("[data-scroller]")
   private _scroller?: HTMLDivElement;
@@ -110,14 +105,6 @@ export class MsgList extends LitElement {
                     </div>
                   `
                 : html`<md-render .content=${message.content}></md-render>`
-            }
-            ${
-              message.a2ui && message.a2ui.length > 0
-                ? html`<a2ui-view
-                    .messages=${message.a2ui}
-                    .onAction=${this.onAction}
-                  ></a2ui-view>`
-                : nothing
             }
           </div>
         </div>

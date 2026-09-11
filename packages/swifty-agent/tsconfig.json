@@ -23,5 +23,5 @@
     "erasableSyntaxOnly": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "middleware"]
+  "include": ["src"]
 }

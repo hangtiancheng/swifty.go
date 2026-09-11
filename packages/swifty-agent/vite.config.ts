@@ -1,10 +1,9 @@
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
-import { plugin as a2aPlugin } from "./middleware/a2a.js";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [tailwindcss(), a2aPlugin()],
+  plugins: [tailwindcss()],
 
   server: {
     proxy: {

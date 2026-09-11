@@ -23,7 +23,7 @@
   }
 }
 
-/* Markdown output of md-render (rendered via @a2ui/markdown-it into light DOM). */
+/* Markdown output of md-render (rendered via markdown-it into light DOM). */
 .md-content > :first-child {
   margin-top: 0;
 }
