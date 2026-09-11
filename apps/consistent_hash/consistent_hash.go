@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 )
@@ -191,12 +192,11 @@ func (c *ConsistentHash) batchExecuteMigrator(migrateTasks []func()) {
 	// Execute all migration tasks concurrently.
 	var wg sync.WaitGroup
 	for _, migrateTask := range migrateTasks {
-		// shadow
 		wg.Add(1)
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-
+					slog.Error("migration task panicked", "panic", err)
 				}
 				wg.Done()
 			}()

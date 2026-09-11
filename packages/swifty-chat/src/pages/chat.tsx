@@ -56,6 +56,7 @@ import {
 import { api } from "@/service/api";
 import useAuthStore from "@/store/auth";
 import useChatStore from "@/store/chat";
+import useSessionStore from "@/store/session";
 import useWsStore from "@/store/ws";
 import { resolveAvatar } from "@/utils/avatar";
 import { showToast } from "@/utils/toast";
@@ -205,12 +206,25 @@ export default function Chat() {
       const auth = useAuthStore.getState();
       const chat = useChatStore.getState();
 
+      if (message.type === 5) {
+        // System notification: contact/group/session state changed elsewhere.
+        useSessionStore.getState().bumpRefresh();
+        return;
+      }
+
       if (message.type === 3) {
         try {
           const avData = JSON.parse(message.av_data || "{}") as Record<
             string,
             unknown
           >;
+          if (avData.type === "call_failed") {
+            showToast(
+              `Call failed: ${(avData.reason as string) || "unknown reason"}`,
+              "error",
+            );
+            return;
+          }
           videoCallRef.current?.handleSignal(avData);
         } catch {
           /* ignore malformed signal */

@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -115,7 +116,7 @@ func (r *RTimeWheel) run() {
 func (r *RTimeWheel) executeTasks() {
 	defer func() {
 		if err := recover(); err != nil {
-			// log
+			slog.Error("execute tasks panicked", "panic", err)
 		}
 	}()
 
@@ -137,11 +138,12 @@ func (r *RTimeWheel) executeTasks() {
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
+					slog.Error("task panicked", "panic", err)
 				}
 				wg.Done()
 			}()
 			if err := r.executeTask(ctxWithTimeout, task); err != nil {
-				// log
+				slog.Error("execute task failed", "error", err)
 			}
 		}()
 	}

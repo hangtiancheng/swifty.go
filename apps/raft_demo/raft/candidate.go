@@ -26,6 +26,8 @@ func (r *raft) becomePreCandidate() {
 	}
 	r.step = stepCandidate
 	r.tick = r.tickElection
+	// Pre-vote does not change the term but starts a fresh election round
+	r.votes = make(map[uint64]bool)
 	r.state = StatePreCandidate
 }
 

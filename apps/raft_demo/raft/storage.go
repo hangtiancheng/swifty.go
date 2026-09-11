@@ -39,6 +39,10 @@ type Storage interface {
 	LastIndex() (uint64, error)
 	// FirstIndex returns the index of the first persisted entry
 	FirstIndex() (uint64, error)
+	// Append persists the given entries, truncating any conflicting suffix
+	Append(entries []Entry) error
+	// SetHardState persists the given hard state
+	SetHardState(hs HardState) error
 }
 
 type MemoryStorage struct {
@@ -104,9 +108,40 @@ func (m *MemoryStorage) lastIndex() uint64 {
 	return m.entries[0].Index + uint64(len(m.entries)) - 1
 }
 
+// Append persists entries to storage, truncating any conflicting suffix.
+func (m *MemoryStorage) Append(entries []Entry) error {
+	m.Lock()
+	defer m.Unlock()
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	first := entries[0].Index
+	offset := m.entries[0].Index
+	if first < offset {
+		// The batch is older than what is already stored; ignore it.
+		return nil
+	}
+	if first > m.lastIndex()+1 {
+		return ErrUnavailable
+	}
+
+	m.entries = append(m.entries[:first-offset], entries...)
+	return nil
+}
+
+// SetHardState persists the given hard state.
+func (m *MemoryStorage) SetHardState(hs HardState) error {
+	m.Lock()
+	defer m.Unlock()
+	m.hardState = hs
+	return nil
+}
+
 func (m *MemoryStorage) FirstIndex() (uint64, error) {
 	m.Lock()
-	defer m.Lock()
+	defer m.Unlock()
 	return m.firstIndex(), nil
 }
 

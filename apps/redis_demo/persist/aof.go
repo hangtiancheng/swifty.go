@@ -30,6 +30,7 @@ import (
 
 	"github.com/hangtiancheng/swifty.go/apps/redis_demo/handler"
 	"github.com/hangtiancheng/swifty.go/apps/redis_demo/lib/pool"
+	"github.com/hangtiancheng/swifty.go/apps/redis_demo/log"
 )
 
 // always | everysec | no
@@ -146,7 +147,7 @@ func (a *aofPersister) aofTick() {
 	_ = a.aofCounter.Add(-a.autoAofRewriteAfterCmd)
 	pool.Submit(func() {
 		if err := a.rewriteAOF(); err != nil {
-			// log
+			log.GetDefaultLogger().Errorf("rewrite aof: %v", err)
 		}
 	})
 }
@@ -160,7 +161,7 @@ func (a *aofPersister) fsyncEverySecond() {
 			return
 		case <-ticker.C:
 			if err := a.fsync(); err != nil {
-				// log
+				log.GetDefaultLogger().Errorf("fsync aof: %v", err)
 			}
 		}
 	}
@@ -181,7 +182,7 @@ func (a *aofPersister) writeAof(cmd [][]byte) {
 	}
 
 	if err := a.fsyncLocked(); err != nil {
-		// log
+		log.GetDefaultLogger().Errorf("fsync aof: %v", err)
 	}
 }
 

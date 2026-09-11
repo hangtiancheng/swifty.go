@@ -26,14 +26,17 @@ import type { SessionItem } from "../types";
 export interface SessionState {
   userSessions: SessionItem[];
   groupSessions: SessionItem[];
+  refreshTick: number;
   setUserSessions: (list: SessionItem[]) => void;
   setGroupSessions: (list: SessionItem[]) => void;
+  bumpRefresh: () => void;
   clear: () => void;
 }
 
-const useSessionStore = create<SessionState>((set) => ({
+const useSessionStore = create<SessionState>((set, get) => ({
   userSessions: [] as SessionItem[],
   groupSessions: [] as SessionItem[],
+  refreshTick: 0,
 
   setUserSessions(list: SessionItem[]) {
     set({ userSessions: list || [] });
@@ -41,8 +44,11 @@ const useSessionStore = create<SessionState>((set) => ({
   setGroupSessions(list: SessionItem[]) {
     set({ groupSessions: list || [] });
   },
+  bumpRefresh() {
+    set({ refreshTick: get().refreshTick + 1 });
+  },
   clear() {
-    set({ userSessions: [], groupSessions: [] });
+    set({ userSessions: [], groupSessions: [], refreshTick: 0 });
   },
 }));
 

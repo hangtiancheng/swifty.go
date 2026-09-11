@@ -21,6 +21,7 @@
  */
 
 import { create } from "zustand";
+import { getToken } from "./auth";
 import { WS_URL } from "../config";
 
 export interface WsState {
@@ -48,12 +49,16 @@ function scheduleReconnect(uuid: string) {
 }
 
 function doConnect(uuid: string) {
+  const token = getToken();
+  if (!token) return;
   if (rawSocket) {
     rawSocket.onclose = null;
     rawSocket.close();
   }
   useWsStore.setState({ status: "connecting" });
-  const ws = new WebSocket(WS_URL + "/wss?client_id=" + uuid);
+  const ws = new WebSocket(
+    `${WS_URL}/wss?client_id=${encodeURIComponent(uuid)}&token=${encodeURIComponent(token)}`,
+  );
   ws.onopen = () => {
     reconnectDelay = 1000;
     useWsStore.setState({ status: "connected" });

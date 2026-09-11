@@ -67,9 +67,14 @@ export interface Message {
   av_data?: string;
 }
 
+export interface AuthResponse {
+  token: string;
+  user_info: UserInfo;
+}
+
 export interface SessionItem {
   user_id?: string;
-  user_name?: string;
+  username?: string;
   group_id?: string;
   group_name?: string;
   avatar: string;

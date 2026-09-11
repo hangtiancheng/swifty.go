@@ -71,14 +71,9 @@ func stepFollower(r *raft, m Message) {
 }
 
 func (r *raft) handleAppendEntries(m Message) {
-	// Ignore entries already committed
-	if m.LogIndex < r.raftLog.commitIndex {
-		r.send(Message{To: m.From, Type: MsgAppResp, LogIndex: r.raftLog.commitIndex})
-		return
-	}
-
-	// Attempt to append; reject on failure
-	if mLastIndex, ok := r.raftLog.maybeAppend(m.LogIndex, m.LogIndex, m.CommitIndex, m.Entries...); ok {
+	// Attempt to append; on success the local log matches the leader's log
+	// through the last appended entry
+	if mLastIndex, ok := r.raftLog.maybeAppend(m.LogIndex, m.LogTerm, m.CommitIndex, m.Entries...); ok {
 		r.send(Message{To: m.From, Type: MsgAppResp, LogIndex: mLastIndex})
 		return
 	}

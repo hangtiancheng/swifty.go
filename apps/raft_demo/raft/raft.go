@@ -22,6 +22,7 @@ package raft
 
 import (
 	"math/rand"
+	"slices"
 	"sort"
 )
 
@@ -73,12 +74,16 @@ type raft struct {
 }
 
 func newRaft(conf *Config) *raft {
-
 	// Retrieve initial state from storage
-	// hs, cs, err := conf.Storage.InitialState()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	hs, cs, err := conf.Storage.InitialState()
+	if err != nil {
+		panic(err)
+	}
+
+	// Restore cluster membership from storage when no initial peers are configured
+	if len(conf.peers) == 0 {
+		conf.peers = cs.Nodes
+	}
 
 	// Initialize raft instance from configuration
 	r := raft{
@@ -89,6 +94,8 @@ func newRaft(conf *Config) *raft {
 		heartbeatTimeout: conf.HeartbeatTick,
 		preVote:          conf.PreVote,
 		readOnly:         newReadOnly(),
+		prs:              make(map[uint64]*Progress),
+		votes:            make(map[uint64]bool),
 	}
 
 	// Register peers in the progress map
@@ -99,8 +106,17 @@ func newRaft(conf *Config) *raft {
 	// Restore applied index
 	r.raftLog.appliedTo(conf.Applied)
 
-	// Start as a follower
-	r.becomeFollower(1, None)
+	// Restore the committed index from the persisted hard state
+	if hs.CommitIndex > r.raftLog.commitIndex {
+		r.raftLog.commitIndex = hs.CommitIndex
+	}
+
+	// Start as a follower, restoring the persisted term when available
+	term := hs.Term
+	if term == 0 {
+		term = 1
+	}
+	r.becomeFollower(term, None)
 
 	return &r
 }
@@ -193,6 +209,10 @@ func (r *raft) reset(term uint64) {
 	r.lead = None
 	r.electionElapsed = 0
 	r.heartbeatElapsed = 0
+	// A new term starts with a clean election state and no pending
+	// configuration change
+	r.votes = make(map[uint64]bool)
+	r.pendingConf = false
 	// Reset randomized election timeout
 	r.resetRandomizedElectionTimeout()
 }
@@ -220,7 +240,51 @@ func (r *raft) addNode(id uint64) {
 	r.prs[id] = &Progress{Match: 0, Next: r.raftLog.lastIndex() + 1}
 }
 
+func (r *raft) removeNode(id uint64) {
+	if _, ok := r.prs[id]; !ok {
+		return
+	}
+	delete(r.prs, id)
+
+	// A node that has been removed from the cluster steps down
+	if id == r.id {
+		r.becomeFollower(r.Term, None)
+	}
+}
+
+// applyConfChange applies a committed configuration change and returns the
+// resulting cluster membership.
+func (r *raft) applyConfChange(cc ConfChange) ConfState {
+	if cc.NodeID != None {
+		switch cc.Type {
+		case ConfChangeAddNode:
+			r.addNode(cc.NodeID)
+		case ConfChangeRemoveNode:
+			r.removeNode(cc.NodeID)
+		case ConfChangeUpdateNode:
+			// Node attributes are not tracked; adding an existing node is a no-op
+			r.addNode(cc.NodeID)
+		}
+	}
+
+	// The conf change has been applied; the next one may be proposed
+	r.pendingConf = false
+	return ConfState{Nodes: r.nodes()}
+}
+
+func (r *raft) nodes() []uint64 {
+	nodes := make([]uint64, 0, len(r.prs))
+	for id := range r.prs {
+		nodes = append(nodes, id)
+	}
+	slices.Sort(nodes)
+	return nodes
+}
+
 func (r *raft) send(m Message) {
+	if m.From == None {
+		m.From = r.id
+	}
 	if m.Type != MsgProp && m.Type != MsgReadIndex {
 		m.Term = r.Term
 	}
@@ -327,6 +391,9 @@ func (r *raft) appendEntry(es ...Entry) {
 	r.raftLog.append(es...)
 	r.prs[r.id].maybeUpdate(r.raftLog.lastIndex())
 
+	// The leader's own progress may already satisfy the quorum (e.g. a
+	// single-member cluster)
+	r.maybeCommit()
 }
 
 func (r *raft) maybeCommit() bool {

@@ -141,7 +141,7 @@ func (a *aofPersister) endRewrite(tmpFile *os.File, fileSize int64) error {
 	_ = a.aofFile.Close()
 	// Rename the temp file to the new AOF file.
 	if err := os.Rename(tmpFile.Name(), a.aofFileName); err != nil {
-		// log
+		log.GetDefaultLogger().Errorf("rename aof file: %v", err)
 	}
 
 	// Reopen the AOF file.

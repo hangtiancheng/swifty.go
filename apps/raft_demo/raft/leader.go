@@ -30,6 +30,16 @@ func (r *raft) becomeLeader() {
 	r.lead = r.id
 	r.state = StateLeader
 
+	// Stale match values from a previous leadership must not contribute to
+	// quorum in the new term
+	lastIndex := r.raftLog.lastIndex()
+	for id := range r.prs {
+		if id == r.id {
+			continue
+		}
+		r.prs[id] = &Progress{Next: lastIndex + 1}
+	}
+
 	// Newly elected leader appends a no-op entry for the current term
 	r.appendEntry([]Entry{{Data: nil}}...)
 }
@@ -50,7 +60,17 @@ func stepLeader(r *raft, m Message) {
 			return
 		}
 
-		// Check for pending configuration changes
+		// Check for pending configuration changes: only one conf change may
+		// be in flight; later ones are demoted to empty normal entries until
+		// the pending one has been applied
+		for i, e := range m.Entries {
+			if e.Type == EntryConfChange {
+				if r.pendingConf {
+					m.Entries[i] = Entry{Type: EntryNormal}
+				}
+				r.pendingConf = true
+			}
+		}
 
 		// Append entries to the local log first
 		r.appendEntry(m.Entries...)
@@ -60,6 +80,31 @@ func stepLeader(r *raft, m Message) {
 		return
 	case MsgReadIndex:
 		// Handle linearizable read request
+		if _, ok := r.prs[r.id]; !ok {
+			return
+		}
+
+		if len(r.prs) > 1 {
+			// Reject the read until the leader has committed an entry in its
+			// own term: only then is the commit index a safe read index
+			if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.commitIndex)) != r.Term {
+				return
+			}
+
+			// Use the current commit index as the read index and confirm
+			// leadership with a round of quorum heartbeats
+			readIndex := r.raftLog.commitIndex
+			ctx := m.Entries[0].Data
+			if r.readOnly.addRequest(string(ctx), readIndex, m) {
+				r.broadcastHeartbeatWithCtx(ctx)
+			}
+		} else {
+			// Single-member cluster: the read index is immediately safe
+			r.readStates = append(r.readStates, ReadState{
+				Index:      r.raftLog.commitIndex,
+				RequestCtx: m.Entries[0].Data,
+			})
+		}
 		return
 	}
 
@@ -78,12 +123,46 @@ func stepLeader(r *raft, m Message) {
 			if pr.mayDecreaseTo(m.LogIndex, m.RejectHint) {
 				r.sendAppend(m.From)
 			}
+			return
+		}
+
+		// The follower's log now matches through m.LogIndex: advance its
+		// progress and try to move the commit index forward
+		if pr.maybeUpdate(m.LogIndex) && r.maybeCommit() {
+			r.broadcastAppend()
 		}
 
 	case MsgHeartbeatResp:
+		// Process acknowledgments of pending read-index requests
+		if len(r.readOnly.readIndexQueue) == 0 {
+			return
+		}
 
+		acks := r.readOnly.recvAck(string(m.Context), m.From)
+		if len(acks) < r.quorum() {
+			return
+		}
+
+		for _, rs := range r.readOnly.advance(string(m.Context)) {
+			req := rs.req
+			if req.From == None || req.From == r.id {
+				// Local client request: deliver via read states
+				r.readStates = append(r.readStates, ReadState{
+					Index:      rs.index,
+					RequestCtx: req.Entries[0].Data,
+				})
+				continue
+			}
+
+			// The read was forwarded by another node: respond to it
+			r.send(Message{
+				To:       req.From,
+				Type:     MsgReadIndexResp,
+				LogIndex: rs.index,
+				Entries:  req.Entries,
+			})
+		}
 	}
-
 }
 
 func (r *raft) broadcastHeartbeat() {

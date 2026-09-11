@@ -30,8 +30,10 @@ type Node struct {
 	proc chan Message
 	// Channel for messages from peers
 	recvChan chan Message
-	// Channel for configuration change proposals
-	confChan chan Message
+	// Channel delivering committed configuration changes to be applied
+	confChan chan ConfChange
+	// Channel returning the resulting membership of an applied conf change
+	confStateChan chan ConfState
 	// Channel delivering ready state to the application
 	readyChan chan Ready
 	// Channel signaling the application has applied ready state
@@ -43,15 +45,10 @@ type Node struct {
 func StartNode(conf *Config, peers []Peer) Node {
 	r := newRaft(conf)
 	// Register all peers in the configuration
-	// for _, peer := range peers {
-
-	// }
+	for _, peer := range peers {
+		r.addNode(peer.ID)
+	}
 	r.raftLog.commitIndex = r.raftLog.lastIndex()
-
-	// Initialize progress for each peer
-	// for _, peer := range peers {
-	// 	r.addNode(peer.ID)
-	// }
 
 	n := newNode()
 	go n.run(r)
@@ -60,17 +57,18 @@ func StartNode(conf *Config, peers []Peer) Node {
 
 func newNode() Node {
 	return Node{
-		proc:      make(chan Message),
-		recvChan:  make(chan Message),
-		confChan:  make(chan Message),
-		readyChan: make(chan Ready),
-		tickChan:  make(chan struct{}),
+		proc:          make(chan Message),
+		recvChan:      make(chan Message),
+		confChan:      make(chan ConfChange),
+		confStateChan: make(chan ConfState),
+		readyChan:     make(chan Ready),
+		advanceChan:   make(chan struct{}),
+		tickChan:      make(chan struct{}),
 	}
 }
 
 func (n *Node) run(r *raft) {
 	var (
-		propChan    chan Message
 		readyChan   chan Ready
 		advanceChan chan struct{}
 		// Ready state
@@ -78,7 +76,7 @@ func (n *Node) run(r *raft) {
 		prevSoft = r.softState()
 		prevHard = emptyHardState
 
-		prevLastUnstableI, prevLastUnstableJ uint64
+		prevLastUnstableI, prevLastUnstableT uint64
 		hasPrevLastUnstableI                 bool
 	)
 
@@ -86,7 +84,6 @@ func (n *Node) run(r *raft) {
 		// Check for state updates and deliver via readyChan if present
 		if advanceChan != nil {
 			readyChan = nil
-			// Build new ready state and deliver if there are updates
 		} else if rd = newReady(r, prevSoft, prevHard); rd.containsUpdates() {
 			readyChan = n.readyChan
 		} else {
@@ -95,21 +92,19 @@ func (n *Node) run(r *raft) {
 
 		select {
 		// Received a local proposal
-		case m := <-propChan:
+		case m := <-n.proc:
 			// Process local proposal message
 			m.From = r.id
 			r.Step(m)
 		case m := <-n.recvChan:
-			// Ignore messages from unknown nodes
-			if _, ok := r.prs[m.From]; !ok || !IsResponseMsg(m.Type) {
-				break
-			}
+			// Process a message from a peer or a forwarded client request
 			r.Step(m)
-		case <-n.confChan:
-		// Timer tick
+		case cc := <-n.confChan:
+			// Apply a committed configuration change
+			n.confStateChan <- r.applyConfChange(cc)
 		case <-n.tickChan:
+			// Timer tick
 			r.tick()
-			// Ready state delivered
 		case readyChan <- rd:
 			// Sync updated state for next iteration's change detection
 			if rd.SoftState != nil {
@@ -121,7 +116,8 @@ func (n *Node) run(r *raft) {
 			}
 
 			if len(rd.Entries) > 0 {
-				prevLastUnstableI, prevLastUnstableJ = rd.Entries[len(rd.Entries)-1].Index, rd.Entries[len(rd.Entries)-1].Term
+				prevLastUnstableI = rd.Entries[len(rd.Entries)-1].Index
+				prevLastUnstableT = rd.Entries[len(rd.Entries)-1].Term
 				hasPrevLastUnstableI = true
 			}
 
@@ -129,13 +125,23 @@ func (n *Node) run(r *raft) {
 			r.readStates = nil
 			advanceChan = n.advanceChan
 		case <-advanceChan:
-			// Previous commit index is now applied, as the application signaled advance
+			// The application has consumed the ready: persist the delivered
+			// state, then mark entries stable and the commit index applied
+			if !IsEmptyHardState(prevHard) {
+				if err := r.raftLog.storage.SetHardState(prevHard); err != nil {
+					panic(err)
+				}
+			}
+
 			if prevHard.CommitIndex != 0 {
 				r.raftLog.appliedTo(prevHard.CommitIndex)
 			}
 
 			if hasPrevLastUnstableI {
-				r.raftLog.stableTo(prevLastUnstableI, prevLastUnstableJ)
+				if err := r.raftLog.storage.Append(rd.Entries); err != nil {
+					panic(err)
+				}
+				r.raftLog.stableTo(prevLastUnstableI, prevLastUnstableT)
 				hasPrevLastUnstableI = false
 			}
 
@@ -162,7 +168,22 @@ func (n *Node) Propose(ctx context.Context, data []byte) error {
 func (n *Node) ProposeConfChange(ctx context.Context, cc ConfChange) error {
 	data, _ := json.Marshal(cc)
 
-	return n.step(ctx, Message{Type: MsgProp, Entries: []Entry{{Data: data}}})
+	return n.step(ctx, Message{Type: MsgProp, Entries: []Entry{{Type: EntryConfChange, Data: data}}})
+}
+
+// ReadIndex submits a linearizable read request identified by rctx. Once a
+// quorum confirms the leader, the read state is delivered through
+// Ready.ReadStates.
+func (n *Node) ReadIndex(ctx context.Context, rctx []byte) error {
+	return n.step(ctx, Message{Type: MsgReadIndex, Entries: []Entry{{Data: rctx}}})
+}
+
+// ApplyConfChange applies a committed configuration change and returns the
+// resulting cluster membership. Call it when applying an EntryConfChange
+// entry from Ready.CommittedEntries.
+func (n *Node) ApplyConfChange(cc ConfChange) ConfState {
+	n.confChan <- cc
+	return <-n.confStateChan
 }
 
 func (n *Node) Ready() <-chan Ready {

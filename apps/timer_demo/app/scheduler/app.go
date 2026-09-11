@@ -24,7 +24,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/hangtiancheng/swifty.go/apps/timer_demo/common/conf"
 	"github.com/hangtiancheng/swifty.go/apps/timer_demo/pkg/log"
 	service "github.com/hangtiancheng/swifty.go/apps/timer_demo/service/scheduler"
 )
@@ -66,8 +65,4 @@ func (w *WorkerApp) Stop() {
 
 type workerService interface {
 	Start(context.Context) error
-}
-
-type confProvider interface {
-	Get() *conf.SchedulerAppConf
 }

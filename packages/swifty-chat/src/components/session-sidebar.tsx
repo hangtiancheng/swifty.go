@@ -135,6 +135,7 @@ export function SessionSidebar({ onChat }: SessionSidebarProps) {
 
   const userSessions = useSessionStore((s) => s.userSessions);
   const groupSessions = useSessionStore((s) => s.groupSessions);
+  const refreshTick = useSessionStore((s) => s.refreshTick);
 
   const loadUserSessions = useCallback(async () => {
     const uid = useAuthStore.getState().userInfo.uuid;
@@ -170,11 +171,15 @@ export function SessionSidebar({ onChat }: SessionSidebarProps) {
     }
   }, []);
 
-  // Users section is open by default, so load it on mount.
+  // Users section is open by default, so load it on mount. WS system frames
+  // bump refreshTick so the lists re-sync after contact/group changes.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUserSessions();
-  }, [loadUserSessions]);
+    if (groupsLoaded.current) {
+      void loadGroupSessions();
+    }
+  }, [loadUserSessions, loadGroupSessions, refreshTick]);
 
   function handleGroupsOpenChange(open: boolean) {
     setGroupsOpen(open);
@@ -203,7 +208,7 @@ export function SessionSidebar({ onChat }: SessionSidebarProps) {
           query={query}
           sessions={userSessions}
           rowId={(u) => u.user_id ?? ""}
-          rowName={(u) => u.user_name ?? ""}
+          rowName={(u) => u.username ?? ""}
           onOpenChange={setUsersOpen}
           onChat={onChat}
         />

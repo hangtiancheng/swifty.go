@@ -24,10 +24,22 @@ import { create } from "zustand";
 import type { UserInfo } from "../types";
 import { resolveAvatar } from "../utils/avatar";
 
+const TOKEN_KEY = "token";
+
+export function getToken(): string {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export interface AuthState {
   userInfo: UserInfo;
+  token: string;
   isLoggedIn: boolean;
   setUserInfo: (info: UserInfo) => void;
+  setToken: (token: string) => void;
   clearUserInfo: () => void;
 }
 
@@ -58,15 +70,21 @@ const initialUser = loadUserInfo();
 
 const useAuthStore = create<AuthState>((set) => ({
   userInfo: initialUser,
+  token: getToken(),
   isLoggedIn: !!initialUser.uuid,
   setUserInfo(info: UserInfo) {
     info.avatar = resolveAvatar(info.avatar, info.uuid);
     sessionStorage.setItem("userInfo", JSON.stringify(info));
     set({ userInfo: info, isLoggedIn: !!info.uuid });
   },
+  setToken(token: string) {
+    sessionStorage.setItem(TOKEN_KEY, token);
+    set({ token });
+  },
   clearUserInfo() {
     sessionStorage.removeItem("userInfo");
-    set({ userInfo: { ...emptyUser }, isLoggedIn: false });
+    sessionStorage.removeItem(TOKEN_KEY);
+    set({ userInfo: { ...emptyUser }, token: "", isLoggedIn: false });
   },
 }));
 

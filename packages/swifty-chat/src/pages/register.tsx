@@ -38,7 +38,7 @@ import useAuthStore from "@/store/auth";
 import useWsStore from "@/store/ws";
 import { isValidPhone } from "@/utils/validate";
 import { showToast } from "@/utils/toast";
-import type { UserInfo } from "@/types";
+import type { AuthResponse } from "@/types";
 
 export default function Register() {
   const [nickname, setNickname] = useState("");
@@ -65,11 +65,12 @@ export default function Register() {
       return;
     }
     const res = await api.register({ nickname, telephone, password });
-    if (res.code === 200) {
-      const data = res.data as UserInfo;
+    if (res.code === 200 && res.data) {
+      const { token, user_info } = res.data as AuthResponse;
       showToast(res.message, "success");
-      useAuthStore.getState().setUserInfo(data);
-      useWsStore.getState().connect(data.uuid);
+      useAuthStore.getState().setToken(token);
+      useAuthStore.getState().setUserInfo(user_info);
+      useWsStore.getState().connect(user_info.uuid);
       navigate("/chat/sessions");
     } else {
       showToast(res.message || "Registration failed", "error");

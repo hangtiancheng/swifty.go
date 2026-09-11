@@ -139,7 +139,7 @@ func (r *raftLog) unstableEntries() []Entry {
 // Returns committed but not yet applied entries
 func (r *raftLog) nextEntries() []Entry {
 	off := max(r.applyIndex+1, r.firstIndex())
-	if r.commitIndex > off {
+	if r.commitIndex+1 > off {
 		entries, err := r.slice(off, r.commitIndex+1)
 		if err != nil {
 			panic(err)
@@ -182,12 +182,12 @@ func (r *raftLog) slice(lo, hi uint64) ([]Entry, error) {
 
 	var entries []Entry
 	if lo < r.unstable.offset {
-		entries, err := r.storage.Entries(lo, min(r.unstable.offset, hi))
+		stable, err := r.storage.Entries(lo, min(r.unstable.offset, hi))
 		if err != nil {
 			panic(err)
 		}
 
-		entries = append(entries, entries...)
+		entries = append(entries, stable...)
 	}
 
 	if hi > r.unstable.offset {
@@ -235,7 +235,7 @@ func (r *raftLog) lastTerm() uint64 {
 
 // Checks whether the given log is at least as up-to-date as the local log
 func (r *raftLog) isUpToDate(index, term uint64) bool {
-	return term > r.lastTerm() || (term == r.lastIndex() && index >= r.lastIndex())
+	return term > r.lastTerm() || (term == r.lastTerm() && index >= r.lastIndex())
 }
 
 func (r *raftLog) appliedTo(i uint64) {
@@ -271,6 +271,9 @@ func (r *raftLog) term(i uint64) (uint64, error) {
 	}
 
 	// Retrieve from unstable storage
+	if t, ok := r.unstable.maybeTerm(i); ok && t != 0 {
+		return t, nil
+	}
 
 	// Retrieve from stable storage
 	t, err := r.storage.Term(i)
@@ -315,16 +318,20 @@ func (r *raftLog) maybeAppend(logIndex, logTerm, commitIndex uint64, entries ...
 		return 0, false
 	}
 
+	lastNewI := logIndex + uint64(len(entries))
 	// Find the first conflicting entry and append from that point
 	conflictStart := r.findConflict(entries)
-	if conflictStart <= r.commitIndex {
+	switch {
+	case conflictStart == 0:
+		// No conflict: the local log already contains all the entries
+	case conflictStart <= r.commitIndex:
 		panic("conflict before commit index")
+	default:
+		offset := logIndex + 1
+		r.append(entries[conflictStart-offset:]...)
 	}
-	offset := logIndex + 1
-	r.append(entries[conflictStart-offset:]...)
 
 	// Update the commit index
-	lastNewI := logIndex + uint64(len(entries))
 	r.commitTo(min(commitIndex, lastNewI))
 	return lastNewI, true
 }

@@ -22,6 +22,7 @@ package time_wheel
 
 import (
 	"container/list"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -93,7 +94,7 @@ func (t *TimeWheel) RemoveTask(key string) {
 func (t *TimeWheel) run() {
 	defer func() {
 		if err := recover(); err != nil {
-			// ...
+			slog.Error("time wheel panicked", "panic", err)
 		}
 	}()
 
@@ -131,7 +132,7 @@ func (t *TimeWheel) execute(l *list.List) {
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-					// ...
+					slog.Error("task panicked", "panic", err)
 				}
 			}()
 			taskElement.task()

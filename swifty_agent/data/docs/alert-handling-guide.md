@@ -335,7 +335,7 @@ Resolution:
 1. Check severity, not just count: `histogram_quantile(0.95, sum by (le) (rate(swifty_sentry_long_task_duration_ms_bucket[10m])))`. The browser reports any task over 50ms; tasks over 500ms are what users notice.
 2. Confirm the user impact through `swifty_sentry_web_vitals{name="INP"}`, which measures interaction responsiveness directly.
 3. Long tasks are collected by a `PerformanceObserver` on the `longtask` entry type, which is Chromium-only, so absence of data does not mean absence of blocking.
-4. Common causes in this app: large markdown and Shiki highlighting passes during streaming, A2UI surface rendering, and synchronous work in the message processor.
+4. Common causes in this app: large markdown and Shiki highlighting passes during streaming, and synchronous work in the message processor.
 5. Cross-check `swifty_sentry_browser_memory_bytes`; heavy retained memory makes browser GC pauses show up as long tasks.
 
 # FrontendMemoryHigh
@@ -346,9 +346,9 @@ Resolution:
 
 1. Break down the allocation: `swifty_sentry_browser_memory_breakdown_bytes` carries a `kind` label built from the reported allocation types (for example `JavaScript`, `DOM`).
 2. This metric comes from `performance.measureUserAgentSpecificMemory()`, which is Chromium-only and is sampled once per page load by the PerformancePlugin, so it is a snapshot rather than a trend.
-3. Growth in the `JavaScript` kind points at retained application state: chat histories in localStorage-backed React state, per-message A2UI `MessageProcessor` instances, or accumulated stream chunks.
+3. Growth in the `JavaScript` kind points at retained application state: chat histories in localStorage-backed React state, or accumulated stream chunks.
 4. Growth in the `DOM` kind points at unbounded node creation, for example an ever-growing message list without virtualization.
-5. Note that `reactStrictMode` is off in this app because the A2UI MessageProcessor is a stateful external store; that also means development double-mount would otherwise duplicate surfaces, so verify surface cleanup when auditing retention.
+5. Note that `reactStrictMode` is off in this app, so development double-mount never runs; verify component cleanup manually when auditing retention.
 
 # Reconciliation Discrepancy with Downstream
 

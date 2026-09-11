@@ -23,7 +23,6 @@ package redis
 import (
 	"context"
 	"errors"
-	"strconv"
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/apps/timer_demo/common/conf"
@@ -124,9 +123,11 @@ func (c *Client) HSet(ctx context.Context, table, key string, value any) error {
 
 // ZrangeByScore executes the Redis ZRANGEBYSCORE command.
 func (c *Client) ZrangeByScore(ctx context.Context, table string, score1, score2 int64) ([]string, error) {
-	return c.client.ZRangeByScore(ctx, table, &go_redis.ZRangeBy{
-		Min: strconv.FormatInt(score1, 10),
-		Max: strconv.FormatInt(score2, 10),
+	return c.client.ZRangeArgs(ctx, go_redis.ZRangeArgs{
+		Key:     table,
+		Start:   score1,
+		Stop:    score2,
+		ByScore: true,
 	}).Result()
 }
 

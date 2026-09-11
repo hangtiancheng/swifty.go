@@ -142,11 +142,6 @@ func (w *Worker) handleBatch(ctx context.Context, key string, start, end time.Ti
 		return err
 	}
 
-	timerIDs := make([]uint, 0, len(tasks))
-	for _, task := range tasks {
-		timerIDs = append(timerIDs, task.TimerID)
-	}
-	// log.InfoContextf(ctx, "key: %s, get tasks: %+v, start: %v, end: %v", key, timerIDs, start, end)
 	for _, task := range tasks {
 		if err := w.pool.Submit(func() {
 			// log.InfoContextf(ctx, "trigger_3 start: %v", time.Now())

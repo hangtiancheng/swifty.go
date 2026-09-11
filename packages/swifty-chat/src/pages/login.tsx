@@ -38,7 +38,7 @@ import useAuthStore from "@/store/auth";
 import useWsStore from "@/store/ws";
 import { isValidPhone } from "@/utils/validate";
 import { showToast } from "@/utils/toast";
-import type { UserInfo } from "@/types";
+import type { AuthResponse } from "@/types";
 
 export default function Login() {
   const [telephone, setTelephone] = useState("");
@@ -55,19 +55,17 @@ export default function Login() {
       return;
     }
 
-    const res = (await api.login({ telephone, password })) as {
-      code: number;
-      message: string;
-      data: UserInfo;
-    };
-    if (res.code === 200) {
-      if (res.data && res.data.status === 1) {
+    const res = await api.login({ telephone, password });
+    if (res.code === 200 && res.data) {
+      const { token, user_info } = res.data as AuthResponse;
+      if (user_info.status === 1) {
         showToast("This account has been banned", "error");
         return;
       }
       showToast(res.message, "success");
-      useAuthStore.getState().setUserInfo(res.data);
-      useWsStore.getState().connect(res.data.uuid);
+      useAuthStore.getState().setToken(token);
+      useAuthStore.getState().setUserInfo(user_info);
+      useWsStore.getState().connect(user_info.uuid);
       navigate("/chat/sessions");
     } else {
       showToast(res.message || "Login failed", "error");

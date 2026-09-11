@@ -87,7 +87,6 @@ func buildSystemPrompt(cfg *config.Config) string {
 
 - Readable and well-structured with line breaks where necessary
 - Output markdown only
-  {a2ui_section}
 
 ## Context Information
 

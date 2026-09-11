@@ -98,7 +98,7 @@ func (s *SSTWriter) Finish() (size uint64, blockToFilter map[uint64][]byte, inde
 	size += filterBufLen
 	n += binary.PutUvarint(footer[n:], size)
 	indexBufLen := uint64(s.indexBuf.Len())
-	n += binary.PutUvarint(footer[n:], indexBufLen)
+	binary.PutUvarint(footer[n:], indexBufLen)
 	size += indexBufLen
 
 	// Write everything to the file: data | filter | index | footer.

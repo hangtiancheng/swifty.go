@@ -22,7 +22,8 @@ package example
 
 import (
 	"context"
-	"fmt"
+	"os"
+	"testing"
 	"time"
 
 	"github.com/hangtiancheng/swifty.go/apps/tcc_demo"
@@ -30,19 +31,23 @@ import (
 	"github.com/hangtiancheng/swifty.go/apps/tcc_demo/example/pkg"
 )
 
-const (
-	dsn      = "enter mysql dsn"
-	network  = "tcp"
-	address  = "enter redis ip:port"
-	password = "enter redis password"
-)
+// TestTCCExample runs the full TCC transaction flow against real MySQL and
+// Redis. It is skipped unless the following environment variables are set:
+//
+//	TCC_TEST_MYSQL_DSN:      MySQL DSN
+//	TCC_TEST_REDIS_ADDR:     Redis address, e.g. "127.0.0.1:6379"
+//	TCC_TEST_REDIS_PASSWORD: Redis password (optional)
+func TestTCCExample(t *testing.T) {
+	dsn := os.Getenv("TCC_TEST_MYSQL_DSN")
+	redisAddr := os.Getenv("TCC_TEST_REDIS_ADDR")
+	if dsn == "" || redisAddr == "" {
+		t.Skip("TCC_TEST_MYSQL_DSN and TCC_TEST_REDIS_ADDR are required to run this test")
+	}
 
-func main() {
-	redisClient := pkg.NewRedisClient(network, address, password)
+	redisClient := pkg.NewRedisClient("tcp", redisAddr, os.Getenv("TCC_TEST_REDIS_PASSWORD"))
 	mysqlDB, err := pkg.NewDB(dsn)
 	if err != nil {
-		fmt.Println(err)
-		return
+		t.Fatalf("connect mysql: %v", err)
 	}
 
 	componentAID := "componentA"
@@ -62,19 +67,10 @@ func main() {
 	defer txManager.Stop()
 
 	// Register all components
-	if err := txManager.Register(componentA); err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	if err := txManager.Register(componentB); err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	if err := txManager.Register(componentC); err != nil {
-		fmt.Println(err)
-		return
+	for _, component := range []tcc_demo.TCCComponent{componentA, componentB, componentC} {
+		if err := txManager.Register(component); err != nil {
+			t.Fatalf("register component %s: %v", component.ID(), err)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
@@ -97,15 +93,12 @@ func main() {
 		},
 	}...)
 	if err != nil {
-		fmt.Printf("tx failed, err: %v", err)
-		return
+		t.Fatalf("tx failed: %v", err)
 	}
 	if !success {
-		fmt.Println("tx failed")
-		return
+		t.Fatal("tx failed")
 	}
 
+	// Leave the monitor one tick to observe the completed transaction.
 	<-time.After(2 * time.Second)
-
-	fmt.Println("success")
 }

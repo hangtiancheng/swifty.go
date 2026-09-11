@@ -29,7 +29,7 @@ func main() {
 	confChangeC := make(chan raft.ConfChange)
 
 	// Create raft proxy and obtain the commit channel
-	commitC := newRaftProxy(1, []string{}, proposeC, confChangeC)
+	commitC := newRaftProxy(1, []string{"node1"}, proposeC, confChangeC)
 	// Create the key-value store application
 	kvStore := newKVStore(proposeC, commitC)
 

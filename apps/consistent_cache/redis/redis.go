@@ -99,7 +99,7 @@ func (r *RClient) SetEx(ctx context.Context, key, value string, expireSeconds in
 		return errors.New("redis SET EX key can't be empty")
 	}
 
-	return r.client.SetEx(ctx, key, value, time.Duration(expireSeconds)*time.Second).Err()
+	return r.client.Set(ctx, key, value, time.Duration(expireSeconds)*time.Second).Err()
 }
 
 func (r *RClient) Del(ctx context.Context, key string) error {

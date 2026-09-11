@@ -46,7 +46,6 @@ func Test_NewDB(t *testing.T) {
 		t.Errorf("expected nil, got %v", err)
 	}
 
-	db = nil
 	debounce = sync.Once{}
 
 	defaultDB := GetDB()

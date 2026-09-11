@@ -21,7 +21,13 @@
  */
 
 import { BASE_URL } from "../config";
+import { getToken } from "../store/auth";
 import type { ApiResponse } from "../types";
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function request<T>(
   endpoint: string,
@@ -30,7 +36,7 @@ async function request<T>(
   try {
     const response = await fetch(BASE_URL + endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(data || {}),
       signal: AbortSignal.timeout(10_000),
     });
@@ -58,6 +64,7 @@ async function upload(
   try {
     const response = await fetch(BASE_URL + endpoint, {
       method: "POST",
+      headers: authHeaders(),
       body: formData,
       signal: AbortSignal.timeout(30_000),
     });
