@@ -1,5 +1,7 @@
 import { LitElement, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { Sparkles } from "lucide";
+import { icon } from "./icons.js";
 import type { ChatMessage, Mode } from "../chat/chat-store.js";
 import "./msg-list.js";
 import "./chat-input.js";
@@ -45,14 +47,23 @@ export class ChatContainer extends LitElement {
         ${
           centered
             ? html`
-                <div class="px-6 text-center text-sky-600">
-                  <p class="text-2xl">
-                    Hello! I am the Swifty Agent OnCall assistant
-                  </p>
-                  <p class="mt-3 text-sm text-zinc-500">
-                    If this is your first time, upload a file from the docs
-                    directory via the "..." menu before chatting, otherwise you
-                    may get a search error.
+                <div
+                  class="flex max-w-md flex-col items-center px-6 text-center"
+                >
+                  <div
+                    class="from-blush-300 via-blush-400 to-blush-600 shadow-blush-300/50 flex h-16 w-16 items-center justify-center rounded-3xl bg-linear-to-br shadow-lg"
+                  >
+                    ${icon(Sparkles, "h-8 w-8 text-white")}
+                  </div>
+                  <h1
+                    class="text-ink mt-5 text-2xl font-semibold tracking-tight text-balance"
+                  >
+                    Hi! I'm the Swifty Agent OnCall assistant
+                  </h1>
+                  <p class="text-ink-soft mt-3 text-sm leading-relaxed">
+                    First time here? Upload a file from the docs directory via
+                    the "..." menu before chatting — otherwise you may hit a
+                    search error.
                   </p>
                 </div>
               `
@@ -63,7 +74,7 @@ export class ChatContainer extends LitElement {
                 ></msg-list>
               `
         }
-        <div class="w-full px-6 pb-5">
+        <div class="mx-auto w-full max-w-3xl px-6 pb-6">
           <chat-input
             .isStreaming=${this.isStreaming}
             .mode=${this.mode}

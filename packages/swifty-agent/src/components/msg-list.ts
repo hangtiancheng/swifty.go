@@ -35,12 +35,14 @@ export class MsgList extends LitElement {
 
   render() {
     return html`
-      <div data-scroller class="flex-1 overflow-y-auto px-6 py-4">
-        ${repeat(
-          this.messages,
-          (_, i) => i,
-          (m) => this.#renderMessage(m),
-        )}
+      <div data-scroller class="flex-1 overflow-y-auto px-6 py-6">
+        <div class="mx-auto w-full max-w-3xl">
+          ${repeat(
+            this.messages,
+            (_, i) => i,
+            (m) => this.#renderMessage(m),
+          )}
+        </div>
       </div>
     `;
   }
@@ -50,7 +52,7 @@ export class MsgList extends LitElement {
       return html`
         <div class="mb-6 flex flex-col items-end">
           <div
-            class="max-w-[70%] rounded-2xl rounded-br-sm bg-zinc-100 px-4 py-3 text-sm whitespace-pre-wrap text-zinc-800"
+            class="bg-blush-900 text-blush-50 max-w-[75%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap shadow-sm"
           >
             ${message.content}
           </div>
@@ -60,7 +62,7 @@ export class MsgList extends LitElement {
     return html`
       <div class="mb-6 flex items-start gap-3">
         <div
-          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-green-500"
+          class="from-blush-400 to-blush-600 ring-blush-100 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br shadow-sm ring-2"
         >
           ${icon(Sparkles, "h-5 w-5 text-white")}
         </div>
@@ -69,23 +71,25 @@ export class MsgList extends LitElement {
             message.detail && message.detail.length > 0
               ? html`
                   <details
-                    class="mb-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm"
+                    class="border-blush-200 bg-blush-50 mb-3 rounded-xl border px-4 py-3 text-sm"
                   >
-                    <summary class="cursor-pointer font-medium text-sky-600">
+                    <summary
+                      class="text-blush-600 hover:text-blush-500 cursor-pointer font-medium transition"
+                    >
                       View details (${message.detail.length} steps)
                     </summary>
-                    <div class="mt-2 flex flex-col gap-2">
+                    <div class="mt-2.5 flex flex-col gap-2">
                       ${message.detail.map(
                         (d, idx) => html`
                           <div
-                            class="border-l-2 border-sky-400 bg-white p-2 text-xs text-zinc-700"
+                            class="border-blush-400 text-ink/80 rounded-r-lg border-l-2 bg-white/70 p-2.5 text-xs"
                           >
-                            <strong class="text-sky-600"
+                            <strong class="text-blush-600 font-semibold"
                               >Step ${idx + 1}:</strong
                             >
                             <md-render
                               .content=${d}
-                              .mdClass=${"max-w-none text-xs leading-relaxed wrap-break-word text-zinc-700"}
+                              .mdClass=${"max-w-none text-xs leading-relaxed wrap-break-word text-ink/80"}
                             ></md-render>
                           </div>
                         `,
@@ -95,13 +99,13 @@ export class MsgList extends LitElement {
                 `
               : nothing
           }
-          <div class="text-sm text-zinc-800">
+          <div class="text-ink text-sm">
             ${
               message.pending
                 ? html`
-                    <div class="flex items-center gap-2 py-1 text-zinc-400">
-                      ${icon(LoaderCircle, "h-4 w-4 animate-spin")}
-                      <span>Thinking...</span>
+                    <div class="text-ink-soft flex items-center gap-2 py-1">
+                      ${icon(LoaderCircle, "h-4 w-4 animate-spin text-blush-500")}
+                      <span>Thinking…</span>
                     </div>
                   `
                 : html`<md-render .content=${message.content}></md-render>`

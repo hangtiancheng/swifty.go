@@ -21,16 +21,16 @@ export class LoadingOverlay extends LitElement {
     if (!this.overlay.show) return nothing;
     return html`
       <div
-        class="fixed inset-0 z-9999 flex items-center justify-center bg-black/70 backdrop-blur"
+        class="bg-ink/35 fixed inset-0 z-9999 flex items-center justify-center backdrop-blur-sm"
       >
-        <div class="rounded-2xl bg-white/95 px-12 py-10 text-center shadow-2xl">
+        <div
+          class="ring-blush-200 rounded-3xl bg-white/95 px-10 py-9 text-center shadow-2xl ring-1"
+        >
           <div
-            class="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-sky-200 border-t-sky-500"
+            class="border-blush-200 border-t-blush-500 mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4"
           ></div>
-          <div class="text-lg font-semibold text-sky-600">
-            ${this.overlay.text}
-          </div>
-          <div class="mt-2 text-sm text-zinc-600">${this.overlay.subtext}</div>
+          <div class="text-ink text-lg font-semibold">${this.overlay.text}</div>
+          <div class="text-ink-soft mt-2 text-sm">${this.overlay.subtext}</div>
         </div>
       </div>
     `;

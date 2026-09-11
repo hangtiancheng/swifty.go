@@ -11,7 +11,7 @@ import "./ai-ops-btn.js";
 import "./loading-overlay.js";
 
 const NOTIFY_COLORS: Record<NotificationType, string> = {
-  info: "bg-sky-500",
+  info: "bg-blush-500",
   success: "bg-green-500",
   warning: "bg-amber-500",
   error: "bg-red-500",
@@ -29,7 +29,7 @@ export class ChatApp extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.className =
-      "flex h-screen w-screen overflow-hidden bg-white text-zinc-900";
+      "flex h-screen w-screen overflow-hidden bg-blush-50 text-ink";
   }
 
   #handleAIOps = async () => {
@@ -68,7 +68,7 @@ export class ChatApp extends LitElement {
         .onLoad=${chat.loadChatHistory}
         .onDelete=${chat.deleteChatHistory}
       ></chat-sidebar>
-      <main class="relative flex flex-1 flex-col overflow-hidden bg-white">
+      <main class="bg-blush-50 relative flex flex-1 flex-col overflow-hidden">
         <ai-ops-btn
           .onTrigger=${this.#handleAIOps}
           .disabled=${chat.isStreaming}
@@ -89,7 +89,7 @@ export class ChatApp extends LitElement {
               <div
                 class="${
                   NOTIFY_COLORS[chat.notification.type]
-                } fixed top-5 right-5 z-10000 max-w-xs rounded-lg p-4 text-sm font-medium text-white shadow-lg"
+                } fixed top-5 right-5 z-10000 max-w-xs rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg ring-1 ring-black/5"
               >
                 ${chat.notification.message}
               </div>

@@ -27,7 +27,7 @@ export class MdRender extends LitElement {
   render() {
     const classes =
       this.mdClass ??
-      "max-w-none text-sm leading-relaxed wrap-break-word text-zinc-800";
+      "max-w-none text-sm leading-relaxed wrap-break-word text-ink";
     return html`<div class="md-content ${classes}">
       ${unsafeHTML(renderMarkdown(this.content))}
     </div>`;

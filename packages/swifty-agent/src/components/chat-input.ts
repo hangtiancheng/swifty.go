@@ -95,7 +95,7 @@ export class ChatInput extends LitElement {
     return html`
       <div
         data-input-container
-        class="relative rounded-3xl border border-zinc-200 bg-white p-3 shadow-sm"
+        class="border-blush-200 shadow-blush-200/50 focus-within:border-blush-400 relative rounded-3xl border bg-white/85 p-3 shadow-xl backdrop-blur-md transition"
       >
         <textarea
           .value=${this._text}
@@ -110,7 +110,7 @@ export class ChatInput extends LitElement {
           }}
           ?disabled=${this.isStreaming}
           placeholder="Ask the Swifty Agent OnCall assistant"
-          class="max-h-40 w-full resize-none bg-transparent text-base text-zinc-900 outline-none placeholder:text-zinc-400"
+          class="text-ink placeholder:text-blush-400 max-h-40 w-full resize-none bg-transparent text-base outline-none"
           rows="1"
         ></textarea>
         <div class="mt-2 flex items-center justify-between">
@@ -119,7 +119,7 @@ export class ChatInput extends LitElement {
               @click=${() => {
                 this._showTools = !this._showTools;
               }}
-              class="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100"
+              class="text-ink-soft hover:bg-blush-100 hover:text-ink flex h-9 w-9 items-center justify-center rounded-full transition"
               aria-label="Tools"
               aria-expanded=${this._showTools}
             >
@@ -129,16 +129,16 @@ export class ChatInput extends LitElement {
               this._showTools
                 ? html`
                     <div
-                      class="absolute bottom-full left-0 mb-2 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg"
+                      class="border-blush-200 shadow-blush-300/30 absolute bottom-full left-0 mb-2 rounded-2xl border bg-white p-1.5 shadow-xl"
                     >
                       <button
                         @click=${() => {
                           this._fileInput?.click();
                           this._showTools = false;
                         }}
-                        class="flex w-48 items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-100"
+                        class="text-ink hover:bg-blush-50 flex w-48 items-center gap-3 rounded-xl px-3 py-2 text-sm transition"
                       >
-                        ${icon(Paperclip, "h-5 w-5")}
+                        ${icon(Paperclip, "h-5 w-5 text-blush-500")}
                         <span>Upload file</span>
                       </button>
                     </div>
@@ -152,7 +152,7 @@ export class ChatInput extends LitElement {
                 @click=${() => {
                   this._showMode = !this._showMode;
                 }}
-                class="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+                class="text-ink-soft hover:text-ink flex items-center gap-1 text-sm transition"
                 aria-expanded=${this._showMode}
                 aria-label="Chat mode"
               >
@@ -163,7 +163,7 @@ export class ChatInput extends LitElement {
                 this._showMode
                   ? html`
                       <div
-                        class="absolute right-0 bottom-full mb-2 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg"
+                        class="border-blush-200 shadow-blush-300/30 absolute right-0 bottom-full mb-2 rounded-2xl border bg-white p-1.5 shadow-xl"
                       >
                         ${MODES.map(
                           (m) => html`
@@ -174,9 +174,9 @@ export class ChatInput extends LitElement {
                               }}
                               class="${
                                 m === this.mode
-                                  ? "bg-sky-50 text-sky-600"
-                                  : "text-zinc-800 hover:bg-zinc-100"
-                              } block w-40 rounded-lg px-3 py-2 text-left text-sm"
+                                  ? "bg-blush-100 font-medium text-blush-700"
+                                  : "text-ink hover:bg-blush-50"
+                              } block w-40 rounded-xl px-3 py-2 text-left text-sm"
                             >
                               ${m === "quick" ? "Quick" : "Stream"}
                             </button>
@@ -190,7 +190,7 @@ export class ChatInput extends LitElement {
             <button
               @click=${() => this.#send()}
               ?disabled=${this.isStreaming || !this._text.trim()}
-              class="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-40 disabled:hover:bg-zinc-100"
+              class="from-blush-500 to-blush-600 shadow-blush-500/30 hover:from-blush-400 hover:to-blush-500 flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br text-white shadow-md transition active:scale-95 disabled:opacity-40"
               aria-label="Send"
             >
               ${icon(Send, "h-5 w-5")}

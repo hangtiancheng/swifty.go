@@ -112,8 +112,10 @@ export class AIOpsBtn extends LitElement {
         aria-disabled=${this.disabled}
         style=${styleMap(pos ? { left: `${pos.x}px`, top: `${pos.y}px` } : {})}
         class="${pos ? "fixed" : "absolute top-4 left-1/2 -translate-x-1/2"} ${
-          this.disabled ? "opacity-50" : "hover:bg-green-600"
-        } z-10 flex cursor-grab touch-none items-center gap-2 rounded-full bg-green-500 px-4 py-2 text-sm font-medium text-white shadow-md transition select-none active:cursor-grabbing"
+          this.disabled
+            ? "opacity-50"
+            : "hover:from-blush-400 hover:to-blush-500"
+        } from-blush-500 to-blush-600 shadow-blush-500/30 z-10 flex cursor-grab touch-none items-center gap-2 rounded-full bg-linear-to-br px-4 py-2 text-sm font-medium text-white shadow-lg transition select-none active:cursor-grabbing"
       >
         ${icon(Layers)}
         <span>AI Ops</span>
