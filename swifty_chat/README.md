@@ -1,52 +1,123 @@
+<div align="center">
+
 # swifty_chat
 
-A chat server built on the swifty.go stack: swifty_http (HTTP + WebSocket),
-swifty_orm (MongoDB) and swifty_cache (in-process read-through cache).
+**A self-contained chat server — accounts, sessions, groups, contacts, files, and calls.**
+
+A complete IM backend built end to end on the swifty.go stack: `swifty_http` for HTTP + WebSocket, `swifty_orm` for MongoDB, and `swifty_cache` for the in-process read-through cache and its live dashboard.
+
+[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Module](https://img.shields.io/badge/module-swifty__chat-blue)](go.mod)
+
+</div>
+
+---
+
+## Capabilities
+
+- **Accounts & auth** — telephone/password sign-up with salted SHA-256 hashes and HS256 JWTs (`auth.jwtSecret`). Every POST route except `/login`, `/register`, and `/user/update-password` requires an `Authorization` token; admin routes additionally require `is_admin`.
+- **Sessions** — unread counts, last-message previews, activity ordering, and `/session/mark-session-read`. Direct and group messages auto-create or restore the receiver's session.
+- **Contacts** — tag lists, note names, online presence, keyword search, apply/pass/refuse flows, and blacklisting.
+- **Groups** — creation with initial members and a welcome message, invitations, member lists with join and last-speak times, add modes, dismiss, and admin moderation.
+- **Messaging** — types `0` text, `1` image, `2` file, `3` AV signaling, `4` video, `5` system notification (content is a `topic:` such as `contact` / `group` / `apply` / `session` / `online`).
+- **Audio & video calls** — 1v1 and group mesh calls signaled over `/wss` with type-3 frames; the server tracks call rooms and busy state, and `/chatroom/get-callers` lists room members.
+- **Chunked uploads** — instant upload and resume via `/file/verify`, `/file/upload-chunk`, and `/file/merge`, with chunks capped at 10 MiB.
+- **Live cache dashboard** — `swifty_cache.DashboardHandler()` is mounted at `/dashboard/ws` and streams cache/group statistics over WebSocket.
+
+## Architecture
+
+```text
+   Client (packages/swifty-chat)
+        │  HTTP + WS
+        V
+ ┌─────────────────────────────────────────────────────────────┐
+ │  swifty_http Application                                    │
+ │   middleware: CORS ──> Auth (JWT)                           │
+ │   routers: /user /group /session /contact /message /file    │
+ │            /chatroom  +  GET /wss  +  GET /dashboard/ws     │
+ ├─────────────────────────────────────────────────────────────┤
+ │  services: user, contact, group, session, message,          │
+ │            chat_server (hub), call_manager                  │
+ ├─────────────────────────────────────────────────────────────┤
+ │  dao: mongo (swifty_orm), cache (swifty_cache), indexes,    │
+ │       soft delete, transactions                             │
+ └───────────────┬──────────────────────────────┬──────────────┘
+                 V                              V
+            ┌─────────┐                   ┌──────────────┐
+            │ MongoDB │                   │  in-process  │
+            └─────────┘                   │ cache + hub  │
+                                          └──────────────┘
+```
 
 ## Run
 
 ```bash
-go run ./cmd                          # backend, reads ./config.json
-cd ../apps/swifty-chat && pnpm dev    # frontend dev server
+# backend (reads ./config.json)
+go run ./cmd
+
+# frontend (Lit + Tailwind, in the pnpm workspace)
+pnpm --filter swifty-chat dev
 ```
 
-## Capabilities
+`config.json`:
 
-- Telephone/password accounts with salted SHA-256 hashes and HS256 JWT
-  tokens (`auth.jwtSecret` in config.json). All POST endpoints except
-  `/login`, `/register` and `/user/update-password` require the token in the
-  `Authorization` header; admin endpoints additionally require `is_admin`.
-- Sessions with unread counts, last-message previews and activity ordering;
-  `/session/mark-session-read` clears unread. Direct and group messages
-  auto-create/restore the receivers' sessions.
-- Contacts with tags (`/contact/get-tag-list`, `/contact/add-tag`), note
-  names (`/contact/update-contact`), online presence and keyword search
-  (`/user/search-user`, `/group/search-group`).
-- Groups with initial members + welcome message at creation, member
-  invitation (`/group/invite-group-members`) and a member list carrying join
-  time and last-speak time.
-- Message types: 0 text, 1 image, 2 file, 3 AV signaling, 4 video,
-  5 system notification (content = topic: contact/group/apply/session/online).
-- Audio & video calls (1v1 and group mesh) signaled over the `/wss` channel
-  via type-3 frames; the server tracks call rooms and busy state
-  (`/chatroom/get-callers` lists room members).
-- Chunked uploads with instant upload and resume: `/file/verify`,
-  `/file/upload-chunk`, `/file/merge` (chunks capped at 10 MiB each).
+```json
+{
+  "app": { "host": "0.0.0.0", "port": 8000 },
+  "mongo": { "uri": "mongodb://localhost:27017", "database": "swifty_chatbot" },
+  "cache": { "maxBytes": 67108864, "expiration": 300 },
+  "static": {
+    "avatarPath": "./static/avatars",
+    "filePath": "./static/files",
+    "chunkPath": "./static/chunks"
+  },
+  "auth": { "jwtSecret": "change-me", "tokenExpireHours": 336 }
+}
+```
+
+If `auth.jwtSecret` is empty, an ephemeral secret is generated at boot and all tokens are invalidated on restart.
+
+## API overview
+
+The full, runnable request collection lives in [`swifty_chat.http`](./swifty_chat.http). Highlights:
+
+| Group     | Representative routes                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------ |
+| Auth      | `POST /login`, `POST /register`                                                                              |
+| User      | `/user/update-user-info`, `/user/search-user`, `/user/get-user-info-list` (admin), `/user/set-admin` (admin) |
+| Group     | `/group/create-group`, `/group/invite-group-members`, `/group/get-group-member-list`, `/group/dismiss-group` |
+| Session   | `/session/open-session`, `/session/get-user-session-list`, `/session/mark-session-read`                      |
+| Contact   | `/contact/apply-contact`, `/contact/pass-contact-apply`, `/contact/black-contact`, `/contact/add-tag`        |
+| Message   | `/message/get-message-list`, `/message/get-group-message-list`, `/message/upload-file`                       |
+| File      | `/file/verify`, `/file/upload-chunk`, `/file/merge`                                                          |
+| Chatroom  | `/chatroom/get-online-users`, `/chatroom/get-callers`                                                        |
+| WebSocket | `GET /wss` (messaging + calls), `GET /dashboard/ws` (cache dashboard)                                        |
+
+## Testing
+
+```bash
+go test ./...
+```
+
+MongoDB-backed tests expect a local instance (`mongodb://localhost:27017`).
 
 ## Deployment constraints
 
-- **Single instance only.** The message bus is an in-process channel, the
-  WebSocket connection table, call rooms and the cache all live in process
-  memory. Messages sent to a user connected to another instance would never
-  be delivered. Plan capacity for one instance.
-- **No TLS.** The server speaks plain HTTP/WS. For anything beyond an
-  internal network, terminate TLS at a gateway (nginx, caddy, ...) in front
-  of it.
-- `/user/update-password` is unauthenticated by design (legacy
-  forgot-password parity: no email/SMS verification exists). Anyone knowing a
-  telephone number can reset that account's password — front it with a
-  verification step before exposing it publicly.
-- The WebSocket endpoints (`/wss`, `/dashboard/ws`) do not validate tokens;
-  `client_id` is trusted. Restrict access in production.
-- **MongoDB transactions** require a replica set. On a standalone mongod the
-  server automatically falls back to sequential (non-transactional) writes.
+> [!CAUTION]
+> **This server is single-instance by design.** The message bus is an in-process channel, and the WebSocket connection table, call rooms, and cache all live in process memory. A message sent to a user connected to another instance would never be delivered. Plan capacity for one instance, or add a shared pub/sub layer before scaling out.
+
+> [!WARNING]
+> **No TLS.** The server speaks plain HTTP/WS. For anything beyond an internal network, terminate TLS at a gateway (nginx, Caddy, …) in front of it.
+
+> [!WARNING]
+> `/user/update-password` is unauthenticated **by design** (legacy forgot-password parity — no email/SMS verification exists). Anyone who knows a telephone number can reset that account's password. Add a verification step before exposing it publicly.
+
+> [!WARNING]
+> The WebSocket endpoints (`/wss`, `/dashboard/ws`) do not validate tokens; `client_id` is trusted. Restrict access in production.
+
+> [!NOTE]
+> MongoDB **transactions require a replica set**. On a standalone `mongod` the server automatically falls back to sequential, non-transactional writes.
+
+## License
+
+[MIT](../LICENSE) © hangtiancheng
