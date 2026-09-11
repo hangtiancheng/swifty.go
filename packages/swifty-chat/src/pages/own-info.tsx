@@ -20,76 +20,76 @@
  * SOFTWARE.
  */
 
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Card } from "@/components/ui/card";
-import { NavBar } from "@/components/nav-bar";
-import { ContactSidebar } from "@/components/contact-sidebar";
+import { customElement, state } from "@swifty.js/lit-jsx";
+import { api } from "@/service/api";
+import { authStore, currentUser, updateUserInfo } from "@/store/auth";
+import { showToast } from "@/utils/toast";
+import { isValidEmail } from "@/utils/validate";
+import { performLogout } from "@/utils/logout";
+import { navigate } from "@/router";
+import { TwElement } from "@/styles/base";
+import { AppFrame } from "@/components/app-frame";
+import "@/components/contact-sidebar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input, Label } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import useAuthStore from "@/store/auth";
-import { api } from "@/service/api";
-import { showToast } from "@/utils/toast";
-import { isValidEmail } from "@/utils/validate";
-import { performLogout } from "@/utils/logout";
+import { icon, icons } from "@/components/icons";
 import type { UserInfo } from "@/types";
 
-export default function OwnInfo() {
-  const navigate = useNavigate();
-  const userInfo = useAuthStore((s) => s.userInfo);
+@customElement("sc-profile")
+export class OwnInfoPage extends TwElement {
+  @state() private editOpen = false;
+  @state() private editNick = "";
+  @state() private editEmail = "";
+  @state() private editBirthday = "";
+  @state() private editSig = "";
+  @state() private avatarFile: File | null = null;
 
-  const [editOpen, setEditOpen] = useState(false);
-  const [editNick, setEditNick] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editBirthday, setEditBirthday] = useState("");
-  const [editSig, setEditSig] = useState("");
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  private closeEditModal() {
+    this.editOpen = false;
+    this.editNick = "";
+    this.editEmail = "";
+    this.editBirthday = "";
+    this.editSig = "";
+    this.avatarFile = null;
+  }
 
-  const handleLogout = async () => {
-    await performLogout();
-    navigate("/login");
-  };
-
-  const closeEditModal = () => {
-    setEditOpen(false);
-    setEditNick("");
-    setEditEmail("");
-    setEditBirthday("");
-    setEditSig("");
-    setAvatarFile(null);
-  };
-
-  const saveProfile = async () => {
-    if (!editNick && !editEmail && !editBirthday && !editSig && !avatarFile) {
+  private async saveProfile() {
+    const user = currentUser();
+    if (
+      !this.editNick &&
+      !this.editEmail &&
+      !this.editBirthday &&
+      !this.editSig &&
+      !this.avatarFile
+    ) {
       showToast("Please modify at least one field", "warning");
       return;
     }
-    if (editNick && (editNick.length < 3 || editNick.length > 10)) {
+    if (
+      this.editNick &&
+      (this.editNick.length < 3 || this.editNick.length > 10)
+    ) {
       showToast("Nickname must be 3-10 characters", "error");
       return;
     }
-    if (editEmail && !isValidEmail(editEmail)) {
+    if (this.editEmail && !isValidEmail(this.editEmail)) {
       showToast("Invalid email address", "error");
       return;
     }
-    const data: Record<string, unknown> = { uuid: userInfo.uuid };
-    if (editNick) data.nickname = editNick;
-    if (editEmail) data.email = editEmail;
-    if (editBirthday) data.birthday = editBirthday;
-    if (editSig) data.signature = editSig;
+    const data: Record<string, unknown> = { uuid: user.uuid };
+    if (this.editNick) data.nickname = this.editNick;
+    if (this.editEmail) data.email = this.editEmail;
+    if (this.editBirthday) data.birthday = this.editBirthday;
+    if (this.editSig) data.signature = this.editSig;
     let avatarUrl = "";
-    if (avatarFile) {
+    if (this.avatarFile) {
       const formData = new FormData();
-      formData.append("file", avatarFile);
+      formData.append("file", this.avatarFile);
       const uploadRes = await api.uploadAvatar(formData);
       avatarUrl = (uploadRes.data as { url?: string } | null)?.url ?? "";
       if (uploadRes.code !== 200 || !avatarUrl) {
@@ -101,159 +101,166 @@ export default function OwnInfo() {
     const res = await api.updateUserInfo(data);
     if (res.code === 200) {
       showToast(res.message, "success");
-      const updated: UserInfo = { ...userInfo };
-      if (editNick) updated.nickname = editNick;
-      if (editEmail) updated.email = editEmail;
-      if (editBirthday) updated.birthday = editBirthday;
-      if (editSig) updated.signature = editSig;
+      const updated: UserInfo = { ...user };
+      if (this.editNick) updated.nickname = this.editNick;
+      if (this.editEmail) updated.email = this.editEmail;
+      if (this.editBirthday) updated.birthday = this.editBirthday;
+      if (this.editSig) updated.signature = this.editSig;
       if (avatarUrl) updated.avatar = avatarUrl;
-      useAuthStore.getState().setUserInfo(updated);
-      closeEditModal();
+      updateUserInfo(updated);
+      this.closeEditModal();
     } else {
       showToast(res.message, "error");
     }
-  };
+  }
 
-  return (
-    <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      <Card className="shadow-primary/5 h-[600px] w-[1000px] flex-row shadow-xl">
-        <NavBar
-          avatar={userInfo.avatar}
-          isAdmin={userInfo.is_admin === 1}
-          onNavigate={(path) => navigate(path)}
-          onLogout={handleLogout}
-        />
-        <div className="border-border w-55 border-r">
-          <ContactSidebar onNavigate={(id) => navigate(`/chat/${id}`)} />
-        </div>
-        <div className="relative flex flex-1 flex-col items-center justify-center p-8">
-          <h2 className="mb-6 text-xl font-semibold">My Profile</h2>
-          <div className="text-foreground flex flex-col gap-2 text-sm">
-            <p>
-              <span className="text-muted-foreground">User ID:</span>{" "}
-              {userInfo.uuid}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Nickname:</span>{" "}
-              {userInfo.nickname}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Phone:</span>{" "}
-              {userInfo.telephone}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Email:</span>{" "}
-              {userInfo.email}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Gender:</span>{" "}
-              {userInfo.gender === 0 ? "Male" : "Female"}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Birthday:</span>{" "}
-              {userInfo.birthday}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Signature:</span>{" "}
-              {userInfo.signature}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Joined:</span>{" "}
-              {userInfo.created_at}
-            </p>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Avatar:</span>
-              <Avatar className="ring-primary/30 ring-offset-card size-10 ring-2 ring-offset-2">
-                <AvatarImage
-                  src={userInfo.avatar || undefined}
-                  alt={userInfo.nickname}
-                />
-                <AvatarFallback>
-                  {userInfo.nickname.charAt(0).toUpperCase() || "?"}
-                </AvatarFallback>
-              </Avatar>
+  override render() {
+    const user = authStore.get().user;
+    return (
+      <AppFrame
+        active="/chat/profile"
+        onLogout={async () => {
+          await performLogout();
+          navigate("/login");
+        }}
+        sidebar={
+          <x-contact-sidebar
+            onNavigate={(id: string) => navigate(`/chat/${id}`)}
+          />
+        }
+      >
+        <div className="nice-scroll relative flex flex-1 flex-col items-center justify-center overflow-y-auto p-8">
+          <div className="flex flex-col items-center gap-3">
+            <x-avatar
+              className="ring-primary/30 size-20 text-lg ring-4"
+              src={user.avatar}
+              name={user.nickname}
+            />
+            <div className="text-center">
+              <h2 className="text-xl font-semibold">{user.nickname}</h2>
+              <p className="text-muted-foreground mt-0.5 text-sm">
+                {user.signature || "No signature yet"}
+              </p>
             </div>
           </div>
+
+          <div className="text-foreground mt-8 flex w-full max-w-sm flex-col gap-2 text-sm">
+            <InfoLine label="User ID" value={user.uuid} mono />
+            <InfoLine label="Phone" value={user.telephone} />
+            <InfoLine label="Email" value={user.email} />
+            <InfoLine
+              label="Gender"
+              value={user.gender === 0 ? "Male" : "Female"}
+            />
+            <InfoLine label="Birthday" value={user.birthday} />
+            <InfoLine label="Joined" value={user.created_at} />
+          </div>
+
           <Button
             size="sm"
             className="absolute right-6 bottom-6"
-            onClick={() => setEditOpen(true)}
+            onClick={() => (this.editOpen = true)}
           >
+            {icon(icons.User, "size-4")}
             Edit
           </Button>
 
-          <Dialog
-            open={editOpen}
-            onOpenChange={(open) => {
-              if (!open) closeEditModal();
-            }}
-          >
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Edit Profile</DialogTitle>
-              </DialogHeader>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-nickname">Nickname</Label>
-                  <Input
-                    id="edit-nickname"
-                    type="text"
-                    placeholder="Optional, 3-10 characters"
-                    value={editNick}
-                    onChange={(e) => setEditNick(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-email">Email</Label>
-                  <Input
-                    id="edit-email"
-                    type="text"
-                    placeholder="Optional"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-birthday">Birthday</Label>
-                  <Input
-                    id="edit-birthday"
-                    type="text"
-                    placeholder="Optional, e.g. 2024.1.1"
-                    value={editBirthday}
-                    onChange={(e) => setEditBirthday(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-signature">Signature</Label>
-                  <Input
-                    id="edit-signature"
-                    type="text"
-                    placeholder="Optional"
-                    value={editSig}
-                    onChange={(e) => setEditSig(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-avatar">Avatar</Label>
-                  <Input
-                    id="edit-avatar"
-                    type="file"
-                    onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
-                  />
-                </div>
+          <x-dialog open={this.editOpen} onClose={() => this.closeEditModal()}>
+            <DialogHeader>
+              <DialogTitle>Edit Profile</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-nickname">Nickname</Label>
+                <Input
+                  id="edit-nickname"
+                  placeholder="Optional, 3-10 characters"
+                  value={this.editNick}
+                  onValue={(v) => (this.editNick = v)}
+                />
               </div>
-              <DialogFooter>
-                <Button size="sm" onClick={saveProfile}>
-                  Save
-                </Button>
-                <Button variant="ghost" size="sm" onClick={closeEditModal}>
-                  Cancel
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  placeholder="Optional"
+                  value={this.editEmail}
+                  onValue={(v) => (this.editEmail = v)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-birthday">Birthday</Label>
+                <Input
+                  id="edit-birthday"
+                  placeholder="Optional, e.g. 2024.1.1"
+                  value={this.editBirthday}
+                  onValue={(v) => (this.editBirthday = v)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-signature">Signature</Label>
+                <Input
+                  id="edit-signature"
+                  placeholder="Optional"
+                  value={this.editSig}
+                  onValue={(v) => (this.editSig = v)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-avatar">Avatar</Label>
+                <Input
+                  id="edit-avatar"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e: Event) => {
+                    const input = e.target as HTMLInputElement;
+                    this.avatarFile = input.files?.[0] ?? null;
+                  }}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button size="sm" onClick={() => this.saveProfile()}>
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => this.closeEditModal()}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </x-dialog>
         </div>
-      </Card>
+      </AppFrame>
+    );
+  }
+}
+
+function InfoLine({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="border-border flex items-baseline justify-between gap-4 border-b py-1.5">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span
+        className={mono ? "truncate font-mono text-xs" : "truncate font-medium"}
+      >
+        {value}
+      </span>
     </div>
   );
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "sc-profile": OwnInfoPage;
+  }
 }

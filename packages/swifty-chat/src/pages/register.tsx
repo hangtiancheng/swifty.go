@@ -20,34 +20,28 @@
  * SOFTWARE.
  */
 
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { customElement, state } from "@swifty.js/lit-jsx";
 import { api } from "@/service/api";
-import useAuthStore from "@/store/auth";
-import useWsStore from "@/store/ws";
+import { setLogin } from "@/store/auth";
+import { connectWs } from "@/store/ws";
 import { isValidPhone } from "@/utils/validate";
 import { showToast } from "@/utils/toast";
+import { navigate } from "@/router";
+import { TwElement } from "@/styles/base";
+import { AuthShell } from "@/pages/auth-shell";
+import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
 import type { AuthResponse } from "@/types";
 
-export default function Register() {
-  const [nickname, setNickname] = useState("");
-  const [telephone, setTelephone] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const navigate = useNavigate();
+@customElement("sc-register")
+export class RegisterPage extends TwElement {
+  @state() private nickname = "";
+  @state() private telephone = "";
+  @state() private password = "";
+  @state() private confirmPassword = "";
 
-  const handleRegister = async () => {
+  private async handleRegister() {
+    const { nickname, telephone, password, confirmPassword } = this;
     if (!nickname || !telephone || !password || !confirmPassword) {
       showToast("Please fill in all fields", "error");
       return;
@@ -68,94 +62,80 @@ export default function Register() {
     if (res.code === 200 && res.data) {
       const { token, user_info } = res.data as AuthResponse;
       showToast(res.message, "success");
-      useAuthStore.getState().setToken(token);
-      useAuthStore.getState().setUserInfo(user_info);
-      useWsStore.getState().connect(user_info.uuid);
+      setLogin(token, user_info);
+      connectWs(user_info.uuid);
       navigate("/chat/sessions");
     } else {
       showToast(res.message || "Registration failed", "error");
     }
-  };
+  }
 
-  return (
-    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-hidden p-4">
-      {/* Ambient soft-pink layers */}
-      <div
-        aria-hidden
-        className="bg-primary/10 animation-duration-[8s] pointer-events-none absolute -top-24 -right-32 h-96 w-96 animate-pulse rounded-full blur-3xl motion-reduce:animate-none"
-      />
-      <div
-        aria-hidden
-        className="bg-primary/5 animation-duration-[10s] pointer-events-none absolute -bottom-40 -left-24 h-112 w-md animate-pulse rounded-full blur-3xl [animation-delay:2s] motion-reduce:animate-none"
-      />
-      <div
-        aria-hidden
-        className="bg-primary/[0.07] pointer-events-none absolute bottom-1/4 left-1/3 h-64 w-64 rounded-full blur-3xl"
-      />
+  override render() {
+    return (
+      <AuthShell
+        title="Register"
+        description="Create your Swifty Chat account"
+        footer={
+          <>
+            <Button className="w-full" onClick={() => this.handleRegister()}>
+              Register
+            </Button>
+            <div className="flex w-full justify-end">
+              <a
+                href="/login"
+                className="text-primary-deep cursor-pointer text-sm hover:underline"
+              >
+                Sign In
+              </a>
+            </div>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="register-nickname">Nickname</Label>
+          <Input
+            id="register-nickname"
+            placeholder="3-10 characters"
+            value={this.nickname}
+            onValue={(v) => (this.nickname = v)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="register-phone">Phone</Label>
+          <Input
+            id="register-phone"
+            placeholder="Enter your phone number"
+            value={this.telephone}
+            onValue={(v) => (this.telephone = v)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="register-password">Password</Label>
+          <Input
+            id="register-password"
+            type="password"
+            placeholder="Enter your password"
+            value={this.password}
+            onValue={(v) => (this.password = v)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="register-confirm-password">Confirm Password</Label>
+          <Input
+            id="register-confirm-password"
+            type="password"
+            placeholder="Re-enter your password"
+            value={this.confirmPassword}
+            onValue={(v) => (this.confirmPassword = v)}
+          />
+        </div>
+      </AuthShell>
+    );
+  }
+}
 
-      <Card className="animate-in fade-in zoom-in-95 shadow-primary/5 w-full max-w-md shadow-xl duration-300">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold tracking-tight">
-            Register
-          </CardTitle>
-          <CardDescription>Create your Swifty Chat account</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="register-nickname">Nickname</Label>
-            <Input
-              id="register-nickname"
-              type="text"
-              placeholder="3-10 characters"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="register-phone">Phone</Label>
-            <Input
-              id="register-phone"
-              type="text"
-              placeholder="Enter your phone number"
-              value={telephone}
-              onChange={(e) => setTelephone(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="register-password">Password</Label>
-            <Input
-              id="register-password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="register-confirm-password">Confirm Password</Label>
-            <Input
-              id="register-confirm-password"
-              type="password"
-              placeholder="Re-enter your password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </div>
-        </CardContent>
-        <CardFooter className="flex-col gap-3">
-          <Button className="w-full" onClick={handleRegister}>
-            Register
-          </Button>
-          <div className="flex w-full justify-end">
-            <a
-              className="text-primary cursor-pointer text-sm hover:underline"
-              onClick={() => navigate("/login")}
-            >
-              Sign In
-            </a>
-          </div>
-        </CardFooter>
-      </Card>
-    </div>
-  );
+declare global {
+  interface HTMLElementTagNameMap {
+    "sc-register": RegisterPage;
+  }
 }

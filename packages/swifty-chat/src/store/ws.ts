@@ -20,23 +20,19 @@
  * SOFTWARE.
  */
 
-import { create } from "zustand";
+import { signal } from "@lit-labs/signals";
 import { getToken } from "./auth";
 import { WS_URL } from "../config";
 
-export interface WsState {
-  status: "disconnected" | "connecting" | "connected";
-  onMessageHandler: ((msg: MessageEvent) => void) | null;
-  connect: (uuid: string) => void;
-  disconnect: () => void;
-  send: (data: unknown) => void;
-  setOnMessage: (handler: ((msg: MessageEvent) => void) | null) => void;
-}
+export type WsStatus = "disconnected" | "connecting" | "connected";
+
+export const wsStore = signal<{ status: WsStatus }>({ status: "disconnected" });
 
 let rawSocket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 let intentionalClose = false;
+let onMessage: ((msg: MessageEvent) => void) | null = null;
 
 const MAX_RECONNECT_DELAY = 30_000;
 
@@ -55,21 +51,20 @@ function doConnect(uuid: string) {
     rawSocket.onclose = null;
     rawSocket.close();
   }
-  useWsStore.setState({ status: "connecting" });
+  wsStore.set({ status: "connecting" });
   const ws = new WebSocket(
     `${WS_URL}/wss?client_id=${encodeURIComponent(uuid)}&token=${encodeURIComponent(token)}`,
   );
   ws.onopen = () => {
     reconnectDelay = 1000;
-    useWsStore.setState({ status: "connected" });
+    wsStore.set({ status: "connected" });
   };
   ws.onmessage = (msg: MessageEvent) => {
-    const handler = useWsStore.getState().onMessageHandler;
-    if (handler) handler(msg);
+    onMessage?.(msg);
   };
   ws.onclose = () => {
     rawSocket = null;
-    useWsStore.setState({ status: "disconnected" });
+    wsStore.set({ status: "disconnected" });
     scheduleReconnect(uuid);
   };
   ws.onerror = () => {
@@ -78,43 +73,36 @@ function doConnect(uuid: string) {
   rawSocket = ws;
 }
 
-const useWsStore = create<WsState>((set) => ({
-  status: "disconnected",
-  onMessageHandler: null,
+export function setWsHandler(handler: ((msg: MessageEvent) => void) | null) {
+  onMessage = handler;
+}
 
-  connect(uuid: string) {
-    intentionalClose = false;
-    reconnectDelay = 1000;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    doConnect(uuid);
-  },
+export function connectWs(uuid: string) {
+  intentionalClose = false;
+  reconnectDelay = 1000;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  doConnect(uuid);
+}
 
-  disconnect() {
-    intentionalClose = true;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    if (rawSocket) {
-      rawSocket.onclose = null;
-      rawSocket.close();
-      rawSocket = null;
-    }
-    set({ status: "disconnected" });
-  },
+export function disconnectWs() {
+  intentionalClose = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (rawSocket) {
+    rawSocket.onclose = null;
+    rawSocket.close();
+    rawSocket = null;
+  }
+  wsStore.set({ status: "disconnected" });
+}
 
-  send(data: unknown) {
-    if (rawSocket && rawSocket.readyState === WebSocket.OPEN) {
-      rawSocket.send(JSON.stringify(data));
-    }
-  },
-
-  setOnMessage(handler: ((msg: MessageEvent) => void) | null) {
-    set({ onMessageHandler: handler });
-  },
-}));
-
-export default useWsStore;
+export function sendWs(data: unknown) {
+  if (rawSocket && rawSocket.readyState === WebSocket.OPEN) {
+    rawSocket.send(JSON.stringify(data));
+  }
+}

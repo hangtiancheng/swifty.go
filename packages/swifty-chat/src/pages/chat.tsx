@@ -20,49 +20,48 @@
  * SOFTWARE.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { MoreVertical, Paperclip, Video } from "lucide-react";
-import { NavBar } from "@/components/nav-bar";
-import { SessionSidebar } from "@/components/session-sidebar";
-import { MessageBubble } from "@/components/message-bubble";
-import { VideoCall, type VideoCallHandle } from "@/components/video-call";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  createRef,
+  customElement,
+  property,
+  query,
+  state,
+} from "@swifty.js/lit-jsx";
 import { api } from "@/service/api";
-import useAuthStore from "@/store/auth";
-import useChatStore from "@/store/chat";
-import useSessionStore from "@/store/session";
-import useWsStore from "@/store/ws";
+import { currentUser } from "@/store/auth";
+import {
+  chatStore,
+  setChatContact,
+  setChatSessionId,
+  setChatMessages,
+  addChatMessage,
+  clearChat,
+} from "@/store/chat";
+import { bumpSessionRefresh } from "@/store/session";
+import { sendWs, setWsHandler } from "@/store/ws";
 import { resolveAvatar } from "@/utils/avatar";
 import { showToast } from "@/utils/toast";
 import { performLogout } from "@/utils/logout";
 import { getFileSize } from "@/utils/format";
+import { navigate } from "@/router";
 import { BASE_URL } from "@/config";
+import { TwElement } from "@/styles/base";
+import { AppFrame } from "@/components/app-frame";
+import "@/components/session-sidebar";
+import { MessageList } from "@/components/message-bubble";
+import { XVideoCall } from "@/components/video-call";
+import "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input, Label, Textarea } from "@/components/ui/input";
+import {
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  InfoRow,
+} from "@/components/ui/dialog";
+import { MenuItem, MenuSeparator, XMenu } from "@/components/ui/menu";
+import { Checkbox, RadioGroup } from "@/components/ui/collapsible";
+import { icon, icons } from "@/components/icons";
 import type { ContactInfo, Message } from "@/types";
 
 interface MemberRow {
@@ -81,209 +80,183 @@ interface JoinRequestRow {
   message: string;
 }
 
-export default function Chat() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const userInfo = useAuthStore((s) => s.userInfo);
-  const contactInfo = useChatStore((s) => s.contactInfo);
-  const messageList = useChatStore((s) => s.messageList);
+@customElement("sc-chat")
+export class ChatPage extends TwElement {
+  @property() contactId = "";
 
-  const [chatMessage, setChatMessage] = useState("");
-  const [memberList, setMemberList] = useState<MemberRow[]>([]);
-  const [joinRequestList, setJoinRequestList] = useState<JoinRequestRow[]>([]);
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  @state() private chatMessage = "";
+  @state() private memberList: MemberRow[] = [];
+  @state() private joinRequestList: JoinRequestRow[] = [];
+  @state() private selectedMembers: string[] = [];
 
   // Edit group modal buffers
-  const [editGroupName, setEditGroupName] = useState("");
-  const [editGroupNotice, setEditGroupNotice] = useState("");
-  const [editGroupAddMode, setEditGroupAddMode] = useState(-1);
-  const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null);
+  @state() private editGroupName = "";
+  @state() private editGroupNotice = "";
+  @state() private editGroupAddMode = -1;
+  @state() private groupAvatarFile: File | null = null;
 
   // Dialog open states
-  const [userInfoOpen, setUserInfoOpen] = useState(false);
-  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
-  const [editGroupOpen, setEditGroupOpen] = useState(false);
-  const [removeMembersOpen, setRemoveMembersOpen] = useState(false);
-  const [joinRequestsOpen, setJoinRequestsOpen] = useState(false);
+  @state() private userInfoOpen = false;
+  @state() private groupInfoOpen = false;
+  @state() private editGroupOpen = false;
+  @state() private removeMembersOpen = false;
+  @state() private joinRequestsOpen = false;
 
-  const videoCallRef = useRef<VideoCallHandle>(null);
+  private videoRef = createRef<XVideoCall>();
+  private lastMessageCount = 0;
 
-  // Derived contact fields
-  const contactId = contactInfo?.contact_id ?? "";
-  const contactName = contactInfo?.contact_name ?? "";
-  const contactAvatar = contactInfo?.contact_avatar ?? "";
-  const isUserContact = contactId.startsWith("U");
-  const isGroupContact = contactId !== "" && !isUserContact;
-  const isGroupOwner = contactInfo?.contact_owner_id === userInfo.uuid;
-  const contactGenderText = isUserContact
-    ? contactInfo?.contact_gender === 0
-      ? "Male"
-      : "Female"
-    : "";
-  const contactPhone = contactInfo?.contact_phone ?? "";
-  const contactEmail = contactInfo?.contact_email ?? "";
-  const contactBirthday = contactInfo?.contact_birthday ?? "";
-  const contactSignature = contactInfo?.contact_signature ?? "";
-  const groupMemberCnt = isGroupContact
-    ? (contactInfo?.contact_member_cnt ?? 0)
-    : 0;
-  const groupOwnerId = contactInfo?.contact_owner_id ?? "";
-  const groupAddModeText = isGroupContact
-    ? contactInfo?.contact_add_mode === 0
-      ? "Direct Join"
-      : "Owner Approval"
-    : "";
-  const groupNotice = contactInfo?.contact_notice ?? "";
+  @query("#chat-messages") private messagesEl!: HTMLDivElement;
 
-  const scrollToBottom = () => {
-    const el = document.getElementById("chat-messages");
-    if (el) el.scrollTop = el.scrollHeight;
-  };
+  protected override willUpdate(changed: Map<string, unknown>) {
+    if (changed.has("contactId")) {
+      clearChat();
+      this.lastMessageCount = 0;
+      if (this.contactId) void this.loadChat(this.contactId);
+    }
+  }
 
-  const loadMessages = async (cid: string) => {
+  protected override updated() {
+    const count = chatStore.get().messages.length;
+    if (count !== this.lastMessageCount) {
+      this.lastMessageCount = count;
+      this.scrollToBottom();
+    }
+  }
+
+  override connectedCallback() {
+    super.connectedCallback();
+    setWsHandler(this.handleWsMessage);
+  }
+
+  override disconnectedCallback() {
+    setWsHandler(null);
+    super.disconnectedCallback();
+  }
+
+  private scrollToBottom() {
+    if (this.messagesEl)
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  private async loadMessages(cid: string) {
+    const user = currentUser();
     const isUser = cid.startsWith("U");
     const res = isUser
-      ? await api.getMessageList({
-          send_id: userInfo.uuid,
-          receive_id: cid,
-        })
+      ? await api.getMessageList({ send_id: user.uuid, receive_id: cid })
       : await api.getGroupMessageList({ group_id: cid });
     if (res.code === 200 && res.data) {
       const list = ((res.data as Message[]) || []).map((m) => ({
         ...m,
         send_avatar: resolveAvatar(m.send_avatar, m.send_id),
       }));
-      useChatStore.getState().setMessageList(list);
+      setChatMessages(list);
     }
-  };
+  }
 
-  const loadChat = async (cid: string) => {
+  private async loadChat(cid: string) {
+    const user = currentUser();
     const res = await api.getContactInfo({
-      user_id: userInfo.uuid,
+      user_id: user.uuid,
       contact_id: cid,
     });
     if (res.code !== 200 || !res.data) return;
     const info = res.data as ContactInfo;
     info.contact_avatar = resolveAvatar(info.contact_avatar, info.contact_id);
-    useChatStore.getState().setContact(info);
+    setChatContact(info);
 
     const sessionRes = await api.openSession({
-      send_id: userInfo.uuid,
+      send_id: user.uuid,
       receive_id: cid,
     });
     if (sessionRes.code === 200) {
-      useChatStore.getState().setSessionId(sessionRes.data as string);
-      await loadMessages(cid);
+      setChatSessionId(sessionRes.data as string);
+      await this.loadMessages(cid);
     }
-  };
+  }
 
-  // Load chat on id change
-  useEffect(() => {
-    useChatStore.getState().clearChat();
-    if (id) {
-      loadChat(id);
+  private handleWsMessage = (event: MessageEvent) => {
+    const raw = event.data;
+    if (typeof raw !== "string" || raw.length === 0 || raw.charAt(0) !== "{")
+      return;
+    let message: Message;
+    try {
+      message = JSON.parse(raw) as Message;
+    } catch {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    const user = currentUser();
+    const chat = chatStore.get();
 
-  // Auto scroll to bottom on new messages
-  useEffect(() => {
-    scrollToBottom();
-  }, [messageList]);
+    if (message.type === 5) {
+      // System notification: contact/group/session state changed elsewhere.
+      bumpSessionRefresh();
+      return;
+    }
 
-  // Subscribe to websocket messages
-  useEffect(() => {
-    const handleWsMessage = (event: MessageEvent) => {
-      const raw = event.data;
-      if (typeof raw !== "string" || raw.length === 0 || raw.charAt(0) !== "{")
-        return;
-      let message: Message;
+    if (message.type === 3) {
       try {
-        message = JSON.parse(raw) as Message;
-      } catch {
-        return;
-      }
-      const auth = useAuthStore.getState();
-      const chat = useChatStore.getState();
-
-      if (message.type === 5) {
-        // System notification: contact/group/session state changed elsewhere.
-        useSessionStore.getState().bumpRefresh();
-        return;
-      }
-
-      if (message.type === 3) {
-        try {
-          const avData = JSON.parse(message.av_data || "{}") as Record<
-            string,
-            unknown
-          >;
-          if (avData.type === "call_failed") {
-            showToast(
-              `Call failed: ${(avData.reason as string) || "unknown reason"}`,
-              "error",
-            );
-            return;
-          }
-          videoCallRef.current?.handleSignal(avData);
-        } catch {
-          /* ignore malformed signal */
+        const avData = JSON.parse(message.av_data || "{}") as Record<
+          string,
+          unknown
+        >;
+        if (avData.type === "call_failed") {
+          showToast(
+            `Call failed: ${(avData.reason as string) || "unknown reason"}`,
+            "error",
+          );
+          return;
         }
-        return;
+        this.videoRef.value?.handleSignal(avData);
+      } catch {
+        /* ignore malformed signal */
       }
+      return;
+    }
 
-      const currentContactId = chat.contactInfo?.contact_id;
-      const isRelevant =
-        (message.receive_id.startsWith("G") &&
-          message.receive_id === currentContactId) ||
-        (message.receive_id.startsWith("U") &&
-          message.receive_id === auth.userInfo.uuid &&
-          message.send_id === currentContactId) ||
-        (message.send_id === auth.userInfo.uuid &&
-          message.receive_id === currentContactId);
+    const currentContactId = chat.contact?.contact_id;
+    const isRelevant =
+      (message.receive_id.startsWith("G") &&
+        message.receive_id === currentContactId) ||
+      (message.receive_id.startsWith("U") &&
+        message.receive_id === user.uuid &&
+        message.send_id === currentContactId) ||
+      (message.send_id === user.uuid &&
+        message.receive_id === currentContactId);
 
-      if (isRelevant) {
-        message.send_avatar = resolveAvatar(
-          message.send_avatar,
-          message.send_id,
-        );
-        useChatStore.getState().addMessage(message);
-      }
-    };
-    useWsStore.getState().setOnMessage(handleWsMessage);
-    return () => {
-      useWsStore.getState().setOnMessage(() => {});
-    };
-  }, []);
-
-  const handleLogout = async () => {
-    await performLogout();
-    navigate("/login");
+    if (isRelevant) {
+      message.send_avatar = resolveAvatar(message.send_avatar, message.send_id);
+      addChatMessage(message);
+    }
   };
 
-  const sendMessage = () => {
-    if (!chatMessage.trim() || !contactInfo) return;
+  private sendMessage() {
+    const chat = chatStore.get();
+    const user = currentUser();
+    if (!this.chatMessage.trim() || !chat.contact) return;
     const msg: Message = {
-      session_id: useChatStore.getState().sessionId,
+      session_id: chat.sessionId,
       type: 0,
-      content: chatMessage,
+      content: this.chatMessage,
       url: "",
-      send_id: userInfo.uuid,
-      send_name: userInfo.nickname,
-      send_avatar: userInfo.avatar,
-      receive_id: contactInfo.contact_id,
+      send_id: user.uuid,
+      send_name: user.nickname,
+      send_avatar: user.avatar,
+      receive_id: chat.contact.contact_id,
       file_size: getFileSize(0),
       file_name: "",
       file_type: "",
       created_at: new Date().toISOString(),
     };
-    useWsStore.getState().send(msg);
-    setChatMessage("");
-  };
+    sendWs(msg);
+    this.chatMessage = "";
+  }
 
-  const onFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  private async onFileSelect(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
     if (!file) return;
+    const chat = chatStore.get();
+    const user = currentUser();
     const formData = new FormData();
     formData.append("file", file);
     const res = await api.uploadFile(formData);
@@ -295,71 +268,74 @@ export default function Chat() {
       return;
     }
     showToast("File uploaded successfully", "success");
-    if (!contactInfo) return;
+    input.value = "";
+    if (!chat.contact) return;
     const msg: Message = {
-      session_id: useChatStore.getState().sessionId,
+      session_id: chat.sessionId,
       type: 2,
       content: "",
       url: BASE_URL + uploadedUrl,
-      send_id: userInfo.uuid,
-      send_name: userInfo.nickname,
-      send_avatar: userInfo.avatar,
-      receive_id: contactInfo.contact_id,
+      send_id: user.uuid,
+      send_name: user.nickname,
+      send_avatar: user.avatar,
+      receive_id: chat.contact.contact_id,
       file_size: getFileSize(file.size),
       file_name: uploadedName,
       file_type: file.type,
       created_at: new Date().toISOString(),
     };
-    useWsStore.getState().send(msg);
-    e.target.value = "";
-  };
+    sendWs(msg);
+  }
 
-  const openVideoCall = () => {
-    videoCallRef.current?.show();
-  };
-
-  const deleteSession = async () => {
-    const sessionId = useChatStore.getState().sessionId;
-    await api.deleteSession({ owner_id: userInfo.uuid, session_id: sessionId });
+  private async deleteSession() {
+    const chat = chatStore.get();
+    await api.deleteSession({
+      owner_id: currentUser().uuid,
+      session_id: chat.sessionId,
+    });
     navigate("/chat/sessions");
-  };
+  }
 
-  const deleteContact = async () => {
-    if (!contactInfo) return;
+  private async deleteContact() {
+    const chat = chatStore.get();
+    if (!chat.contact) return;
     await api.deleteContact({
-      user_id: userInfo.uuid,
-      contact_id: contactInfo.contact_id,
+      user_id: currentUser().uuid,
+      contact_id: chat.contact.contact_id,
     });
     showToast("Contact removed", "success");
     navigate("/chat/sessions");
-  };
+  }
 
-  const blackContact = async () => {
-    if (!contactInfo) return;
+  private async blackContact() {
+    const chat = chatStore.get();
+    if (!chat.contact) return;
     await api.blackContact({
-      user_id: userInfo.uuid,
-      contact_id: contactInfo.contact_id,
+      user_id: currentUser().uuid,
+      contact_id: chat.contact.contact_id,
     });
     showToast("Contact blocked", "success");
     navigate("/chat/sessions");
-  };
+  }
 
-  const dismissGroup = async () => {
-    if (!contactInfo) return;
-    const res = await api.dismissGroup({ group_id: contactInfo.contact_id });
+  private async dismissGroup() {
+    const chat = chatStore.get();
+    if (!chat.contact) return;
+    const res = await api.dismissGroup({ group_id: chat.contact.contact_id });
     if (res.code === 200) {
       showToast("Group disbanded", "success");
       navigate("/chat/sessions");
     } else {
       showToast(res.message, "error");
     }
-  };
+  }
 
-  const leaveGroup = async () => {
-    if (!contactInfo) return;
+  private async leaveGroup() {
+    const chat = chatStore.get();
+    if (!chat.contact) return;
     const res = await api.leaveGroup({
-      user_id: userInfo.uuid,
-      group_id: contactInfo.contact_id,
+      user_id: currentUser().uuid,
+      group_id: chat.contact.contact_id,
     });
     if (res.code === 200) {
       showToast("Left group", "success");
@@ -367,38 +343,39 @@ export default function Chat() {
     } else {
       showToast(res.message, "error");
     }
-  };
+  }
 
-  const showEditGroupModal = () => {
-    setEditGroupName("");
-    setEditGroupNotice("");
-    setEditGroupAddMode(-1);
-    setGroupAvatarFile(null);
-    setEditGroupOpen(true);
-  };
+  private showEditGroupModal() {
+    this.editGroupName = "";
+    this.editGroupNotice = "";
+    this.editGroupAddMode = -1;
+    this.groupAvatarFile = null;
+    this.editGroupOpen = true;
+  }
 
-  const saveGroupInfo = async () => {
+  private async saveGroupInfo() {
+    const chat = chatStore.get();
+    if (!chat.contact) return;
     if (
-      !editGroupName &&
-      !editGroupNotice &&
-      editGroupAddMode === -1 &&
-      !groupAvatarFile
+      !this.editGroupName &&
+      !this.editGroupNotice &&
+      this.editGroupAddMode === -1 &&
+      !this.groupAvatarFile
     ) {
       showToast("Please modify at least one field", "warning");
       return;
     }
     if (
-      editGroupName &&
-      (editGroupName.length < 3 || editGroupName.length > 10)
+      this.editGroupName &&
+      (this.editGroupName.length < 3 || this.editGroupName.length > 10)
     ) {
       showToast("Group name must be 3-10 characters", "error");
       return;
     }
-    if (!contactInfo) return;
     let avatarUrl = "";
-    if (groupAvatarFile) {
+    if (this.groupAvatarFile) {
       const formData = new FormData();
-      formData.append("file", groupAvatarFile);
+      formData.append("file", this.groupAvatarFile);
       const uploadRes = await api.uploadAvatar(formData);
       avatarUrl = (uploadRes.data as { url?: string } | null)?.url ?? "";
       if (uploadRes.code !== 200 || !avatarUrl) {
@@ -406,65 +383,66 @@ export default function Chat() {
         return;
       }
     }
-    const data: Record<string, unknown> = { uuid: contactInfo.contact_id };
-    if (editGroupName) data.name = editGroupName;
-    if (editGroupNotice) data.notice = editGroupNotice;
-    if (editGroupAddMode !== -1) data.add_mode = editGroupAddMode;
+    const data: Record<string, unknown> = { uuid: chat.contact.contact_id };
+    if (this.editGroupName) data.name = this.editGroupName;
+    if (this.editGroupNotice) data.notice = this.editGroupNotice;
+    if (this.editGroupAddMode !== -1) data.add_mode = this.editGroupAddMode;
     if (avatarUrl) data.avatar = avatarUrl;
     const res = await api.updateGroupInfo(data);
     if (res.code === 200) {
       showToast("Group updated", "success");
-      setEditGroupOpen(false);
-      loadChat(contactInfo.contact_id);
+      this.editGroupOpen = false;
+      void this.loadChat(chat.contact.contact_id);
     } else {
       showToast(res.message, "error");
     }
-  };
+  }
 
-  const showRemoveMembersModal = async () => {
-    if (!contactInfo) return;
-    setSelectedMembers([]);
+  private async showRemoveMembersModal() {
+    const chat = chatStore.get();
+    if (!chat.contact) return;
+    this.selectedMembers = [];
     const res = await api.getGroupMemberList({
-      group_id: contactInfo.contact_id,
+      group_id: chat.contact.contact_id,
     });
     const list = ((res.data as MemberRow[]) || []).map((m) => ({
       ...m,
       avatar: resolveAvatar(m.avatar, m.user_id),
     }));
-    setMemberList(list);
-    setRemoveMembersOpen(true);
-  };
+    this.memberList = list;
+    this.removeMembersOpen = true;
+  }
 
-  const toggleMember = (mid: string, checked: boolean) => {
-    setSelectedMembers((prev) =>
-      checked ? [...prev, mid] : prev.filter((x) => x !== mid),
-    );
-  };
+  private toggleMember(mid: string, checked: boolean) {
+    this.selectedMembers = checked
+      ? [...this.selectedMembers, mid]
+      : this.selectedMembers.filter((x) => x !== mid);
+  }
 
-  const removeSelectedMembers = async () => {
-    if (selectedMembers.length === 0) {
+  private async removeSelectedMembers() {
+    const chat = chatStore.get();
+    if (this.selectedMembers.length === 0) {
       showToast("Please select members to remove", "warning");
       return;
     }
-    if (!contactInfo) return;
+    if (!chat.contact) return;
     const res = await api.removeGroupMembers({
-      group_id: contactInfo.contact_id,
-      member_ids: selectedMembers,
+      group_id: chat.contact.contact_id,
+      member_ids: this.selectedMembers,
     });
     if (res.code === 200) {
       showToast("Members removed", "success");
-      const remaining = memberList.filter(
-        (m) => !selectedMembers.includes(m.user_id),
+      this.memberList = this.memberList.filter(
+        (m) => !this.selectedMembers.includes(m.user_id),
       );
-      setMemberList(remaining);
-      setSelectedMembers([]);
+      this.selectedMembers = [];
     } else {
       showToast(res.message, "error");
     }
-  };
+  }
 
-  const showJoinRequestsModal = async () => {
-    const res = await api.getAddGroupList({ user_id: userInfo.uuid });
+  private async showJoinRequestsModal() {
+    const res = await api.getAddGroupList({ user_id: currentUser().uuid });
     const list = ((res.data as JoinRequestRow[]) || []).filter(
       (r) => r.contact_type === 1 && r.status === 0,
     );
@@ -472,468 +450,477 @@ export default function Chat() {
       showToast("No pending join requests", "info");
       return;
     }
-    setJoinRequestList(list);
-    setJoinRequestsOpen(true);
-  };
+    this.joinRequestList = list;
+    this.joinRequestsOpen = true;
+  }
 
-  const approveJoinRequest = async (applyId: string) => {
+  private async approveJoinRequest(applyId: string) {
     const res = await api.passContactApply({ apply_id: applyId });
     if (res.code === 200) {
       showToast("Approved", "success");
-      setJoinRequestList((prev) => prev.filter((r) => r.apply_id !== applyId));
+      this.joinRequestList = this.joinRequestList.filter(
+        (r) => r.apply_id !== applyId,
+      );
     } else {
       showToast(res.message, "error");
     }
-  };
+  }
 
-  const rejectJoinRequest = async (applyId: string) => {
+  private async rejectJoinRequest(applyId: string) {
     const res = await api.refuseContactApply({ apply_id: applyId });
     if (res.code === 200) {
       showToast("Rejected", "success");
-      setJoinRequestList((prev) => prev.filter((r) => r.apply_id !== applyId));
+      this.joinRequestList = this.joinRequestList.filter(
+        (r) => r.apply_id !== applyId,
+      );
     } else {
       showToast(res.message, "error");
     }
-  };
+  }
 
-  const infoRow = (label: string, value: string | number) => (
-    <div className="border-border flex justify-between border-b py-1.5">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground">{value}</span>
-    </div>
-  );
+  override render() {
+    const chat = chatStore.get();
+    const user = currentUser();
+    const contact = chat.contact;
+    const contactId = contact?.contact_id ?? "";
+    const contactName = contact?.contact_name ?? "";
+    const contactAvatar = contact?.contact_avatar ?? "";
+    const isUserContact = contactId.startsWith("U");
+    const isGroupContact = contactId !== "" && !isUserContact;
+    const isGroupOwner = contact?.contact_owner_id === user.uuid;
+    const contactGenderText =
+      isUserContact && contact
+        ? contact.contact_gender === 0
+          ? "Male"
+          : "Female"
+        : "";
+    const groupMemberCnt = isGroupContact
+      ? (contact?.contact_member_cnt ?? 0)
+      : 0;
+    const groupOwnerId = contact?.contact_owner_id ?? "";
+    const groupAddModeText =
+      isGroupContact && contact
+        ? contact.contact_add_mode === 0
+          ? "Direct Join"
+          : "Owner Approval"
+        : "";
 
-  return (
-    <div className="bg-background flex min-h-screen items-center justify-center p-4">
-      <Card className="shadow-primary/5 h-[600px] w-[1000px] flex-row gap-0 p-0 shadow-xl">
-        <NavBar
-          avatar={userInfo.avatar}
-          isAdmin={userInfo.is_admin === 1}
-          onNavigate={(path) => navigate(path)}
-          onLogout={handleLogout}
-        />
-        <div className="border-border w-55 border-r">
-          <SessionSidebar onChat={(cid) => navigate(`/chat/${cid}`)} />
-        </div>
-        <div className="flex flex-1 flex-col">
-          <div className="border-border bg-muted/30 flex h-14 items-center justify-between border-b px-4">
-            <div className="flex items-center gap-3">
-              {contactAvatar && (
-                <Avatar className="ring-border ring-offset-card size-10 ring-2 ring-offset-2">
-                  <AvatarImage src={contactAvatar} alt={contactName} />
-                  <AvatarFallback>
-                    {contactName.charAt(0) || "?"}
-                  </AvatarFallback>
-                </Avatar>
+    return (
+      <AppFrame
+        active="/chat/sessions"
+        onLogout={async () => {
+          await performLogout();
+          navigate("/login");
+        }}
+        sidebar={
+          <x-session-sidebar
+            onChat={(cid: string) => navigate(`/chat/${cid}`)}
+          />
+        }
+      >
+        {/* Header */}
+        <div className="border-border bg-primary/5 flex h-14 shrink-0 items-center justify-between border-b px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            {contactAvatar && (
+              <x-avatar
+                className="ring-primary/30 size-10 shrink-0 ring-2"
+                src={contactAvatar}
+                name={contactName}
+              />
+            )}
+            <h2 className="text-foreground truncate text-base font-semibold">
+              {contactName || "Select a conversation"}
+            </h2>
+          </div>
+          {contact && (
+            <XMenu align="end">
+              <span slot="trigger">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground"
+                  ariaLabel="Chat options"
+                >
+                  {icon(icons.EllipsisVertical, "size-4")}
+                </Button>
+              </span>
+              {isUserContact && (
+                <MenuItem onClick={() => (this.userInfoOpen = true)}>
+                  User Info
+                </MenuItem>
               )}
-              <h2 className="text-foreground text-base font-semibold">
-                {contactName}
-              </h2>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground"
-                    aria-label="Chat options"
-                  />
-                }
-              >
-                <MoreVertical className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                {isUserContact && (
-                  <DropdownMenuItem
-                    className="text-sm"
-                    onClick={() => setUserInfoOpen(true)}
-                  >
-                    User Info
-                  </DropdownMenuItem>
-                )}
-                {isGroupContact && (
-                  <DropdownMenuItem
-                    className="text-sm"
-                    onClick={() => setGroupInfoOpen(true)}
-                  >
-                    Group Info
-                  </DropdownMenuItem>
-                )}
-                {isGroupContact && isGroupOwner && (
-                  <>
-                    <DropdownMenuItem
-                      className="text-sm"
-                      onClick={showEditGroupModal}
-                    >
-                      Edit Group
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-sm"
-                      onClick={showRemoveMembersModal}
-                    >
-                      Remove Members
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-sm"
-                      onClick={showJoinRequestsModal}
-                    >
-                      Join Requests
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuItem className="text-sm" onClick={deleteSession}>
-                  Delete Session
-                </DropdownMenuItem>
-                {isUserContact && (
-                  <>
-                    <DropdownMenuItem
-                      className="text-sm"
-                      onClick={deleteContact}
-                    >
-                      Remove Contact
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive text-sm"
-                      onClick={blackContact}
-                    >
-                      Block Contact
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {isGroupContact && isGroupOwner && (
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive text-sm"
-                    onClick={dismissGroup}
-                  >
+              {isGroupContact && (
+                <MenuItem onClick={() => (this.groupInfoOpen = true)}>
+                  Group Info
+                </MenuItem>
+              )}
+              {isGroupContact && isGroupOwner && (
+                <>
+                  <MenuItem onClick={() => this.showEditGroupModal()}>
+                    Edit Group
+                  </MenuItem>
+                  <MenuItem onClick={() => this.showRemoveMembersModal()}>
+                    Remove Members
+                  </MenuItem>
+                  <MenuItem onClick={() => this.showJoinRequestsModal()}>
+                    Join Requests
+                  </MenuItem>
+                </>
+              )}
+              <MenuSeparator />
+              <MenuItem onClick={() => this.deleteSession()}>
+                Delete Session
+              </MenuItem>
+              {isUserContact && (
+                <>
+                  <MenuItem onClick={() => this.deleteContact()}>
+                    Remove Contact
+                  </MenuItem>
+                  <MenuItem destructive onClick={() => this.blackContact()}>
+                    Block Contact
+                  </MenuItem>
+                </>
+              )}
+              {isGroupContact &&
+                (isGroupOwner ? (
+                  <MenuItem destructive onClick={() => this.dismissGroup()}>
                     Disband Group
-                  </DropdownMenuItem>
-                )}
-                {isGroupContact && !isGroupOwner && (
-                  <DropdownMenuItem className="text-sm" onClick={leaveGroup}>
+                  </MenuItem>
+                ) : (
+                  <MenuItem onClick={() => this.leaveGroup()}>
                     Leave Group
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                  </MenuItem>
+                ))}
+            </XMenu>
+          )}
+        </div>
 
-          <div
-            className="bg-muted/20 flex-1 overflow-y-auto p-4"
-            id="chat-messages"
+        {/* Messages */}
+        <div
+          id="chat-messages"
+          className="bg-muted/20 nice-scroll flex flex-1 flex-col overflow-y-auto p-4"
+        >
+          <MessageList
+            messages={chat.messages}
+            currentUserId={user.uuid}
+            currentUserAvatar={user.avatar}
+            currentUserName={user.nickname}
+          />
+        </div>
+
+        {/* Toolbar */}
+        <div className="border-border bg-muted/30 flex h-10 shrink-0 items-center justify-between gap-1 border-t px-2">
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              className="hidden"
+              onChange={(e: Event) => this.onFileSelect(e)}
+            />
+            <span className="text-muted-foreground hover:bg-accent hover:text-accent-foreground flex size-8 items-center justify-center rounded-md transition-all duration-200">
+              {icon(icons.Paperclip, "size-4")}
+            </span>
+          </label>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground"
+            ariaLabel="Video call"
+            onClick={() => this.videoRef.value?.show()}
           >
-            <MessageBubble
-              messageList={messageList}
-              currentUserId={userInfo.uuid}
-              currentUserAvatar={userInfo.avatar}
-              currentUserName={userInfo.nickname}
-            />
-          </div>
+            {icon(icons.Video, "size-4")}
+          </Button>
+        </div>
 
-          <div className="border-border bg-muted/30 flex h-10 items-center justify-between gap-1 border-t px-2">
-            <div className="flex items-center gap-1">
-              <label className="cursor-pointer">
-                <input type="file" className="hidden" onChange={onFileSelect} />
-                <span className="text-muted-foreground hover:bg-accent hover:text-accent-foreground flex size-8 items-center justify-center rounded-md transition-all duration-200">
-                  <Paperclip size={16} />
-                </span>
-              </label>
-            </div>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:bg-accent"
-                    onClick={openVideoCall}
-                    aria-label="Video call"
-                  />
-                }
-              >
-                <Video size={16} />
-              </TooltipTrigger>
-              <TooltipContent side="left">Video Call</TooltipContent>
-            </Tooltip>
-          </div>
+        <x-video-call ref={this.videoRef}></x-video-call>
 
-          <VideoCall ref={videoCallRef} />
-
-          <div className="border-border flex h-45 border-t">
-            <Textarea
-              className="bg-card placeholder:text-muted-foreground/50 flex-1 resize-none rounded-none border-0 p-3 text-sm focus-visible:ring-0"
-              placeholder="Type a message..."
-              maxLength={500}
-              value={chatMessage}
-              onChange={(e) => setChatMessage(e.target.value)}
-            />
-            <div className="flex w-[68px] flex-col-reverse p-2">
-              <Button className="h-10" onClick={sendMessage}>
-                Send
-              </Button>
-            </div>
+        {/* Composer */}
+        <div className="border-border flex h-40 shrink-0 border-t">
+          <Textarea
+            className="bg-card placeholder:text-muted-foreground/50 h-full flex-1 rounded-none border-0 focus-visible:ring-0"
+            placeholder="Type a message… Enter to send, Shift+Enter for a new line"
+            maxLength={500}
+            value={this.chatMessage}
+            onValue={(v) => (this.chatMessage = v)}
+            onKeyDown={(e: KeyboardEvent) => {
+              const target = e.target as HTMLTextAreaElement;
+              if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+                e.preventDefault();
+                if (target.value.trim()) this.sendMessage();
+              }
+            }}
+          />
+          <div className="flex w-20 flex-col justify-end p-2">
+            <Button
+              className="h-10"
+              disabled={!this.chatMessage.trim() || !contact}
+              onClick={() => this.sendMessage()}
+            >
+              {icon(icons.Send, "size-4")}
+            </Button>
           </div>
         </div>
 
         {/* User Info Dialog */}
-        <Dialog open={userInfoOpen} onOpenChange={setUserInfoOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>User Profile</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-0.5 text-sm">
-              {infoRow("ID", contactId)}
-              {infoRow("Name", contactName)}
-              {infoRow("Gender", contactGenderText)}
-              {infoRow("Phone", contactPhone)}
-              {infoRow("Email", contactEmail)}
-              {infoRow("Birthday", contactBirthday)}
-              <div className="py-1.5">
-                <span className="text-muted-foreground">Signature</span>
-                <p className="text-foreground mt-1">{contactSignature}</p>
-              </div>
+        <x-dialog
+          open={this.userInfoOpen}
+          onClose={() => (this.userInfoOpen = false)}
+        >
+          <DialogHeader>
+            <DialogTitle>User Profile</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col text-sm">
+            <InfoRow label="ID" value={contactId} />
+            <InfoRow label="Name" value={contactName} />
+            <InfoRow label="Gender" value={contactGenderText} />
+            <InfoRow label="Phone" value={contact?.contact_phone ?? ""} />
+            <InfoRow label="Email" value={contact?.contact_email ?? ""} />
+            <InfoRow label="Birthday" value={contact?.contact_birthday ?? ""} />
+            <div className="py-1.5">
+              <span className="text-muted-foreground">Signature</span>
+              <p className="text-foreground mt-1">
+                {contact?.contact_signature ?? ""}
+              </p>
             </div>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setUserInfoOpen(false)}
-              >
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => (this.userInfoOpen = false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </x-dialog>
 
         {/* Group Info Dialog */}
-        <Dialog open={groupInfoOpen} onOpenChange={setGroupInfoOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Group Info</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-0.5 text-sm">
-              {infoRow("ID", contactId)}
-              {infoRow("Name", contactName)}
-              {infoRow("Members", groupMemberCnt)}
-              {infoRow("Owner", groupOwnerId)}
-              {infoRow("Join Mode", groupAddModeText)}
-              <div className="py-1.5">
-                <span className="text-muted-foreground">Notice</span>
-                <p className="text-foreground mt-1">{groupNotice}</p>
-              </div>
+        <x-dialog
+          open={this.groupInfoOpen}
+          onClose={() => (this.groupInfoOpen = false)}
+        >
+          <DialogHeader>
+            <DialogTitle>Group Info</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col text-sm">
+            <InfoRow label="ID" value={contactId} />
+            <InfoRow label="Name" value={contactName} />
+            <InfoRow label="Members" value={groupMemberCnt} />
+            <InfoRow label="Owner" value={groupOwnerId} />
+            <InfoRow label="Join Mode" value={groupAddModeText} />
+            <div className="py-1.5">
+              <span className="text-muted-foreground">Notice</span>
+              <p className="text-foreground mt-1">
+                {contact?.contact_notice ?? ""}
+              </p>
             </div>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setGroupInfoOpen(false)}
-              >
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => (this.groupInfoOpen = false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </x-dialog>
 
         {/* Edit Group Dialog */}
-        <Dialog open={editGroupOpen} onOpenChange={setEditGroupOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Edit Group</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-group-name">Group Name</Label>
-                <Input
-                  id="edit-group-name"
-                  type="text"
-                  placeholder="3-10 characters"
-                  value={editGroupName}
-                  onChange={(e) => setEditGroupName(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-group-notice">Notice</Label>
-                <Textarea
-                  id="edit-group-notice"
-                  rows={3}
-                  placeholder="Optional"
-                  maxLength={500}
-                  value={editGroupNotice}
-                  onChange={(e) => setEditGroupNotice(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Join Mode</Label>
-                <RadioGroup
-                  value={
-                    editGroupAddMode === -1
-                      ? undefined
-                      : String(editGroupAddMode)
-                  }
-                  onValueChange={(v) => setEditGroupAddMode(Number(v))}
-                  className="flex gap-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="0" id="addmode-0" />
-                    <Label htmlFor="addmode-0" className="font-normal">
-                      Direct Join
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="1" id="addmode-1" />
-                    <Label htmlFor="addmode-1" className="font-normal">
-                      Owner Approval
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-group-avatar">Avatar</Label>
-                <Input
-                  id="edit-group-avatar"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) =>
-                    setGroupAvatarFile(e.target.files?.[0] ?? null)
-                  }
-                />
-              </div>
+        <x-dialog
+          open={this.editGroupOpen}
+          onClose={() => (this.editGroupOpen = false)}
+        >
+          <DialogHeader>
+            <DialogTitle>Edit Group</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-group-name">Group Name</Label>
+              <Input
+                id="edit-group-name"
+                placeholder="3-10 characters"
+                value={this.editGroupName}
+                onValue={(v) => (this.editGroupName = v)}
+              />
             </div>
-            <DialogFooter>
-              <Button size="sm" onClick={saveGroupInfo}>
-                Save
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setEditGroupOpen(false)}
-              >
-                Cancel
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-group-notice">Notice</Label>
+              <Textarea
+                id="edit-group-notice"
+                rows={3}
+                placeholder="Optional"
+                maxLength={500}
+                value={this.editGroupNotice}
+                onValue={(v) => (this.editGroupNotice = v)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Join Mode</Label>
+              <RadioGroup
+                name="edit-addmode"
+                value={
+                  this.editGroupAddMode === -1
+                    ? ""
+                    : String(this.editGroupAddMode)
+                }
+                options={[
+                  { value: "0", label: "Direct Join" },
+                  { value: "1", label: "Owner Approval" },
+                ]}
+                onValueChange={(v) => (this.editGroupAddMode = Number(v))}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-group-avatar">Avatar</Label>
+              <Input
+                id="edit-group-avatar"
+                type="file"
+                accept="image/*"
+                onChange={(e: Event) => {
+                  const input = e.target as HTMLInputElement;
+                  this.groupAvatarFile = input.files?.[0] ?? null;
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" onClick={() => this.saveGroupInfo()}>
+              Save
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => (this.editGroupOpen = false)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </x-dialog>
 
         {/* Remove Members Dialog */}
-        <Dialog open={removeMembersOpen} onOpenChange={setRemoveMembersOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Remove Group Members</DialogTitle>
-            </DialogHeader>
-            {memberList.length === 0 && (
-              <p className="text-muted-foreground py-4 text-center text-sm">
-                No members found
-              </p>
-            )}
-            <div className="flex max-h-60 flex-col overflow-y-auto">
-              {memberList.map((m) => (
-                <div
-                  key={m.user_id}
-                  className="border-border hover:bg-accent/50 flex cursor-pointer items-center justify-between rounded-md border-b px-2 py-2 transition-colors"
-                  onClick={() =>
-                    toggleMember(
-                      m.user_id,
-                      !selectedMembers.includes(m.user_id),
-                    )
-                  }
-                >
-                  <div className="flex items-center gap-2">
-                    <Avatar>
-                      <AvatarImage src={m.avatar} alt={m.nickname} />
-                      <AvatarFallback>
-                        {(m.nickname || "?").charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-foreground text-sm">
-                      {m.nickname}
-                    </span>
-                  </div>
-                  <Checkbox
-                    checked={selectedMembers.includes(m.user_id)}
-                    onCheckedChange={(checked) =>
-                      toggleMember(m.user_id, checked === true)
-                    }
+        <x-dialog
+          open={this.removeMembersOpen}
+          onClose={() => (this.removeMembersOpen = false)}
+        >
+          <DialogHeader>
+            <DialogTitle>Remove Group Members</DialogTitle>
+          </DialogHeader>
+          {this.memberList.length === 0 && (
+            <p className="text-muted-foreground py-4 text-center text-sm">
+              No members found
+            </p>
+          )}
+          <div className="nice-scroll flex max-h-60 flex-col overflow-y-auto">
+            {this.memberList.map((m) => (
+              <div
+                key={m.user_id}
+                className="border-border hover:bg-accent/50 flex cursor-pointer items-center justify-between rounded-md border-b px-2 py-2 transition-colors"
+                onClick={() =>
+                  this.toggleMember(
+                    m.user_id,
+                    !this.selectedMembers.includes(m.user_id),
+                  )
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <x-avatar
+                    className="size-8"
+                    src={m.avatar}
+                    name={m.nickname}
                   />
+                  <span className="text-foreground text-sm">{m.nickname}</span>
                 </div>
-              ))}
-            </div>
-            <DialogFooter>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={removeSelectedMembers}
-              >
-                Remove Selected
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setRemoveMembersOpen(false)}
-              >
-                Cancel
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+                <Checkbox
+                  checked={this.selectedMembers.includes(m.user_id)}
+                  ariaLabel={`Select ${m.nickname}`}
+                  onCheckedChange={(checked) =>
+                    this.toggleMember(m.user_id, checked)
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => this.removeSelectedMembers()}
+            >
+              Remove Selected
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => (this.removeMembersOpen = false)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </x-dialog>
 
         {/* Join Requests Dialog */}
-        <Dialog open={joinRequestsOpen} onOpenChange={setJoinRequestsOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Group Join Requests</DialogTitle>
-            </DialogHeader>
-            {joinRequestList.length === 0 && (
-              <p className="text-muted-foreground py-4 text-center text-sm">
-                No pending requests
-              </p>
-            )}
-            <div className="flex max-h-60 flex-col gap-2 overflow-y-auto">
-              {joinRequestList.map((req) => (
-                <div
-                  key={req.apply_id}
-                  className="border-border flex items-center justify-between border-b py-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-foreground text-sm">
-                      {req.contact_name}
-                    </span>
-                    {req.message && (
-                      <span className="text-muted-foreground text-xs">
-                        ({req.message})
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      onClick={() => approveJoinRequest(req.apply_id)}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-muted-foreground"
-                      onClick={() => rejectJoinRequest(req.apply_id)}
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setJoinRequestsOpen(false)}
+        <x-dialog
+          open={this.joinRequestsOpen}
+          onClose={() => (this.joinRequestsOpen = false)}
+        >
+          <DialogHeader>
+            <DialogTitle>Group Join Requests</DialogTitle>
+          </DialogHeader>
+          {this.joinRequestList.length === 0 && (
+            <p className="text-muted-foreground py-4 text-center text-sm">
+              No pending requests
+            </p>
+          )}
+          <div className="nice-scroll flex max-h-60 flex-col gap-2 overflow-y-auto">
+            {this.joinRequestList.map((req) => (
+              <div
+                key={req.apply_id}
+                className="border-border flex items-center justify-between gap-2 border-b py-2"
               >
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </Card>
-    </div>
-  );
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm">{req.contact_name}</span>
+                  {req.message && (
+                    <span className="text-muted-foreground truncate text-xs">
+                      ({req.message})
+                    </span>
+                  )}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    size="xs"
+                    onClick={() => this.approveJoinRequest(req.apply_id)}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    onClick={() => this.rejectJoinRequest(req.apply_id)}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => (this.joinRequestsOpen = false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </x-dialog>
+      </AppFrame>
+    );
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "sc-chat": ChatPage;
+  }
 }

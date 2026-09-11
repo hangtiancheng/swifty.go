@@ -20,30 +20,19 @@
  * SOFTWARE.
  */
 
-import { create } from "zustand";
+import { signal } from "@lit-labs/signals";
 import type { UserInfo } from "../types";
 import { resolveAvatar } from "../utils/avatar";
 
 const TOKEN_KEY = "token";
 
-export function getToken(): string {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export interface AuthState {
-  userInfo: UserInfo;
+export interface AuthSnapshot {
+  user: UserInfo;
   token: string;
-  isLoggedIn: boolean;
-  setUserInfo: (info: UserInfo) => void;
-  setToken: (token: string) => void;
-  clearUserInfo: () => void;
+  loggedIn: boolean;
 }
 
-const emptyUser: UserInfo = {
+export const emptyUser: UserInfo = {
   uuid: "",
   nickname: "",
   telephone: "",
@@ -57,6 +46,14 @@ const emptyUser: UserInfo = {
   created_at: "",
 };
 
+export function getToken(): string {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function loadUserInfo(): UserInfo {
   try {
     const raw = sessionStorage.getItem("userInfo");
@@ -68,25 +65,35 @@ function loadUserInfo(): UserInfo {
 
 const initialUser = loadUserInfo();
 
-const useAuthStore = create<AuthState>((set) => ({
-  userInfo: initialUser,
+export const authStore = signal<AuthSnapshot>({
+  user: initialUser,
   token: getToken(),
-  isLoggedIn: !!initialUser.uuid,
-  setUserInfo(info: UserInfo) {
-    info.avatar = resolveAvatar(info.avatar, info.uuid);
-    sessionStorage.setItem("userInfo", JSON.stringify(info));
-    set({ userInfo: info, isLoggedIn: !!info.uuid });
-  },
-  setToken(token: string) {
-    sessionStorage.setItem(TOKEN_KEY, token);
-    set({ token });
-  },
-  clearUserInfo() {
-    sessionStorage.removeItem("userInfo");
-    sessionStorage.removeItem(TOKEN_KEY);
-    set({ userInfo: { ...emptyUser }, token: "", isLoggedIn: false });
-  },
-}));
+  loggedIn: !!initialUser.uuid,
+});
 
-export default useAuthStore;
-export { emptyUser };
+export function currentUser(): UserInfo {
+  return authStore.get().user;
+}
+
+export function isLoggedIn(): boolean {
+  return authStore.get().loggedIn;
+}
+
+export function setLogin(token: string, user: UserInfo): void {
+  user.avatar = resolveAvatar(user.avatar, user.uuid);
+  sessionStorage.setItem("userInfo", JSON.stringify(user));
+  sessionStorage.setItem(TOKEN_KEY, token);
+  authStore.set({ user, token, loggedIn: !!user.uuid });
+}
+
+export function updateUserInfo(user: UserInfo): void {
+  user.avatar = resolveAvatar(user.avatar, user.uuid);
+  sessionStorage.setItem("userInfo", JSON.stringify(user));
+  authStore.set({ ...authStore.get(), user, loggedIn: !!user.uuid });
+}
+
+export function clearLogin(): void {
+  sessionStorage.removeItem("userInfo");
+  sessionStorage.removeItem(TOKEN_KEY);
+  authStore.set({ user: { ...emptyUser }, token: "", loggedIn: false });
+}

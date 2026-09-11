@@ -20,23 +20,117 @@
  * SOFTWARE.
  */
 
-import * as React from "react";
-import { Input as InputPrimitive } from "@base-ui/react/input";
-
 import { cn } from "@/lib/utils";
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+export interface InputProps {
+  id?: string;
+  type?: string;
+  value?: string;
+  placeholder?: string;
+  maxLength?: number;
+  accept?: string;
+  disabled?: boolean;
+  className?: string;
+  ariaLabel?: string;
+  onValue?: (value: string) => void;
+  onChange?: (e: Event) => void;
+}
+
+export function Input({
+  id,
+  type = "text",
+  value = "",
+  placeholder,
+  maxLength,
+  accept,
+  disabled,
+  className,
+  ariaLabel,
+  onValue,
+  onChange,
+}: InputProps) {
   return (
-    <InputPrimitive
+    <input
+      id={id}
       type={type}
-      data-slot="input"
+      value={value}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      accept={accept}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onInput={
+        onValue
+          ? (e: Event) => onValue((e.target as HTMLInputElement).value)
+          : undefined
+      }
+      onChange={onChange}
       className={cn(
-        "border-input file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 disabled:bg-input/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-8 w-full min-w-0 rounded-lg border bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3 md:text-sm",
+        "border-input bg-card placeholder:text-muted-foreground/60 focus-visible:ring-ring/40 flex h-9 w-full rounded-lg border px-3 py-1 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
-      {...props}
     />
   );
 }
 
-export { Input };
+export interface TextareaProps {
+  id?: string;
+  value?: string;
+  placeholder?: string;
+  rows?: number;
+  maxLength?: number;
+  className?: string;
+  onValue?: (value: string) => void;
+  onKeyDown?: (e: KeyboardEvent) => void;
+}
+
+export function Textarea({
+  id,
+  value = "",
+  placeholder,
+  rows = 3,
+  maxLength,
+  className,
+  onValue,
+  onKeyDown,
+}: TextareaProps) {
+  return (
+    <textarea
+      id={id}
+      rows={rows}
+      value={value}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      onInput={
+        onValue
+          ? (e: Event) => onValue((e.target as HTMLTextAreaElement).value)
+          : undefined
+      }
+      onKeyDown={onKeyDown}
+      className={cn(
+        "border-input bg-card placeholder:text-muted-foreground/60 focus-visible:ring-ring/40 flex w-full resize-none rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none",
+        className,
+      )}
+    />
+  );
+}
+
+export interface LabelProps {
+  htmlFor?: string;
+  className?: string;
+  children?: unknown;
+}
+
+export function Label({ htmlFor, className, children }: LabelProps) {
+  return (
+    <label
+      htmlFor={htmlFor}
+      className={cn(
+        "text-foreground text-sm leading-none font-medium select-none",
+        className,
+      )}
+    >
+      {children}
+    </label>
+  );
+}

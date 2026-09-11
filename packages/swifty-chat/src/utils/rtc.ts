@@ -20,9 +20,9 @@
  * SOFTWARE.
  */
 
-import useWsStore from "../store/ws";
-import useChatStore from "../store/chat";
-import useAuthStore from "../store/auth";
+import { sendWs } from "../store/ws";
+import { chatStore } from "../store/chat";
+import { currentUser } from "../store/auth";
 
 export class RtcManager {
   pc: RTCPeerConnection | null = null;
@@ -33,22 +33,22 @@ export class RtcManager {
   onCallEnded: (() => void) | null = null;
 
   private sendSignal(type: string, data?: Record<string, unknown>) {
-    const auth = useAuthStore.getState();
-    const chat = useChatStore.getState();
+    const user = currentUser();
+    const chat = chatStore.get();
     const payload: Record<string, unknown> = {
       messageId: "PROXY",
       type,
       ...(data ? { messageData: data } : {}),
     };
-    useWsStore.getState().send({
+    sendWs({
       session_id: chat.sessionId,
       type: 3,
       content: "",
       url: "",
-      send_id: auth.userInfo.uuid,
-      send_name: auth.userInfo.nickname,
-      send_avatar: auth.userInfo.avatar,
-      receive_id: chat.contactInfo!.contact_id,
+      send_id: user.uuid,
+      send_name: user.nickname,
+      send_avatar: user.avatar,
+      receive_id: chat.contact!.contact_id,
       file_size: "",
       file_name: "",
       file_type: "",
@@ -142,17 +142,17 @@ export class RtcManager {
 
   sendEndCall() {
     const payload = { messageId: "PEER_LEAVE" };
-    const auth = useAuthStore.getState();
-    const chat = useChatStore.getState();
-    useWsStore.getState().send({
+    const user = currentUser();
+    const chat = chatStore.get();
+    sendWs({
       session_id: chat.sessionId,
       type: 3,
       content: "",
       url: "",
-      send_id: auth.userInfo.uuid,
-      send_name: auth.userInfo.nickname,
-      send_avatar: auth.userInfo.avatar,
-      receive_id: chat.contactInfo!.contact_id,
+      send_id: user.uuid,
+      send_name: user.nickname,
+      send_avatar: user.avatar,
+      receive_id: chat.contact!.contact_id,
       file_size: "",
       file_name: "",
       file_type: "",

@@ -21,16 +21,18 @@
  */
 
 import { api } from "../service/api";
-import useWsStore from "../store/ws";
-import useAuthStore from "../store/auth";
+import { disconnectWs } from "../store/ws";
+import { clearLogin, currentUser } from "../store/auth";
+import { clearSessions } from "../store/session";
 
 /**
  * Tear down auth + websocket session. Callers should navigate
  * to "/login" after this resolves.
  */
 export async function performLogout(): Promise<void> {
-  const uid = useAuthStore.getState().userInfo.uuid;
+  const uid = currentUser().uuid;
   await api.wsLogout({ owner_id: uid });
-  useWsStore.getState().disconnect();
-  useAuthStore.getState().clearUserInfo();
+  disconnectWs();
+  clearSessions();
+  clearLogin();
 }

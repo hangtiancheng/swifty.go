@@ -20,36 +20,36 @@
  * SOFTWARE.
  */
 
-import { create } from "zustand";
+import { signal } from "@lit-labs/signals";
 import type { SessionItem } from "../types";
 
-export interface SessionState {
+export interface SessionSnapshot {
   userSessions: SessionItem[];
   groupSessions: SessionItem[];
   refreshTick: number;
-  setUserSessions: (list: SessionItem[]) => void;
-  setGroupSessions: (list: SessionItem[]) => void;
-  bumpRefresh: () => void;
-  clear: () => void;
 }
 
-const useSessionStore = create<SessionState>((set, get) => ({
-  userSessions: [] as SessionItem[],
-  groupSessions: [] as SessionItem[],
+export const sessionStore = signal<SessionSnapshot>({
+  userSessions: [],
+  groupSessions: [],
   refreshTick: 0,
+});
 
-  setUserSessions(list: SessionItem[]) {
-    set({ userSessions: list || [] });
-  },
-  setGroupSessions(list: SessionItem[]) {
-    set({ groupSessions: list || [] });
-  },
-  bumpRefresh() {
-    set({ refreshTick: get().refreshTick + 1 });
-  },
-  clear() {
-    set({ userSessions: [], groupSessions: [], refreshTick: 0 });
-  },
-}));
+export function setUserSessions(list: SessionItem[]): void {
+  sessionStore.set({ ...sessionStore.get(), userSessions: list || [] });
+}
 
-export default useSessionStore;
+export function setGroupSessions(list: SessionItem[]): void {
+  sessionStore.set({ ...sessionStore.get(), groupSessions: list || [] });
+}
+
+export function bumpSessionRefresh(): void {
+  sessionStore.set({
+    ...sessionStore.get(),
+    refreshTick: sessionStore.get().refreshTick + 1,
+  });
+}
+
+export function clearSessions(): void {
+  sessionStore.set({ userSessions: [], groupSessions: [], refreshTick: 0 });
+}

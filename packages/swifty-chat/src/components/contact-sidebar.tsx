@@ -20,34 +20,21 @@
  * SOFTWARE.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Plus } from "lucide-react";
+import { customElement, state } from "@swifty.js/lit-jsx";
+import { api } from "@/service/api";
+import { currentUser } from "@/store/auth";
+import { showToast } from "@/utils/toast";
+import { TwElement } from "@/styles/base";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Input, Label, Textarea } from "@/components/ui/input";
+import { CollapsibleSection, RadioGroup } from "@/components/ui/collapsible";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Dialog,
-  DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { api } from "@/service/api";
-import useAuthStore from "@/store/auth";
-import { showToast } from "@/utils/toast";
+import { MenuItem, XMenu } from "@/components/ui/menu";
+import { icon, icons } from "@/components/icons";
 
 interface ContactEntry {
   user_id: string;
@@ -74,134 +61,126 @@ interface RequestEntry {
   message: string;
 }
 
-interface ContactSidebarProps {
-  onNavigate: (contactId: string) => void;
-}
+@customElement("x-contact-sidebar")
+export class XContactSidebar extends TwElement {
+  @state() private friendList: ContactEntry[] = [];
+  @state() private myGroupList: GroupEntry[] = [];
+  @state() private joinedGroupList: GroupEntry[] = [];
+  @state() private requestList: RequestEntry[] = [];
 
-export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
-  const [friendList, setFriendList] = useState<ContactEntry[]>([]);
-  const [myGroupList, setMyGroupList] = useState<GroupEntry[]>([]);
-  const [joinedGroupList, setJoinedGroupList] = useState<GroupEntry[]>([]);
-  const [requestList, setRequestList] = useState<RequestEntry[]>([]);
+  @state() private friendsOpen = true;
+  @state() private myGroupsOpen = false;
+  @state() private joinedGroupsOpen = false;
 
-  const [friendsOpen, setFriendsOpen] = useState(true);
-  const [myGroupsOpen, setMyGroupsOpen] = useState(false);
-  const [joinedGroupsOpen, setJoinedGroupsOpen] = useState(false);
+  @state() private applyOpen = false;
+  @state() private createGroupOpen = false;
+  @state() private requestsOpen = false;
 
-  const [applyOpen, setApplyOpen] = useState(false);
-  const [createGroupOpen, setCreateGroupOpen] = useState(false);
-  const [requestsOpen, setRequestsOpen] = useState(false);
+  @state() private applyId = "";
+  @state() private applyMsg = "";
+  @state() private groupName = "";
+  @state() private groupAddMode = 0;
 
-  const [applyId, setApplyId] = useState("");
-  const [applyMsg, setApplyMsg] = useState("");
-  const [groupName, setGroupName] = useState("");
-  const [groupAddMode, setGroupAddMode] = useState(0);
+  private friendsLoaded = false;
+  private myGroupsLoaded = false;
+  private joinedGroupsLoaded = false;
+  onNavigate?: (contactId: string) => void;
 
-  const friendsLoaded = useRef(false);
-  const myGroupsLoaded = useRef(false);
-  const joinedGroupsLoaded = useRef(false);
+  override connectedCallback() {
+    super.connectedCallback();
+    void this.loadFriends();
+  }
 
-  const loadFriends = async () => {
-    if (friendsLoaded.current) return;
-    friendsLoaded.current = true;
-    const uid = useAuthStore.getState().userInfo.uuid;
+  private async loadFriends() {
+    if (this.friendsLoaded) return;
+    this.friendsLoaded = true;
+    const uid = currentUser().uuid;
     const res = await api.getUserList({ owner_id: uid });
     if (res.code === 200 && res.data) {
-      setFriendList((res.data as ContactEntry[]) || []);
+      this.friendList = (res.data as ContactEntry[]) || [];
     }
-  };
+  }
 
-  const loadMyGroups = async () => {
-    if (myGroupsLoaded.current) return;
-    myGroupsLoaded.current = true;
-    const uid = useAuthStore.getState().userInfo.uuid;
+  private async loadMyGroups() {
+    if (this.myGroupsLoaded) return;
+    this.myGroupsLoaded = true;
+    const uid = currentUser().uuid;
     const res = await api.loadMyGroup({ owner_id: uid });
     if (res.code === 200 && res.data) {
-      setMyGroupList((res.data as GroupEntry[]) || []);
+      this.myGroupList = (res.data as GroupEntry[]) || [];
     }
-  };
+  }
 
-  const loadJoinedGroups = async () => {
-    if (joinedGroupsLoaded.current) return;
-    joinedGroupsLoaded.current = true;
-    const uid = useAuthStore.getState().userInfo.uuid;
+  private async loadJoinedGroups() {
+    if (this.joinedGroupsLoaded) return;
+    this.joinedGroupsLoaded = true;
+    const uid = currentUser().uuid;
     const res = await api.loadMyJoinedGroup({ owner_id: uid });
     if (res.code === 200 && res.data) {
-      setJoinedGroupList((res.data as GroupEntry[]) || []);
+      this.joinedGroupList = (res.data as GroupEntry[]) || [];
     }
-  };
+  }
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadFriends();
-  }, []);
-
-  const tryOpenChat = async (contactId: string) => {
-    const uid = useAuthStore.getState().userInfo.uuid;
+  private async tryOpenChat(contactId: string) {
+    const uid = currentUser().uuid;
     const res = await api.checkOpenSessionAllowed({
       send_id: uid,
       receive_id: contactId,
     });
     if (res.code === 200 && res.data === true) {
-      onNavigate(contactId);
+      this.onNavigate?.(contactId);
     } else {
       showToast((res.message as string) || "Cannot open session", "warning");
     }
-  };
+  }
 
-  const unblockUser = async (contactId: string) => {
-    const uid = useAuthStore.getState().userInfo.uuid;
+  private async unblockUser(contactId: string) {
+    const uid = currentUser().uuid;
     const res = await api.cancelBlackContact({
       user_id: uid,
       contact_id: contactId,
     });
     if (res.code === 200) {
       showToast("Contact unblocked", "success");
-      setFriendList((prev) =>
-        prev.map((u) => (u.user_id === contactId ? { ...u, status: 0 } : u)),
+      this.friendList = this.friendList.map((u) =>
+        u.user_id === contactId ? { ...u, status: 0 } : u,
       );
     } else {
       showToast((res.message as string) || "Failed to unblock", "error");
     }
-  };
+  }
 
-  const showApplyModal = () => {
-    setApplyId("");
-    setApplyMsg("");
-    setApplyOpen(true);
-  };
-
-  const submitApply = async () => {
-    if (!applyId) {
+  private async submitApply() {
+    if (!this.applyId) {
       showToast("Please enter an ID", "error");
       return;
     }
-    const uid = useAuthStore.getState().userInfo.uuid;
-    const isGroup = applyId.startsWith("G");
+    const uid = currentUser().uuid;
+    const isGroup = this.applyId.startsWith("G");
 
     if (isGroup) {
-      const modeRes = await api.checkGroupAddMode({ group_id: applyId });
+      const modeRes = await api.checkGroupAddMode({ group_id: this.applyId });
       if (modeRes.code === 200 && modeRes.data === 0) {
         const res = await api.enterGroupDirectly({
           user_id: uid,
-          group_id: applyId,
+          group_id: this.applyId,
         });
         if (res.code === 200) {
           showToast("Joined group", "success");
-          setApplyOpen(false);
+          this.applyOpen = false;
         } else {
           showToast(res.message as string, "error");
         }
       } else {
         const res = await api.applyContact({
           user_id: uid,
-          contact_id: applyId,
+          contact_id: this.applyId,
           contact_type: 1,
-          message: applyMsg,
+          message: this.applyMsg,
         });
         if (res.code === 200) {
           showToast("Application sent", "success");
-          setApplyOpen(false);
+          this.applyOpen = false;
         } else {
           showToast(res.message as string, "error");
         }
@@ -209,157 +188,133 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
     } else {
       const res = await api.applyContact({
         user_id: uid,
-        contact_id: applyId,
+        contact_id: this.applyId,
         contact_type: 0,
-        message: applyMsg,
+        message: this.applyMsg,
       });
       if (res.code === 200) {
         showToast("Application sent", "success");
-        setApplyOpen(false);
+        this.applyOpen = false;
       } else {
         showToast(res.message as string, "error");
       }
     }
-  };
+  }
 
-  const showCreateGroupModal = () => {
-    setGroupName("");
-    setGroupAddMode(0);
-    setCreateGroupOpen(true);
-  };
-
-  const submitCreateGroup = async () => {
-    if (!groupName) {
+  private async submitCreateGroup() {
+    if (!this.groupName) {
       showToast("Please enter a group name", "error");
       return;
     }
-    const uid = useAuthStore.getState().userInfo.uuid;
+    const uid = currentUser().uuid;
     const res = await api.createGroup({
-      name: groupName,
+      name: this.groupName,
       owner_id: uid,
       avatar: "",
-      add_mode: groupAddMode,
+      add_mode: this.groupAddMode,
     });
     if (res.code === 200) {
       showToast("Group created", "success");
-      setCreateGroupOpen(false);
+      this.createGroupOpen = false;
     } else {
       showToast(res.message as string, "error");
     }
-  };
+  }
 
-  const showNewContactModal = async () => {
-    const uid = useAuthStore.getState().userInfo.uuid;
+  private async showRequests() {
+    const uid = currentUser().uuid;
     const res = await api.getNewContactList({ user_id: uid });
     const list = (res.data as RequestEntry[] | null) || [];
     if (list.length === 0) {
       showToast("No pending friend requests", "info");
       return;
     }
-    setRequestList(list);
-    setRequestsOpen(true);
-  };
+    this.requestList = list;
+    this.requestsOpen = true;
+  }
 
-  const removeRequest = (id: string) => {
-    setRequestList((prev) => prev.filter((r) => r.apply_id !== id));
-  };
+  private removeRequest(id: string) {
+    this.requestList = this.requestList.filter((r) => r.apply_id !== id);
+  }
 
-  const approveRequest = async (id: string) => {
+  private async approveRequest(id: string) {
     const res = await api.passContactApply({ apply_id: id });
     if (res.code === 200) {
       showToast("Approved", "success");
-      removeRequest(id);
+      this.removeRequest(id);
     } else {
       showToast(res.message as string, "error");
     }
-  };
+  }
 
-  const refuseRequest = async (id: string) => {
+  private async refuseRequest(id: string) {
     const res = await api.refuseContactApply({ apply_id: id });
     if (res.code === 200) {
       showToast("Refused", "success");
-      removeRequest(id);
+      this.removeRequest(id);
     } else {
       showToast(res.message as string, "error");
     }
-  };
+  }
 
-  const blockRequest = async (id: string) => {
+  private async blockRequest(id: string) {
     const res = await api.blackApply({ apply_id: id });
     if (res.code === 200) {
       showToast("Blocked", "success");
-      removeRequest(id);
+      this.removeRequest(id);
     } else {
       showToast(res.message as string, "error");
     }
-  };
+  }
 
-  const sectionTrigger = (title: string, open: boolean, count: number) => (
-    <CollapsibleTrigger className="border-border bg-muted/30 hover:bg-accent/50 flex w-full items-center justify-between border-b px-3 py-2.5 text-sm font-medium transition-colors">
-      <span>
-        {title}
-        {count > 0 && (
-          <span className="text-muted-foreground ml-2 text-xs font-normal">
-            {count}
-          </span>
-        )}
-      </span>
-      <ChevronDown
-        className={`text-muted-foreground size-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-      />
-    </CollapsibleTrigger>
-  );
-
-  return (
-    <div className="flex h-full w-full flex-col">
-      <div className="flex items-center gap-1 p-2">
-        <Input
-          type="text"
-          className="flex-1 text-sm"
-          placeholder="Search contacts"
-        />
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
+  override render() {
+    return (
+      <div className="flex h-full w-full flex-col">
+        <div className="flex items-center gap-1 p-2">
+          <Input
+            type="text"
+            className="h-8 flex-1"
+            placeholder="Search contacts"
+            ariaLabel="Search contacts"
+          />
+          <XMenu align="end">
+            <span slot="trigger">
               <Button
                 variant="outline"
                 size="icon"
-                className="rounded-md"
-                aria-label="Add contact or group"
-              />
-            }
-          >
-            <Plus className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem className="text-sm" onClick={showApplyModal}>
+                className="size-8 rounded-md"
+                ariaLabel="Add contact or group"
+              >
+                {icon(icons.Plus, "size-4")}
+              </Button>
+            </span>
+            <MenuItem onClick={() => (this.applyOpen = true)}>
               Add Contact / Group
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-sm"
-              onClick={showCreateGroupModal}
-            >
+            </MenuItem>
+            <MenuItem onClick={() => (this.createGroupOpen = true)}>
               Create Group
-            </DropdownMenuItem>
-            <DropdownMenuItem className="text-sm" onClick={showNewContactModal}>
+            </MenuItem>
+            <MenuItem onClick={() => this.showRequests()}>
               Friend Requests
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            </MenuItem>
+          </XMenu>
+        </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <Collapsible open={friendsOpen} onOpenChange={setFriendsOpen}>
-          {sectionTrigger("Friends", friendsOpen, friendList.length)}
-          <CollapsibleContent>
-            {friendList.map((user) => (
+        <div className="nice-scroll flex-1 overflow-y-auto">
+          <CollapsibleSection
+            title="Friends"
+            count={this.friendList.length}
+            open={this.friendsOpen}
+            onToggle={() => (this.friendsOpen = !this.friendsOpen)}
+          >
+            {this.friendList.map((user) => (
               <div
                 key={user.user_id}
                 className="group hover:bg-accent/60 flex cursor-pointer items-center justify-between px-3 py-2 transition-colors duration-150"
               >
                 <span
                   className="flex-1 truncate text-sm"
-                  onClick={() => tryOpenChat(user.user_id)}
+                  onClick={() => this.tryOpenChat(user.user_id)}
                 >
                   {user.nickname}
                   {user.status === 1 && (
@@ -371,68 +326,64 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
                 {user.status === 1 && (
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground h-6 px-2 text-xs"
-                    onClick={() => unblockUser(user.user_id)}
+                    size="xs"
+                    className="text-muted-foreground"
+                    onClick={() => this.unblockUser(user.user_id)}
                   >
                     Unblock
                   </Button>
                 )}
               </div>
             ))}
-          </CollapsibleContent>
-        </Collapsible>
+          </CollapsibleSection>
 
-        <Collapsible
-          open={myGroupsOpen}
-          onOpenChange={(open) => {
-            setMyGroupsOpen(open);
-            if (open) loadMyGroups();
-          }}
-        >
-          {sectionTrigger("My Groups", myGroupsOpen, myGroupList.length)}
-          <CollapsibleContent>
-            {myGroupList.map((group) => (
+          <CollapsibleSection
+            title="My Groups"
+            count={this.myGroupList.length}
+            open={this.myGroupsOpen}
+            onToggle={() => {
+              this.myGroupsOpen = !this.myGroupsOpen;
+              if (this.myGroupsOpen) void this.loadMyGroups();
+            }}
+          >
+            {this.myGroupList.map((group) => (
               <div
                 key={group.group_id}
                 className="hover:bg-accent/60 flex cursor-pointer items-center gap-2 px-3 py-2 transition-colors duration-150"
-                onClick={() => tryOpenChat(group.group_id)}
+                onClick={() => this.tryOpenChat(group.group_id)}
               >
+                {icon(icons.Users, "size-3.5 text-primary-deep")}
                 <span className="truncate text-sm">{group.name}</span>
               </div>
             ))}
-          </CollapsibleContent>
-        </Collapsible>
+          </CollapsibleSection>
 
-        <Collapsible
-          open={joinedGroupsOpen}
-          onOpenChange={(open) => {
-            setJoinedGroupsOpen(open);
-            if (open) loadJoinedGroups();
-          }}
-        >
-          {sectionTrigger(
-            "Joined Groups",
-            joinedGroupsOpen,
-            joinedGroupList.length,
-          )}
-          <CollapsibleContent>
-            {joinedGroupList.map((group) => (
+          <CollapsibleSection
+            title="Joined Groups"
+            count={this.joinedGroupList.length}
+            open={this.joinedGroupsOpen}
+            onToggle={() => {
+              this.joinedGroupsOpen = !this.joinedGroupsOpen;
+              if (this.joinedGroupsOpen) void this.loadJoinedGroups();
+            }}
+          >
+            {this.joinedGroupList.map((group) => (
               <div
                 key={group.group_id}
                 className="hover:bg-accent/60 flex cursor-pointer items-center gap-2 px-3 py-2 transition-colors duration-150"
-                onClick={() => tryOpenChat(group.group_id)}
+                onClick={() => this.tryOpenChat(group.group_id)}
               >
+                {icon(icons.Users, "size-3.5 text-primary-deep")}
                 <span className="truncate text-sm">{group.name}</span>
               </div>
             ))}
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
+          </CollapsibleSection>
+        </div>
 
-      {/* Apply Contact / Group Dialog */}
-      <Dialog open={applyOpen} onOpenChange={setApplyOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <x-dialog
+          open={this.applyOpen}
+          onClose={() => (this.applyOpen = false)}
+        >
           <DialogHeader>
             <DialogTitle>Add Contact / Group</DialogTitle>
           </DialogHeader>
@@ -441,10 +392,9 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
               <Label htmlFor="apply-id">User / Group ID</Label>
               <Input
                 id="apply-id"
-                type="text"
                 placeholder="Enter ID"
-                value={applyId}
-                onChange={(e) => setApplyId(e.target.value)}
+                value={this.applyId}
+                onValue={(v) => (this.applyId = v)}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -454,29 +404,29 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
                 rows={2}
                 placeholder="Optional"
                 maxLength={100}
-                value={applyMsg}
-                onChange={(e) => setApplyMsg(e.target.value)}
+                value={this.applyMsg}
+                onValue={(v) => (this.applyMsg = v)}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button size="sm" onClick={submitApply}>
+            <Button size="sm" onClick={() => this.submitApply()}>
               Submit
             </Button>
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setApplyOpen(false)}
+              onClick={() => (this.applyOpen = false)}
             >
               Cancel
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </x-dialog>
 
-      {/* Create Group Dialog */}
-      <Dialog open={createGroupOpen} onOpenChange={setCreateGroupOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <x-dialog
+          open={this.createGroupOpen}
+          onClose={() => (this.createGroupOpen = false)}
+        >
           <DialogHeader>
             <DialogTitle>Create Group</DialogTitle>
           </DialogHeader>
@@ -485,95 +435,84 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
               <Label htmlFor="group-name">Group Name</Label>
               <Input
                 id="group-name"
-                type="text"
                 placeholder="Required"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
+                value={this.groupName}
+                onValue={(v) => (this.groupName = v)}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Join Mode</Label>
               <RadioGroup
-                value={String(groupAddMode)}
-                onValueChange={(v) => setGroupAddMode(Number(v))}
-                className="flex gap-4"
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="0" id="create-addmode-0" />
-                  <Label htmlFor="create-addmode-0" className="font-normal">
-                    Direct Join
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="1" id="create-addmode-1" />
-                  <Label htmlFor="create-addmode-1" className="font-normal">
-                    Owner Approval
-                  </Label>
-                </div>
-              </RadioGroup>
+                name="create-addmode"
+                value={String(this.groupAddMode)}
+                options={[
+                  { value: "0", label: "Direct Join" },
+                  { value: "1", label: "Owner Approval" },
+                ]}
+                onValueChange={(v) => (this.groupAddMode = Number(v))}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button size="sm" onClick={submitCreateGroup}>
+            <Button size="sm" onClick={() => this.submitCreateGroup()}>
               Create
             </Button>
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setCreateGroupOpen(false)}
+              onClick={() => (this.createGroupOpen = false)}
             >
               Cancel
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </x-dialog>
 
-      {/* Friend Requests Dialog */}
-      <Dialog open={requestsOpen} onOpenChange={setRequestsOpen}>
-        <DialogContent className="sm:max-w-md">
+        <x-dialog
+          open={this.requestsOpen}
+          onClose={() => (this.requestsOpen = false)}
+        >
           <DialogHeader>
             <DialogTitle>Friend Requests</DialogTitle>
           </DialogHeader>
-          {requestList.length === 0 ? (
+          {this.requestList.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center text-sm">
               No pending requests
             </p>
           ) : (
-            <div className="flex max-h-60 flex-col gap-2 overflow-y-auto">
-              {requestList.map((req) => (
+            <div className="nice-scroll flex max-h-60 flex-col gap-2 overflow-y-auto">
+              {this.requestList.map((req) => (
                 <div
                   key={req.apply_id}
-                  className="border-border flex items-center justify-between border-b py-2"
+                  className="border-border flex items-center justify-between gap-2 border-b py-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{req.contact_name}</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm">{req.contact_name}</span>
                     {req.message && (
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground truncate text-xs">
                         ({req.message})
                       </span>
                     )}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex shrink-0 gap-1">
                     <Button
-                      size="sm"
-                      className="px-2 text-xs"
-                      onClick={() => approveRequest(req.apply_id)}
+                      size="xs"
+                      onClick={() => this.approveRequest(req.apply_id)}
                     >
                       Approve
                     </Button>
                     <Button
-                      size="sm"
+                      size="xs"
                       variant="ghost"
-                      className="text-muted-foreground px-2 text-xs"
-                      onClick={() => refuseRequest(req.apply_id)}
+                      className="text-muted-foreground"
+                      onClick={() => this.refuseRequest(req.apply_id)}
                     >
                       Refuse
                     </Button>
                     <Button
-                      size="sm"
+                      size="xs"
                       variant="ghost"
-                      className="text-destructive px-2 text-xs"
-                      onClick={() => blockRequest(req.apply_id)}
+                      className="text-destructive"
+                      onClick={() => this.blockRequest(req.apply_id)}
                     >
                       Block
                     </Button>
@@ -586,13 +525,19 @@ export function ContactSidebar({ onNavigate }: ContactSidebarProps) {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setRequestsOpen(false)}
+              onClick={() => (this.requestsOpen = false)}
             >
               Close
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+        </x-dialog>
+      </div>
+    );
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "x-contact-sidebar": XContactSidebar;
+  }
 }

@@ -20,112 +20,150 @@
  * SOFTWARE.
  */
 
-import { LogOut, MessageSquare, Settings, User, Users } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { customElement, property } from "@swifty.js/lit-jsx";
+import { authStore } from "@/store/auth";
+import { TwElement } from "@/styles/base";
+import "@/components/ui/avatar";
+import { Tooltip } from "@/components/ui/menu";
+import { icon, icons } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
-interface NavBarProps {
-  avatar: string;
-  isAdmin: boolean;
-  onNavigate: (path: string) => void;
-  onLogout: () => void;
-}
+const CHAT_EXEMPT_PATHS = ["/chat/contacts", "/chat/profile"];
 
 interface RailItem {
   label: string;
   path: string;
-  icon: LucideIcon;
+  iconNode: ReturnType<typeof icon>;
+  isActive: (active: string) => boolean;
 }
 
 const NAV_ITEMS: RailItem[] = [
-  { label: "Sessions", path: "/chat/sessions", icon: MessageSquare },
-  { label: "Contacts", path: "/chat/contacts", icon: Users },
-  { label: "Profile", path: "/chat/profile", icon: User },
+  {
+    label: "Sessions",
+    path: "/chat/sessions",
+    iconNode: icon(icons.MessageSquare, "size-5"),
+    isActive: (active) =>
+      active === "/chat/sessions" ||
+      (active.startsWith("/chat/") && !CHAT_EXEMPT_PATHS.includes(active)),
+  },
+  {
+    label: "Contacts",
+    path: "/chat/contacts",
+    iconNode: icon(icons.Users, "size-5"),
+    isActive: (active) => active === "/chat/contacts",
+  },
+  {
+    label: "Profile",
+    path: "/chat/profile",
+    iconNode: icon(icons.User, "size-5"),
+    isActive: (active) => active === "/chat/profile",
+  },
 ];
 
 interface RailButtonProps {
   label: string;
-  icon: LucideIcon;
-  onClick: () => void;
+  href?: string;
+  onClick?: () => void;
+  active?: boolean;
+  iconNode: ReturnType<typeof icon>;
   destructive?: boolean;
 }
 
 function RailButton({
   label,
-  icon: Icon,
+  href,
   onClick,
+  active,
+  iconNode,
   destructive,
 }: RailButtonProps) {
+  const cls = cn(
+    "flex size-10 items-center justify-center rounded-xl transition-all duration-200 hover:scale-105 active:scale-95",
+    active
+      ? "bg-primary text-primary-foreground shadow-sm"
+      : destructive
+        ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+  );
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={label}
-            onClick={onClick}
-            className={cn(
-              "transition-all duration-200 hover:scale-105 active:scale-95",
-              destructive
-                ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
-          />
-        }
-      >
-        <Icon className="size-5" />
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
+    <Tooltip label={label}>
+      {onClick ? (
+        <button
+          type="button"
+          aria-label={label}
+          onClick={onClick}
+          className={cls}
+        >
+          {iconNode}
+        </button>
+      ) : (
+        <a href={href} aria-label={label} className={cls}>
+          {iconNode}
+        </a>
+      )}
     </Tooltip>
   );
 }
 
-export function NavBar({ avatar, isAdmin, onNavigate, onLogout }: NavBarProps) {
-  return (
-    <nav className="border-border bg-muted/50 flex h-full w-16 flex-col items-center border-r py-4">
-      <Avatar className="ring-primary/30 ring-offset-card size-10 ring-2 ring-offset-2 transition-transform duration-200 hover:scale-105">
-        <AvatarImage src={avatar} alt="Your avatar" />
-        <AvatarFallback>U</AvatarFallback>
-      </Avatar>
+/**
+ * Left navigation rail for the main app frame. Reads the auth store
+ * reactively so the avatar updates after a profile change.
+ */
+@customElement("x-nav-bar")
+export class XNavBar extends TwElement {
+  @property() active = "";
+  onLogout?: () => void;
 
-      <div className="mt-6 flex flex-col items-center gap-1">
-        {NAV_ITEMS.map((item) => (
-          <RailButton
-            key={item.path}
-            label={item.label}
-            icon={item.icon}
-            onClick={() => onNavigate(item.path)}
+  override render() {
+    const auth = authStore.get();
+    return (
+      <nav className="border-border bg-primary/10 flex h-full w-16 flex-col items-center border-r py-4">
+        <a href="/chat/profile" aria-label="Your profile">
+          <x-avatar
+            className="size-10"
+            src={auth.user.avatar}
+            name={auth.user.nickname || "U"}
           />
-        ))}
-      </div>
+        </a>
 
-      <div className="flex-1" />
+        <div className="mt-6 flex flex-col items-center gap-1.5">
+          {NAV_ITEMS.map((item) => (
+            <RailButton
+              key={item.path}
+              label={item.label}
+              href={item.path}
+              active={item.isActive(this.active)}
+              iconNode={item.iconNode}
+            />
+          ))}
+        </div>
 
-      <div className="flex flex-col items-center gap-1">
-        <div className="bg-border mb-2 h-px w-8" aria-hidden="true" />
-        {isAdmin && (
+        <div className="flex-1"></div>
+
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="bg-border mb-1 h-px w-8" aria-hidden="true"></div>
+          {auth.user.is_admin === 1 && (
+            <RailButton
+              label="Admin"
+              href="/manager"
+              active={this.active === "/manager"}
+              iconNode={icon(icons.Settings, "size-5")}
+            />
+          )}
           <RailButton
-            label="Admin"
-            icon={Settings}
-            onClick={() => onNavigate("/manager")}
+            label="Sign Out"
+            onClick={() => this.onLogout?.()}
+            destructive
+            iconNode={icon(icons.LogOut, "size-5")}
           />
-        )}
-        <RailButton
-          label="Sign Out"
-          icon={LogOut}
-          onClick={onLogout}
-          destructive
-        />
-      </div>
-    </nav>
-  );
+        </div>
+      </nav>
+    );
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "x-nav-bar": XNavBar;
+  }
 }

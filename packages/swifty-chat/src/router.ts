@@ -20,23 +20,20 @@
  * SOFTWARE.
  */
 
-"use client";
+import type { Router } from "@lit-labs/router";
 
-import * as React from "react";
+let router: Router | null = null;
 
-import { cn } from "@/lib/utils";
-
-function Label({ className, ...props }: React.ComponentProps<"label">) {
-  return (
-    <label
-      data-slot="label"
-      className={cn(
-        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  );
+export function setRouter(r: Router | null) {
+  router = r;
 }
 
-export { Label };
+/** Push (or replace) a history entry and render it through the router. */
+export function navigate(path: string, opts?: { replace?: boolean }) {
+  if (opts?.replace) {
+    history.replaceState({}, "", path);
+  } else {
+    history.pushState({}, "", path);
+  }
+  void router?.goto(path);
+}

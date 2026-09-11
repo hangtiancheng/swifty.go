@@ -20,40 +20,38 @@
  * SOFTWARE.
  */
 
-import { create } from "zustand";
+import { signal } from "@lit-labs/signals";
 import type { ContactInfo, Message } from "../types";
 
-export interface ChatState {
-  contactInfo: ContactInfo | null;
+export interface ChatSnapshot {
+  contact: ContactInfo | null;
   sessionId: string;
-  messageList: Message[];
-  setContact: (info: ContactInfo) => void;
-  setSessionId: (id: string) => void;
-  addMessage: (msg: Message) => void;
-  setMessageList: (list: Message[]) => void;
-  clearChat: () => void;
+  messages: Message[];
 }
 
-const useChatStore = create<ChatState>((set, get) => ({
-  contactInfo: null as ContactInfo | null,
+export const chatStore = signal<ChatSnapshot>({
+  contact: null,
   sessionId: "",
-  messageList: [] as Message[],
+  messages: [],
+});
 
-  setContact(info: ContactInfo) {
-    set({ contactInfo: info });
-  },
-  setSessionId(id: string) {
-    set({ sessionId: id });
-  },
-  addMessage(msg: Message) {
-    set({ messageList: [...get().messageList, msg] });
-  },
-  setMessageList(list: Message[]) {
-    set({ messageList: list || [] });
-  },
-  clearChat() {
-    set({ contactInfo: null, sessionId: "", messageList: [] });
-  },
-}));
+export function setChatContact(contact: ContactInfo): void {
+  chatStore.set({ ...chatStore.get(), contact });
+}
 
-export default useChatStore;
+export function setChatSessionId(sessionId: string): void {
+  chatStore.set({ ...chatStore.get(), sessionId });
+}
+
+export function addChatMessage(msg: Message): void {
+  const { messages } = chatStore.get();
+  chatStore.set({ ...chatStore.get(), messages: [...messages, msg] });
+}
+
+export function setChatMessages(messages: Message[]): void {
+  chatStore.set({ ...chatStore.get(), messages });
+}
+
+export function clearChat(): void {
+  chatStore.set({ contact: null, sessionId: "", messages: [] });
+}

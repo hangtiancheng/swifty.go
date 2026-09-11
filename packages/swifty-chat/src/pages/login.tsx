@@ -20,42 +20,38 @@
  * SOFTWARE.
  */
 
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { customElement, state } from "@swifty.js/lit-jsx";
 import { api } from "@/service/api";
-import useAuthStore from "@/store/auth";
-import useWsStore from "@/store/ws";
+import { setLogin } from "@/store/auth";
+import { connectWs } from "@/store/ws";
 import { isValidPhone } from "@/utils/validate";
 import { showToast } from "@/utils/toast";
+import { navigate } from "@/router";
+import { TwElement } from "@/styles/base";
+import { AuthShell } from "@/pages/auth-shell";
+import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
 import type { AuthResponse } from "@/types";
 
-export default function Login() {
-  const [telephone, setTelephone] = useState("");
-  const [password, setPassword] = useState("");
-  const navigate = useNavigate();
+@customElement("sc-login")
+export class LoginPage extends TwElement {
+  @state() private telephone = "";
+  @state() private password = "";
 
-  const handleLogin = async () => {
-    if (!telephone || !password) {
+  private async handleLogin() {
+    if (!this.telephone || !this.password) {
       showToast("Please fill in all fields", "error");
       return;
     }
-    if (!isValidPhone(telephone)) {
+    if (!isValidPhone(this.telephone)) {
       showToast("Invalid phone number", "error");
       return;
     }
 
-    const res = await api.login({ telephone, password });
+    const res = await api.login({
+      telephone: this.telephone,
+      password: this.password,
+    });
     if (res.code === 200 && res.data) {
       const { token, user_info } = res.data as AuthResponse;
       if (user_info.status === 1) {
@@ -63,74 +59,61 @@ export default function Login() {
         return;
       }
       showToast(res.message, "success");
-      useAuthStore.getState().setToken(token);
-      useAuthStore.getState().setUserInfo(user_info);
-      useWsStore.getState().connect(user_info.uuid);
+      setLogin(token, user_info);
+      connectWs(user_info.uuid);
       navigate("/chat/sessions");
     } else {
       showToast(res.message || "Login failed", "error");
     }
-  };
+  }
 
-  return (
-    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-hidden p-4">
-      {/* Ambient soft-pink layers */}
-      <div
-        aria-hidden
-        className="bg-primary/10 pointer-events-none absolute -top-32 -left-32 h-96 w-96 animate-pulse rounded-full blur-3xl [animation-duration:7s] motion-reduce:animate-none"
-      />
-      <div
-        aria-hidden
-        className="bg-primary/5 pointer-events-none absolute -right-24 -bottom-40 h-[28rem] w-[28rem] animate-pulse rounded-full blur-3xl [animation-delay:1.5s] [animation-duration:9s] motion-reduce:animate-none"
-      />
-      <div
-        aria-hidden
-        className="bg-primary/[0.07] pointer-events-none absolute top-1/4 right-1/3 h-64 w-64 rounded-full blur-3xl"
-      />
+  override render() {
+    return (
+      <AuthShell
+        title="Sign In"
+        description="Welcome back to Swifty Chat"
+        footer={
+          <>
+            <Button className="w-full" onClick={() => this.handleLogin()}>
+              Sign In
+            </Button>
+            <div className="flex w-full justify-end">
+              <a
+                href="/register"
+                className="text-primary-deep cursor-pointer text-sm hover:underline"
+              >
+                Register
+              </a>
+            </div>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="login-phone">Phone</Label>
+          <Input
+            id="login-phone"
+            placeholder="Enter your phone number"
+            value={this.telephone}
+            onValue={(v) => (this.telephone = v)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="login-password">Password</Label>
+          <Input
+            id="login-password"
+            type="password"
+            placeholder="Enter your password"
+            value={this.password}
+            onValue={(v) => (this.password = v)}
+          />
+        </div>
+      </AuthShell>
+    );
+  }
+}
 
-      <Card className="animate-in fade-in zoom-in-95 shadow-primary/5 w-full max-w-md shadow-xl duration-300">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold tracking-tight">
-            Sign In
-          </CardTitle>
-          <CardDescription>Welcome back to Swifty Chat</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="login-phone">Phone</Label>
-            <Input
-              id="login-phone"
-              type="text"
-              placeholder="Enter your phone number"
-              value={telephone}
-              onChange={(e) => setTelephone(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="login-password">Password</Label>
-            <Input
-              id="login-password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-        </CardContent>
-        <CardFooter className="flex-col gap-3">
-          <Button className="w-full" onClick={handleLogin}>
-            Sign In
-          </Button>
-          <div className="flex w-full justify-end">
-            <a
-              className="text-primary cursor-pointer text-sm hover:underline"
-              onClick={() => navigate("/register")}
-            >
-              Register
-            </a>
-          </div>
-        </CardFooter>
-      </Card>
-    </div>
-  );
+declare global {
+  interface HTMLElementTagNameMap {
+    "sc-login": LoginPage;
+  }
 }

@@ -20,21 +20,13 @@
  * SOFTWARE.
  */
 
-import { CheckCheck, Download, FileText, MessageCircle } from "lucide-react";
-
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
+import { icon, icons } from "@/components/icons";
+import "@/components/ui/avatar";
+import { Badge } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import type { Message } from "@/types";
-
-interface MessageBubbleProps {
-  messageList: Message[];
-  currentUserId: string;
-  currentUserAvatar: string;
-  currentUserName: string;
-}
 
 const FILE_MESSAGE = 2;
 const STAGGER_STEP_MS = 40;
@@ -82,41 +74,36 @@ function FileAttachment({
   isSelf: boolean;
 }) {
   const fileName = message.file_name || "file";
-
   return (
     <div className="flex items-center gap-3">
       <span
         className={cn(
           "flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors duration-300",
           isSelf
-            ? "bg-primary-foreground/15 text-primary-foreground"
-            : "bg-muted text-primary",
+            ? "bg-primary/40 text-primary-foreground"
+            : "bg-primary/15 text-primary-deep",
         )}
       >
-        <FileText className="size-5" />
+        {icon(icons.FileText, "size-5")}
       </span>
       <div className="flex min-w-0 flex-col items-start gap-1.5">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn(
-              "truncate text-sm font-medium",
-              isSelf ? "text-primary-foreground" : "text-foreground",
-            )}
-          >
-            {fileName}
-          </span>
+          <span className="truncate text-sm font-medium">{fileName}</span>
           {message.file_size && (
-            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+            <Badge
+              variant={isSelf ? "default" : "secondary"}
+              className="px-1.5 py-0 text-[10px]"
+            >
               {message.file_size}
             </Badge>
           )}
         </div>
         <Button
-          variant="outline"
-          size="sm"
+          variant={isSelf ? "default" : "outline"}
+          size="xs"
           onClick={() => downloadFile(message.url, fileName)}
         >
-          <Download />
+          {icon(icons.Download, "size-3")}
           Download
         </Button>
       </div>
@@ -124,17 +111,24 @@ function FileAttachment({
   );
 }
 
-export function MessageBubble({
-  messageList,
+export interface MessageListProps {
+  messages: Message[];
+  currentUserId: string;
+  currentUserAvatar: string;
+  currentUserName: string;
+}
+
+export function MessageList({
+  messages,
   currentUserId,
   currentUserAvatar,
   currentUserName,
-}: MessageBubbleProps) {
-  if (messageList.length === 0) {
+}: MessageListProps) {
+  if (messages.length === 0) {
     return (
       <div className="animate-in fade-in flex flex-1 flex-col items-center justify-center gap-3 py-20 duration-500">
-        <span className="bg-muted/70 flex size-12 items-center justify-center rounded-full">
-          <MessageCircle className="text-muted-foreground/60 size-5" />
+        <span className="bg-primary/15 flex size-12 items-center justify-center rounded-full">
+          {icon(icons.MessageCircle, "size-5")}
         </span>
         <p className="text-muted-foreground/60 text-sm">No messages yet</p>
       </div>
@@ -143,7 +137,7 @@ export function MessageBubble({
 
   return (
     <div className="flex flex-col gap-4">
-      {messageList.map((message, index) => {
+      {messages.map((message, index) => {
         const isSelf = message.send_id === currentUserId;
         const name = isSelf ? currentUserName : message.send_name;
         const avatar = isSelf ? currentUserAvatar : message.send_avatar;
@@ -163,15 +157,14 @@ export function MessageBubble({
               animationDelay: `${Math.min(index * STAGGER_STEP_MS, STAGGER_CAP_MS)}ms`,
             }}
           >
-            <Avatar
+            <x-avatar
               className={cn(
-                "size-9 transition-transform duration-300 hover:scale-105",
-                isSelf && "ring-primary/30 ring-2",
+                "size-9 shrink-0",
+                isSelf && "ring-primary/40 ring-2",
               )}
-            >
-              <AvatarImage src={avatar} alt={name} />
-              <AvatarFallback>{initialOf(name)}</AvatarFallback>
-            </Avatar>
+              src={avatar}
+              name={name || initialOf(name)}
+            />
 
             <div
               className={cn(
@@ -190,7 +183,7 @@ export function MessageBubble({
                 className={cn(
                   "max-w-[70%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed break-words transition-shadow duration-300",
                   isSelf
-                    ? "bg-primary text-primary-foreground hover:shadow-primary/20 rounded-br-md hover:shadow-md"
+                    ? "bg-primary text-primary-foreground rounded-br-md shadow-sm hover:shadow-md"
                     : "border-border bg-card text-foreground rounded-bl-md border shadow-sm hover:shadow-md",
                 )}
               >
@@ -203,7 +196,7 @@ export function MessageBubble({
 
               {isSelf && isFile && (
                 <span className="text-muted-foreground flex items-center gap-1 px-1 text-xs opacity-70">
-                  <CheckCheck className="size-3" />
+                  {icon(icons.CheckCheck, "size-3")}
                   Sent
                 </span>
               )}

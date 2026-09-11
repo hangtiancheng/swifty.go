@@ -20,8 +20,12 @@
  * SOFTWARE.
  */
 
-import { createRoot } from "react-dom/client";
 import "./index.css";
-import App from "./app";
+import "./app-root";
+import { ensureToaster } from "./components/toaster";
 
-createRoot(document.getElementById("root")!).render(<App />);
+ensureToaster();
+
+document
+  .getElementById("root")!
+  .appendChild(document.createElement("swifty-app"));

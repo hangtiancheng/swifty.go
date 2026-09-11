@@ -22,7 +22,6 @@
 
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -33,19 +32,8 @@
     Iosevka, Maple Mono, Menlo, Cascadia Code, Sarasa Gothic SC, PingFang SC,
     Microsoft YaHei, monospace;
 
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
+  --color-primary-deep: var(--primary-deep);
+  --color-primary-deep-foreground: var(--primary-deep-foreground);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -82,60 +70,54 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
 
-  /* Soft rose-pink theme */
-  --background: oklch(0.97 0.008 350);
-  --foreground: oklch(0.25 0.02 350);
+  /* Peach theme — identity color: rgb(236, 194, 179) ≈ oklch(0.847 0.0525 40.5) */
+  --background: oklch(0.972 0.014 55);
+  --foreground: oklch(0.28 0.03 40);
 
-  --card: oklch(0.99 0.005 350);
-  --card-foreground: oklch(0.25 0.02 350);
+  --card: oklch(0.993 0.007 55);
+  --card-foreground: oklch(0.28 0.03 40);
 
-  --popover: oklch(0.99 0.005 350);
-  --popover-foreground: oklch(0.25 0.02 350);
+  --popover: oklch(0.993 0.007 55);
+  --popover-foreground: oklch(0.28 0.03 40);
 
-  --primary: oklch(0.62 0.16 350);
-  --primary-foreground: oklch(0.98 0.01 350);
+  --primary: oklch(0.847 0.0525 40.5);
+  --primary-foreground: oklch(0.3 0.05 35);
 
-  --secondary: oklch(0.93 0.025 350);
-  --secondary-foreground: oklch(0.3 0.03 350);
+  --primary-deep: oklch(0.63 0.115 40);
+  --primary-deep-foreground: oklch(0.98 0.012 55);
 
-  --muted: oklch(0.94 0.018 350);
-  --muted-foreground: oklch(0.5 0.025 350);
+  --secondary: oklch(0.915 0.04 50);
+  --secondary-foreground: oklch(0.35 0.05 40);
 
-  --accent: oklch(0.91 0.035 350);
-  --accent-foreground: oklch(0.25 0.03 350);
+  --muted: oklch(0.945 0.02 55);
+  --muted-foreground: oklch(0.48 0.045 45);
 
-  --destructive: oklch(0.58 0.22 25);
+  --accent: oklch(0.905 0.045 50);
+  --accent-foreground: oklch(0.3 0.04 40);
+
+  --destructive: oklch(0.55 0.2 25);
   --destructive-foreground: oklch(0.98 0.01 25);
 
-  --success: oklch(0.62 0.18 145);
+  --success: oklch(0.6 0.15 145);
   --success-foreground: oklch(0.98 0.01 145);
 
-  --warning: oklch(0.78 0.16 80);
-  --warning-foreground: oklch(0.25 0.05 80);
+  --warning: oklch(0.75 0.14 75);
+  --warning-foreground: oklch(0.28 0.05 75);
 
-  --info: oklch(0.62 0.14 230);
-  --info-foreground: oklch(0.98 0.01 230);
+  --info: oklch(0.6 0.12 235);
+  --info-foreground: oklch(0.98 0.01 235);
 
-  --border: oklch(0.9 0.02 350);
-  --input: oklch(0.88 0.025 350);
-  --ring: oklch(0.62 0.16 350);
+  --border: oklch(0.9 0.03 50);
+  --input: oklch(0.87 0.035 50);
+  --ring: oklch(0.63 0.115 40);
 
-  --chart-1: oklch(0.62 0.16 350);
-  --chart-2: oklch(0.68 0.12 330);
-  --chart-3: oklch(0.72 0.1 310);
-  --chart-4: oklch(0.65 0.14 20);
-  --chart-5: oklch(0.7 0.11 40);
-
-  --sidebar: oklch(0.96 0.012 350);
-  --sidebar-foreground: oklch(0.25 0.02 350);
-  --sidebar-primary: oklch(0.62 0.16 350);
-  --sidebar-primary-foreground: oklch(0.98 0.01 350);
-  --sidebar-accent: oklch(0.92 0.03 350);
-  --sidebar-accent-foreground: oklch(0.25 0.03 350);
-  --sidebar-border: oklch(0.9 0.02 350);
-  --sidebar-ring: oklch(0.62 0.16 350);
+  --chart-1: oklch(0.63 0.115 40);
+  --chart-2: oklch(0.68 0.1 55);
+  --chart-3: oklch(0.72 0.09 70);
+  --chart-4: oklch(0.65 0.12 25);
+  --chart-5: oklch(0.7 0.08 15);
 }
 
 @layer base {
@@ -147,5 +129,27 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  /* Warm slim scrollbar shared across shadow roots via the adopted sheet. */
+  .nice-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) transparent;
+  }
+  .nice-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .nice-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .nice-scroll::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: color-mix(in oklch, var(--primary-deep) 35%, transparent);
+  }
+  .nice-scroll::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--primary-deep) 55%, transparent);
   }
 }
