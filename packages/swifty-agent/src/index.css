@@ -1,20 +1,14 @@
 @import "tailwindcss";
-@import "@swifty.js/fonts/Swifty/Swifty.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
   --font-sans:
-    var(--font-swifty), Geist Mono, Menlo, Cascadia Code, Sarasa Gothic SC,
-    PingFang SC, Microsoft YaHei;
+    Geist Mono, Menlo, Cascadia Code, Sarasa Gothic SC, PingFang SC,
+    Microsoft YaHei;
   --font-mono:
-    var(--font-swifty), Geist Mono, Menlo, Cascadia Code, Sarasa Gothic SC,
-    PingFang SC, Microsoft YaHei;
-}
-
-:root {
-  /* Vite stand-in for next/font's Swifty variable ("Swifty Web" comes from Swifty.css). */
-  --font-swifty: "Swifty Web";
+    Geist Mono, Menlo, Cascadia Code, Sarasa Gothic SC, PingFang SC,
+    Microsoft YaHei;
 }
 
 @layer base {

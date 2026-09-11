@@ -17,7 +17,7 @@ export function setupSentry() {
   init({
     dsn: "/api/log",
     projectId: "swifty-agent-fe2",
-    beforePushEventList: (eventList) =>
+    beforeSendBatch: (eventList) =>
       eventList.filter(
         (item) => JSON.stringify(item).length <= MAX_EVENT_BYTES,
       ),
