@@ -61,7 +61,7 @@ func (t *Tree) getSortedSSTEntries() ([]fs.DirEntry, error) {
 			continue
 		}
 
-		if !strings.HasSuffix(entry.Name(), ".sst") {
+		if !isSSTFile(entry.Name()) {
 			continue
 		}
 
@@ -112,12 +112,34 @@ func (t *Tree) loadNode(sstEntry fs.DirEntry) error {
 	return nil
 }
 
+// isSSTFile reports whether name matches the level_seq.sst naming scheme.
+func isSSTFile(name string) bool {
+	if !strings.HasSuffix(name, ".sst") {
+		return false
+	}
+
+	parts := strings.Split(strings.TrimSuffix(name, ".sst"), "_")
+	if len(parts) != 2 {
+		return false
+	}
+
+	for _, part := range parts {
+		if _, err := strconv.Atoi(part); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func getLevelSeqFromSSTFile(file string) (level int, seq int32) {
 	file = strings.ReplaceAll(file, ".sst", "")
 	arr := strings.Split(file, "_")
 	level, _ = strconv.Atoi(arr[0])
-	_seq, _ := strconv.Atoi(arr[1])
-	return level, int32(_seq)
+	if len(arr) > 1 {
+		_seq, _ := strconv.Atoi(arr[1])
+		seq = int32(_seq)
+	}
+	return level, seq
 }
 
 // constructMemtable reads wal files and reconstructs the memtable.

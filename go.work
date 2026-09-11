@@ -6,7 +6,6 @@ use (
 	./apps/lsm_tree
 	./apps/raft_demo
 	./apps/red_mq
-	./apps/redis_demo
 	./apps/redis_lock
 	./apps/tcc_demo
 	./apps/time_wheel
