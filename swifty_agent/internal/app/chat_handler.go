@@ -39,6 +39,9 @@ import (
 	"github.com/hangtiancheng/swifty.go/swifty_http"
 )
 
+// clientIDContextKey keys the client id stored in request contexts.
+type clientIDContextKey struct{}
+
 // chatRequest is the JSON body for chat and chat_stream endpoints.
 type chatRequest struct {
 	ID       string `json:"id"`
@@ -130,7 +133,7 @@ func (a *App) handleChatStream(ctx *swifty_http.Context, next func()) {
 		return
 	}
 
-	appCtx := context.WithValue(ctx.Request.Context(), "client_id", req.ID)
+	appCtx := context.WithValue(ctx.Request.Context(), clientIDContextKey{}, req.ID)
 	sse := ctx.SSE()
 	connectedPayload, _ := json.Marshal(map[string]string{
 		"status":    "connected",

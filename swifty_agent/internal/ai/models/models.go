@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/cloudwego/eino-ext/components/model/claude"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -76,9 +77,10 @@ func newChatModel(ctx context.Context, cfg *config.Config, mc config.ChatModelCo
 			},
 		}
 		if mc.Thinking && mc.MaxTokens > 1 {
-			claudeCfg.Thinking = &claude.Thinking{
-				Enable:       true,
-				BudgetTokens: mc.MaxTokens - 1,
+			claudeCfg.ThinkingConfig = &anthropic.ThinkingConfigParamUnion{
+				OfEnabled: &anthropic.ThinkingConfigEnabledParam{
+					BudgetTokens: int64(mc.MaxTokens - 1),
+				},
 			}
 		}
 		return claude.NewChatModel(ctx, claudeCfg)

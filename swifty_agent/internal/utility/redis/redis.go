@@ -51,7 +51,6 @@ func NewClient(ctx context.Context, cfg *config.Config) (*redis.Client, error) {
 		MinRetryBackoff: 100 * time.Millisecond,
 		MaxRetryBackoff: 5 * time.Second,
 	})
-	client.Options().UnstableResp3 = true // Required for vector search.
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("connect to Redis: %w", err)
