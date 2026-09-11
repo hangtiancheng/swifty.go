@@ -1,7 +1,6 @@
 go 1.26.4
 
 use (
-
 	./apps/consistent_cache
 	./apps/consistent_hash
 	./apps/golsm
@@ -11,7 +10,10 @@ use (
 	./apps/redmq
 	./apps/timewheel
 	./apps/xtimer
+	./swifty_agent
 	./swifty_cache
+	./swifty_chat
+	./swifty_chatbot
 	./swifty_http
 	./swifty_orm
 	./swifty_rpc
