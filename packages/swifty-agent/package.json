@@ -12,7 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@swifty.js/lit-jsx": "^0.0.2",
+    "@swifty.js/lit-jsx": "file:../../../r/lit-jsx",
     "@swifty.js/sentry": "^0.0.7",
     "dompurify": "^3.4.15",
     "lit": "^3.3.3",

@@ -58,9 +58,9 @@ export function genIdenticon(seed: string): string {
   ctx.fillStyle = "#f0f0f0";
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  const hue = Math.floor(rand() * 360);
-  const saturation = 55 + Math.floor(rand() * 15);
-  const lightness = 45 + Math.floor(rand() * 15);
+  const hue = 20 + Math.floor(rand() * 45);
+  const saturation = 45 + Math.floor(rand() * 18);
+  const lightness = 62 + Math.floor(rand() * 16);
   ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 
   for (let col = 0; col < Math.ceil(GRID / 2); col++) {

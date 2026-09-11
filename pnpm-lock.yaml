@@ -15,8 +15,8 @@ importers:
   packages/swifty-agent:
     dependencies:
       '@swifty.js/lit-jsx':
-        specifier: ^0.0.2
-        version: 0.0.2
+        specifier: file:../../../r/lit-jsx
+        version: file:../r/lit-jsx
       '@swifty.js/sentry':
         specifier: ^0.0.7
         version: 0.0.7(vite@8.2.2(@types/node@24.13.4)(jiti@2.7.0))
@@ -70,8 +70,8 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0
       '@swifty.js/lit-jsx':
-        specifier: ^0.0.2
-        version: 0.0.2
+        specifier: file:../../../r/lit-jsx
+        version: file:../r/lit-jsx
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -462,8 +462,8 @@ packages:
   '@rrweb/utils@2.1.4':
     resolution: {integrity: sha512-MSsJflObnJDwtSe9LPrwevf56xi4sVaranlpgXUhooQUf07/Dm8bs/55LETHzDxCjAzkyTgcpm8nOLS72RWNKw==}
 
-  '@swifty.js/lit-jsx@0.0.2':
-    resolution: {integrity: sha512-b5QtK7OYsnaQY+04WglB7leOHngNq2b6NiqQJh9awqIgAr4LOfcRF0VFUYvX32Ad0XqzcK/M6ZFjez0Lp8Gj9w==}
+  '@swifty.js/lit-jsx@file:../r/lit-jsx':
+    resolution: {directory: ../r/lit-jsx, type: directory}
 
   '@swifty.js/sentry@0.0.7':
     resolution: {integrity: sha512-gDo1gMY99DkEOrMBK6Wbpzp06W0jEhq2vBdIRx+urg7Xl3UbVVHmtfMVlo0Mjufptu+kt80ivQtgc/gp7FmmaA==}
@@ -1623,7 +1623,7 @@ snapshots:
 
   '@rrweb/utils@2.1.4': {}
 
-  '@swifty.js/lit-jsx@0.0.2':
+  '@swifty.js/lit-jsx@file:../r/lit-jsx':
     dependencies:
       lit: 3.3.3
 

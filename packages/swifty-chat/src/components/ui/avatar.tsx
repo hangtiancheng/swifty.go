@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import { html, nothing } from "@swifty.js/lit-jsx";
+import { html, css, nothing } from "@swifty.js/lit-jsx";
 import { customElement, property, state } from "@swifty.js/lit-jsx";
 import { TwElement } from "@/styles/base";
 
@@ -32,6 +32,14 @@ import { TwElement } from "@/styles/base";
  */
 @customElement("x-avatar")
 export class XAvatar extends TwElement {
+  static override styles = [
+    ...TwElement.styles,
+    css`
+      :host {
+        display: inline-block;
+      }
+    `,
+  ];
   @property() src = "";
   @property() name = "";
   @state() private failed = false;

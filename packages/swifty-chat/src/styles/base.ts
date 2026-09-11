@@ -22,6 +22,7 @@
 
 import { LitElement } from "@swifty.js/lit-jsx";
 import { SignalWatcher } from "@lit-labs/signals";
+import type { CSSResultOrNative } from "lit";
 import { twSheet } from "./tw";
 
 /**
@@ -30,5 +31,5 @@ import { twSheet } from "./tw";
  * made during render.
  */
 export class TwElement extends SignalWatcher(LitElement) {
-  static override styles = [twSheet];
+  static override styles: CSSResultOrNative[] = [twSheet];
 }
