@@ -1,6 +1,0 @@
-.PHONY: cover test
-cover:
-	go test -v -coverprofile="codecov.report" -covermode=atomic ./...
-
-test:
-	go test ./...

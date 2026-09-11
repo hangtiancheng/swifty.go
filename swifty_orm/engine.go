@@ -25,16 +25,16 @@ import (
 	"errors"
 	"strings"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type Engine struct {
 	client       *mongo.Client
 	database     *mongo.Database
 	databaseName string
-	session      mongo.Session
+	session      *mongo.Session
 }
 
 func NewEngine(ctx context.Context, uri string, database string) (*Engine, error) {
@@ -44,7 +44,7 @@ func NewEngine(ctx context.Context, uri string, database string) (*Engine, error
 	if strings.TrimSpace(database) == "" {
 		return nil, errors.New("mongo database is required")
 	}
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	client, err := mongo.Connect(options.Client().ApplyURI(uri))
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func (e *Engine) Transaction(ctx context.Context, fn func(sc context.Context, tx
 		return err
 	}
 	defer session.EndSession(ctx)
-	_, err = session.WithTransaction(ctx, func(sc mongo.SessionContext) (any, error) {
+	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
 		txEngine := &Engine{
 			client:       e.client,
 			database:     e.database,

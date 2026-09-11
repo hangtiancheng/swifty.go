@@ -1,3 +1,23 @@
+// Copyright (c) 2026 hangtiancheng
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 package consistent_hash
 
 import (
@@ -5,37 +25,20 @@ import (
 	"math"
 )
 
-// Encryptor maps an arbitrary string (a data key or a virtual node key) onto
-// its position on the hash ring.
 type Encryptor interface {
 	Encrypt(origin string) int32
 }
 
-// FnvHasher is an Encryptor backed by the 64-bit FNV-1a hash function.
-type FnvHasher struct{}
+// FnvHasher implements Encryptor using the standard library's FNV-1a 32-bit hash.
+type FnvHasher struct {
+}
 
-// NewFnvHasher returns an Encryptor based on FNV-1a.
 func NewFnvHasher() *FnvHasher {
 	return &FnvHasher{}
 }
 
-// Encrypt hashes origin with FNV-1a, avalanches the raw hash state and folds
-// the result into the [0, math.MaxInt32) score range used by the hash ring.
-//
-// The avalanche step is essential: plain FNV-1a maps inputs that differ only
-// in their trailing bytes (e.g. the virtual node keys "node_a_0".."node_a_9")
-// to nearby values, which would clump all virtual nodes of one physical node
-// into a small segment of the ring.
-func (f *FnvHasher) Encrypt(origin string) int32 {
-	hasher := fnv.New64a()
+func (m *FnvHasher) Encrypt(origin string) int32 {
+	hasher := fnv.New32a()
 	_, _ = hasher.Write([]byte(origin))
-
-	h := hasher.Sum64()
-	h ^= h >> 33
-	h *= 0xff51afd7ed558ccd
-	h ^= h >> 33
-	h *= 0xc4ceb9fe1a85ec53
-	h ^= h >> 33
-
-	return int32(h % math.MaxInt32)
+	return int32(hasher.Sum32() % math.MaxInt32)
 }

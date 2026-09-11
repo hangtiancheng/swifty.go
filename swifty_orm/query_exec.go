@@ -26,9 +26,9 @@ import (
 	"reflect"
 	"strings"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 var ErrCollectionRequired = errors.New("collection is required before query execution")
@@ -129,7 +129,7 @@ func (q *Query) Find(ctx context.Context, out any) error {
 	return cursor.All(ctx, out)
 }
 
-func (q *Query) findOptions() *options.FindOptions {
+func (q *Query) findOptions() *options.FindOptionsBuilder {
 	opts := options.Find()
 	if len(q.sort) > 0 {
 		opts.SetSort(q.sort)
@@ -166,7 +166,7 @@ func (q *Query) Upsert(ctx context.Context, update any) (UpsertResult, error) {
 	if err := q.preflight(); err != nil {
 		return UpsertResult{}, err
 	}
-	opts := options.Update().SetUpsert(true)
+	opts := options.UpdateMany().SetUpsert(true)
 	result, err := q.collection.UpdateMany(q.execCtx(ctx), q.buildFilter(), normalizeUpdate(update), opts)
 	if err != nil {
 		return UpsertResult{}, err

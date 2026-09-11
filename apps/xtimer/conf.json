@@ -1,9 +1,0 @@
-{
-  "mysql": {
-    "dsn": "please-enter-your-mysql-dsn"
-  },
-  "redis": {
-    "address": "127.0.0.1",
-    "password": "please-enter-your-redis-password"
-  }
-}

@@ -3,13 +3,14 @@ go 1.26.4
 use (
 	./apps/consistent_cache
 	./apps/consistent_hash
-	./apps/golsm
-	./apps/gotcc
-	./apps/my-raft
+	./apps/lsm_tree
+	./apps/raft_demo
+	./apps/red_mq
+	./apps/redis_demo
 	./apps/redis_lock
-	./apps/redmq
-	./apps/timewheel
-	./apps/xtimer
+	./apps/tcc_demo
+	./apps/time_wheel
+	./apps/timer_demo
 	./swifty_agent
 	./swifty_cache
 	./swifty_chat

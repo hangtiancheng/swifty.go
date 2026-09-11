@@ -1,125 +1,176 @@
-package consistent_hash_test
+// Copyright (c) 2026 hangtiancheng
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package consistent_hash
 
 import (
 	"context"
-	"net"
 	"testing"
 	"time"
 
-	consistenthash "github.com/hangtiancheng/swifty.go/apps/consistent_hash"
-	"github.com/hangtiancheng/swifty.go/apps/consistent_hash/internal/local"
-	ciredis "github.com/hangtiancheng/swifty.go/apps/consistent_hash/internal/redis"
-	redislock "github.com/hangtiancheng/swifty.go/apps/redis_lock"
+	"github.com/hangtiancheng/swifty.go/apps/consistent_hash/local"
+	"github.com/hangtiancheng/swifty.go/apps/consistent_hash/redis"
 )
 
-// TestLocalConsistentHash exercises the full consistent hash flow on top of
-// the in-memory skiplist ring. It runs without any external dependency.
-func TestLocalConsistentHash(t *testing.T) {
+func Test_local_consistent_hash(t *testing.T) {
 	localHashRing := local.NewSkiplistHashRing()
-	loggingMigrator := func(_ context.Context, dataKeys map[string]struct{}, from, to string) error {
-		t.Logf("migrating %v from %s to %s", dataKeys, from, to)
+	hasher := NewFnvHasher()
+	localMigrator := func(ctx context.Context, dataKeys map[string]struct{}, from, to string) error {
+		t.Logf("from: %s, to: %s, data keys: %v", from, to, dataKeys)
 		return nil
 	}
-	consistentHash := consistenthash.NewConsistentHash(
+	consistentHash := NewConsistentHash(
 		localHashRing,
-		consistenthash.NewFnvHasher(),
-		loggingMigrator,
-		// Every node owns weight * replicas virtual nodes.
-		consistenthash.WithReplicas(5),
-		// The ring lock expires automatically after 5 seconds.
-		consistenthash.WithLockExpireSeconds(5),
+		hasher,
+		localMigrator,
+		// Virtual nodes per node = weight * replicas.
+		WithReplicas(5),
+		// The hash-ring lock auto-releases after 5 seconds.
+		WithLockExpireSeconds(5),
 	)
-	exerciseConsistentHash(t, consistentHash)
+	test(t, consistentHash)
 }
 
-// TestRedisConsistentHash runs the same flow on top of the Redis backed ring.
-// It requires a Redis instance and skips when none is reachable.
-func TestRedisConsistentHash(t *testing.T) {
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:6379", 500*time.Millisecond)
+const (
+	network  = "tcp"
+	address  = "redis address"
+	password = "redis password"
+
+	hashRingKey = "hash ring unique id"
+)
+
+func Test_redis_consistent_hash(t *testing.T) {
+	redisClient := redis.NewClient(network, address, password)
+	hashRing := redis.NewRedisHashRing(hashRingKey, redisClient)
+	consistentHash := NewConsistentHash(hashRing, NewFnvHasher(), nil)
+	test(t, consistentHash)
+}
+
+func test(t *testing.T, consistentHash *ConsistentHash) {
+	ctx := context.Background()
+	nodeA := "node_a"
+	weightNodeA := 2
+	nodeB := "node_b"
+	weightNodeB := 1
+	nodeC := "node_c"
+	weightNodeC := 1
+	if err := consistentHash.AddNode(ctx, nodeA, weightNodeA); err != nil {
+		t.Error(err)
+		return
+	}
+
+	if err := consistentHash.AddNode(ctx, nodeB, weightNodeB); err != nil {
+		t.Error(err)
+		return
+	}
+
+	dataKeyA := "data_a"
+	dataKeyB := "data_b"
+	dataKeyC := "data_c"
+	dataKeyD := "data_d"
+	node, err := consistentHash.GetNode(ctx, dataKeyA)
 	if err != nil {
-		t.Skipf("skipping: no redis reachable at 127.0.0.1:6379: %v", err)
+		t.Error(err)
+		return
 	}
-	_ = conn.Close()
-
-	redisClient := redislock.NewClient("tcp", "127.0.0.1:6379", "")
-	hashRingKey := "consistent_hash_example"
-	hashRing := ciredis.NewRedisHashRing(hashRingKey, redisClient)
-
-	cleanup := func() {
-		ctx := context.Background()
-		_ = redisClient.Del(ctx, "redis:consistent_hash:ring:"+hashRingKey)
-		_ = redisClient.Del(ctx, "redis:consistent_hash:ring:node:replica:"+hashRingKey)
-		_ = redisClient.Del(ctx, "redis:consistent_hash:ring:lock:"+hashRingKey)
-		for _, nodeID := range []string{"node_a", "node_b", "node_c"} {
-			_ = redisClient.Del(ctx, "redis:consistent_hash:ring:node:data:"+nodeID)
-		}
+	t.Logf("data: %s belongs to node: %s", dataKeyA, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyB); err != nil {
+		t.Error(err)
+		return
 	}
-	cleanup()
-	t.Cleanup(cleanup)
-
-	consistentHash := consistenthash.NewConsistentHash(hashRing, consistenthash.NewFnvHasher(), nil)
-	exerciseConsistentHash(t, consistentHash)
+	t.Logf("data: %s belongs to node: %s", dataKeyB, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyC); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyC, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyD); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyD, node)
+	if err := consistentHash.AddNode(ctx, nodeC, weightNodeC); err != nil {
+		t.Error(err)
+		return
+	}
+	if node, err = consistentHash.GetNode(ctx, dataKeyA); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyA, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyB); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyB, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyC); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyC, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyD); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyD, node)
+	if err = consistentHash.RemoveNode(ctx, nodeC); err != nil {
+		t.Error(err)
+		return
+	}
+	if node, err = consistentHash.GetNode(ctx, dataKeyA); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyA, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyB); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyB, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyC); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyC, node)
+	if node, err = consistentHash.GetNode(ctx, dataKeyD); err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("data: %s belongs to node: %s", dataKeyD, node)
+	t.Error("ok")
 }
 
-// TestLocalLock verifies the expiry based auto release of the local ring lock.
-func TestLocalLock(t *testing.T) {
+func Test_local_lock(t *testing.T) {
 	hashRing := local.NewSkiplistHashRing()
 	ctx := context.Background()
-
 	if err := hashRing.Lock(ctx, 1); err != nil {
-		t.Fatalf("lock: %v", err)
+		t.Error(err)
+		return
 	}
-	time.Sleep(2 * time.Second)
+	<-time.After(2 * time.Second)
 	if err := hashRing.Lock(ctx, 2); err != nil {
-		t.Fatalf("lock after expiry: %v", err)
+		t.Error(err)
+		return
 	}
 	if err := hashRing.Unlock(ctx); err != nil {
-		t.Fatalf("unlock: %v", err)
-	}
-}
-
-// exerciseConsistentHash walks a small lifecycle: two nodes join, four data
-// keys are placed, a third node joins, then leaves again.
-func exerciseConsistentHash(t *testing.T, consistentHash *consistenthash.ConsistentHash) {
-	t.Helper()
-	ctx := context.Background()
-
-	nodes := []struct {
-		id     string
-		weight int
-	}{
-		{id: "node_a", weight: 2},
-		{id: "node_b", weight: 1},
-		{id: "node_c", weight: 1},
-	}
-	dataKeys := []string{"data_a", "data_b", "data_c", "data_d"}
-
-	for _, node := range nodes[:2] {
-		if err := consistentHash.AddNode(ctx, node.id, node.weight); err != nil {
-			t.Fatalf("add %s: %v", node.id, err)
-		}
-	}
-	logOwners(t, consistentHash, dataKeys)
-
-	if err := consistentHash.AddNode(ctx, nodes[2].id, nodes[2].weight); err != nil {
-		t.Fatalf("add %s: %v", nodes[2].id, err)
-	}
-	logOwners(t, consistentHash, dataKeys)
-
-	if err := consistentHash.RemoveNode(ctx, nodes[2].id); err != nil {
-		t.Fatalf("remove %s: %v", nodes[2].id, err)
-	}
-	logOwners(t, consistentHash, dataKeys)
-}
-
-func logOwners(t *testing.T, consistentHash *consistenthash.ConsistentHash, dataKeys []string) {
-	t.Helper()
-	ctx := context.Background()
-	for _, dataKey := range dataKeys {
-		node, err := consistentHash.GetNode(ctx, dataKey)
-		if err != nil {
-			t.Fatalf("get node for %s: %v", dataKey, err)
-		}
-		t.Logf("data %s belongs to node %s", dataKey, node)
+		t.Error(err)
+		return
 	}
 }

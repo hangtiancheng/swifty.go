@@ -27,8 +27,7 @@ import (
 	"sort"
 	"strings"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type condition struct {
@@ -248,9 +247,9 @@ func buildConditionFilter(conditions []condition) bson.M {
 			pair := c.value.([2]any)
 			setOp(c.field, "$not", bson.M{"$gte": pair[0], "$lte": pair[1]})
 		case "like":
-			setOp(c.field, "$regex", primitive.Regex{Pattern: likeToRegex(c.value.(string))})
+			setOp(c.field, "$regex", bson.Regex{Pattern: likeToRegex(c.value.(string))})
 		case "ilike":
-			setOp(c.field, "$regex", primitive.Regex{Pattern: likeToRegex(c.value.(string)), Options: "i"})
+			setOp(c.field, "$regex", bson.Regex{Pattern: likeToRegex(c.value.(string)), Options: "i"})
 		default:
 			setOp(c.field, c.op, c.value)
 		}

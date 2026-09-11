@@ -26,15 +26,20 @@ import (
 	"reflect"
 	"strings"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func (q *Query) Distinct(ctx context.Context, field string) ([]any, error) {
 	if err := q.preflight(); err != nil {
 		return nil, err
 	}
-	return q.collection.Distinct(q.execCtx(ctx), field, q.buildFilter())
+	result := q.collection.Distinct(q.execCtx(ctx), field, q.buildFilter())
+	var values []any
+	if err := result.Decode(&values); err != nil {
+		return nil, err
+	}
+	return values, nil
 }
 
 // CountDistinct returns the number of distinct values of the field among

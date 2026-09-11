@@ -1,0 +1,36 @@
+{
+  "name": "swifty-agent",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --fix",
+    "format": "prettier -w ./ --experimental-cli",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@a2ui/lit": "^0.10.4",
+    "@a2ui/markdown-it": "^0.1.1",
+    "@a2ui/web_core": "^0.10.7",
+    "@lit-labs/signals": "^0.3.0",
+    "@lit/context": "^1.1.6",
+    "@swifty.js/fonts": "^0.0.1",
+    "@swifty.js/sentry": "^0.0.5",
+    "lit": "^3.3.3",
+    "lucide": "^1.43.0",
+    "tailwindcss": "^4.3.3",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.4",
+    "oxlint": "^1.82.0",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.2.2"
+  }
+}

@@ -1,21 +1,38 @@
+// Copyright (c) 2026 hangtiancheng
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 package redis_lock
 
 import "time"
 
 const (
-	// DefaultIdleTimeoutSeconds is the default time after which idle
-	// connections are closed.
+	// DefaultIdleTimeoutSeconds is the default idle-connection timeout (10s).
 	DefaultIdleTimeoutSeconds = 10
-	// DefaultMaxActive is the default upper bound of total connections in the
-	// pool.
+	// DefaultMaxActive is the default max active connections.
 	DefaultMaxActive = 100
-	// DefaultMaxIdle is the default number of idle connections kept around.
+	// DefaultMaxIdle is the default max idle connections.
 	DefaultMaxIdle = 20
 
-	// DefaultLockExpireSeconds is the default expiry of a distributed lock.
+	// DefaultLockExpireSeconds is the default lock TTL.
 	DefaultLockExpireSeconds = 30
-	// WatchDogWorkStepSeconds is the interval between two watchdog renewal
-	// rounds.
+	// WatchDogWorkStepSeconds is the watchdog renewal interval.
 	WatchDogWorkStepSeconds = 10
 )
 
@@ -24,7 +41,7 @@ type ClientOptions struct {
 	idleTimeoutSeconds int
 	maxActive          int
 	wait               bool
-	// Required parameters.
+	// Required fields.
 	network  string
 	address  string
 	password string
@@ -32,101 +49,85 @@ type ClientOptions struct {
 
 type ClientOption func(c *ClientOptions)
 
-// WithMaxIdle sets the number of idle connections kept in the pool. It maps
-// onto go-redis MaxIdleConns.
 func WithMaxIdle(maxIdle int) ClientOption {
 	return func(c *ClientOptions) {
 		c.maxIdle = maxIdle
 	}
 }
 
-// WithIdleTimeoutSeconds sets the time after which idle connections are
-// closed. It maps onto go-redis IdleTimeout.
 func WithIdleTimeoutSeconds(idleTimeoutSeconds int) ClientOption {
 	return func(c *ClientOptions) {
 		c.idleTimeoutSeconds = idleTimeoutSeconds
 	}
 }
 
-// WithMaxActive sets the upper bound of total connections in the pool. It
-// maps onto go-redis PoolSize.
 func WithMaxActive(maxActive int) ClientOption {
 	return func(c *ClientOptions) {
 		c.maxActive = maxActive
 	}
 }
 
-// WithWaitMode makes callers block (bounded by the go-redis default pool
-// timeout) when the pool is exhausted, instead of failing fast.
 func WithWaitMode() ClientOption {
 	return func(c *ClientOptions) {
 		c.wait = true
 	}
 }
 
-// repairClient fills unset or invalid pool options with the defaults.
 func repairClient(c *ClientOptions) {
-	if c.maxIdle <= 0 {
+	if c.maxIdle < 0 {
 		c.maxIdle = DefaultMaxIdle
 	}
 
-	if c.idleTimeoutSeconds <= 0 {
+	if c.idleTimeoutSeconds < 0 {
 		c.idleTimeoutSeconds = DefaultIdleTimeoutSeconds
 	}
 
-	if c.maxActive <= 0 {
+	if c.maxActive < 0 {
 		c.maxActive = DefaultMaxActive
 	}
 }
 
 type LockOption func(*LockOptions)
 
-type LockOptions struct {
-	isBlock             bool
-	blockWaitingSeconds int64
-	expireSeconds       int64
-	watchDogMode        bool
-}
-
-// WithBlock enables blocking mode: Lock keeps polling for the lock until it
-// is acquired or the waiting time runs out.
 func WithBlock() LockOption {
 	return func(o *LockOptions) {
 		o.isBlock = true
 	}
 }
 
-// WithBlockWaitingSeconds sets the upper bound of the blocking wait time used
-// in blocking mode.
 func WithBlockWaitingSeconds(waitingSeconds int64) LockOption {
 	return func(o *LockOptions) {
 		o.blockWaitingSeconds = waitingSeconds
 	}
 }
 
-// WithExpireSeconds sets the expiry of the distributed lock. When it is not
-// set the watchdog mode is enabled instead.
 func WithExpireSeconds(expireSeconds int64) LockOption {
 	return func(o *LockOptions) {
 		o.expireSeconds = expireSeconds
 	}
 }
 
-// repairLock fills unset lock options with the defaults.
 func repairLock(o *LockOptions) {
 	if o.isBlock && o.blockWaitingSeconds <= 0 {
-		// Default upper bound of the blocking wait time is 5 seconds.
+		// Default blocking-wait upper bound is 5 seconds.
 		o.blockWaitingSeconds = 5
 	}
 
-	// When no expiry is configured for the lock, the watchdog takes over and
-	// keeps renewing it until Unlock is called.
+	// When the caller does not set an explicit TTL, the watchdog is started.
 	if o.expireSeconds > 0 {
 		return
 	}
 
+	// No explicit TTL: start the watchdog.
 	o.expireSeconds = DefaultLockExpireSeconds
 	o.watchDogMode = true
+}
+
+type LockOptions struct {
+	isBlock             bool
+	blockWaitingSeconds int64
+	expireSeconds       int64
+	watchDogMode        bool
 }
 
 type RedLockOption func(*RedLockOptions)
@@ -136,15 +137,12 @@ type RedLockOptions struct {
 	expireDuration     time.Duration
 }
 
-// WithSingleNodesTimeout sets the per-node time budget of a single RedLock
-// lock attempt; a node that takes longer is not counted as a success.
 func WithSingleNodesTimeout(singleNodesTimeout time.Duration) RedLockOption {
 	return func(o *RedLockOptions) {
 		o.singleNodesTimeout = singleNodesTimeout
 	}
 }
 
-// WithRedLockExpireDuration sets the expiry of the red lock.
 func WithRedLockExpireDuration(expireDuration time.Duration) RedLockOption {
 	return func(o *RedLockOptions) {
 		o.expireDuration = expireDuration
@@ -158,7 +156,6 @@ type SingleNodeConf struct {
 	Opts     []ClientOption
 }
 
-// repairRedLock fills unset red lock options with the defaults.
 func repairRedLock(o *RedLockOptions) {
 	if o.singleNodesTimeout <= 0 {
 		o.singleNodesTimeout = DefaultSingleLockTimeout
