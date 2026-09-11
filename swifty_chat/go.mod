@@ -6,7 +6,6 @@ require (
 	github.com/hangtiancheng/swifty.go/swifty_cache v0.0.2
 	github.com/hangtiancheng/swifty.go/swifty_http v0.0.2
 	github.com/hangtiancheng/swifty.go/swifty_orm v0.0.2
-	go.mongodb.org/mongo-driver v1.17.9
 	go.mongodb.org/mongo-driver/v2 v2.9.1
 )
 

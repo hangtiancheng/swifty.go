@@ -2,7 +2,7 @@ module github.com/hangtiancheng/swifty.go/apps/redis_lock
 
 go 1.26
 
-require github.com/redis/go-redis/v9 v9.21.0
+require github.com/redis/go-redis/v9 v9.22.0
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

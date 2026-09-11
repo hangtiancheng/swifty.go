@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/constant"
 	"github.com/hangtiancheng/swifty.go/swifty_chat/internal/dao"

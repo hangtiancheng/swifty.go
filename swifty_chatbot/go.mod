@@ -8,7 +8,7 @@ require (
 	github.com/hangtiancheng/swifty.go/swifty_orm v0.0.2
 	github.com/hangtiancheng/swifty.go/swifty_rpc v0.0.2
 	github.com/tmc/langchaingo v0.1.14
-	go.mongodb.org/mongo-driver v1.17.9
+	go.mongodb.org/mongo-driver/v2 v2.9.1
 )
 
 require (
@@ -22,7 +22,6 @@ require (
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
@@ -30,7 +29,6 @@ require (
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
-	github.com/montanaflynn/stats v0.12.2 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.8 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.2.0 // indirect
