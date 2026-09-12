@@ -1,8 +1,8 @@
 {
   "name": "swifty.go",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Swifty",
-  "keywords": [],
+  "keywords": ["Swifty"],
   "license": "MIT",
   "author": "https://github.com/hangtiancheng",
   "type": "module",
