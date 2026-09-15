@@ -18,7 +18,7 @@
     "model": "deepseek-v4-flash",
     "max_tokens": 4096,
     // Anthropic extended thinking (only effective when model_provider=anthropic)
-    "thinking": false
+    "thinking": false,
   },
   // ---- Quick Model (chat/tool execution) ----
   "quick_chat_model": {
@@ -29,18 +29,16 @@
     "model": "deepseek-v4-flash",
     "max_tokens": 4096,
     // Anthropic extended thinking (only effective when model_provider=anthropic)
-    "thinking": false
+    "thinking": false,
   },
   // ---- Embedding ----
   // The vector index dimension is probed from the embedding provider at
   // startup, so no dimension configuration is needed.
   "embedding_model": {
-    "provider": "openai", // "openai" | "ollama"
+    "provider": "openai", // "openai" only
     "api_key": "your-api-key",
     "base_url": "https://openai.aliyuncs.com/compatible-mode/v1",
-    "model": "text-embedding-v4",
-    "ollama_base_url": "http://localhost:11434",
-    "ollama_model": "nomic-embed-text"
+    "model": "text-embedding-v4"
   },
   // ---- File Upload Directory ----
   "file_dir": "./data/docs",
@@ -56,8 +54,8 @@
   "redis": {
     "addr": "localhost:6379",
     "password": "",
-    "db": 0
-  }
+    "db": 0,
+  },
 }
 // The following are constants (aligned with Next.js); to change them, edit internal/consts/consts.go
 // REDIS_INDEX_NAME=idx:biz

@@ -34,7 +34,7 @@ An LLM chat service built on `swifty_http` (HTTP + SSE), `swifty_rpc` (a standal
    └─────────────┘                                                             │ OpenAI-compatible
                                                                                V
                                                                      ┌─────────────────┐
-                                                                     │ Ollama / OpenAI │
+                                                                     │ openai / OpenAI │
                                                                      └─────────────────┘
 ```
 
@@ -82,7 +82,7 @@ go run .
 ```
 
 > [!NOTE]
-> `ai_base_url` must be an **OpenAI-compatible** endpoint. Ollama exposes one at `http://localhost:11434`; any OpenAI-compatible gateway works too.
+> `ai_base_url` must be an **OpenAI-compatible** endpoint. openai exposes one at `http://localhost:11434`; any OpenAI-compatible gateway works too.
 
 ## HTTP API
 

@@ -64,7 +64,7 @@ func NewClient(ctx context.Context, cfg *config.Config) (*redis.Client, error) {
 // ensureIndex verifies that the RediSearch vector index exists and that its
 // vector dimension matches the actual embedding provider output. The dimension
 // is probed from the live provider (not taken from static config) so that
-// provider switches (openai ↔ ollama) or models whose output differs from
+// provider switches (openai only) or models whose output differs from
 // config are handled correctly. If the index is missing it is created; if the
 // dimension differs the index is dropped, stale hashes are purged, and the
 // index is recreated. This mirrors the Next.js ensureIndex logic in

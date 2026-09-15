@@ -24,7 +24,6 @@
 // Two providers are supported via the OpenAI-compatible /v1/embeddings protocol
 // (both use the eino-ext libs/acl/openai client under the hood):
 //   - "openai" (default): OpenAI (text-embedding-v4)
-//   - "ollama": local Ollama instance (e.g. nomic-embed-text, 768d)
 //
 // This mirrors the Next.js lib/ai/embedder.ts provider switch.
 package embedder
@@ -33,7 +32,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/cloudwego/eino-ext/libs/acl/openai"
@@ -57,12 +55,6 @@ func New(ctx context.Context, cfg *config.Config) (embedding.Embedder, error) {
 	var baseURL, apiKey, model string
 
 	switch provider {
-	case "ollama":
-		// Ollama exposes an OpenAI-compatible /v1/embeddings endpoint (v0.1.24+).
-		// No API key is required, but the client demands a non-empty string.
-		baseURL = strings.TrimRight(cfg.EmbeddingModel.OllamaBaseURL, "/") + "/v1"
-		apiKey = "ollama"
-		model = cfg.EmbeddingModel.OllamaModel
 	default: // openai
 		baseURL = cfg.EmbeddingModel.BaseURL
 		apiKey = cfg.EmbeddingModel.APIKey

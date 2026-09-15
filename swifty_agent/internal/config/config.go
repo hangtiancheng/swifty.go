@@ -94,17 +94,13 @@ type ChatModelConfig struct {
 // probed from the live provider at startup (see embedder.ProbeDimension),
 // so no dimension configuration is needed.
 type EmbeddingConfig struct {
-	// Provider selects the embedding backend: "openai" (default) or "ollama".
+	// Provider selects the embedding backend: "openai" (only)
 	Provider string `json:"provider"`
 
 	// OpenAI fields (OpenAI-compatible endpoint).
 	APIKey  string `json:"api_key"`
 	BaseURL string `json:"base_url"`
 	Model   string `json:"model"`
-
-	// Ollama fields (OpenAI-compatible /v1/embeddings endpoint).
-	OllamaBaseURL string `json:"ollama_base_url"`
-	OllamaModel   string `json:"ollama_model"`
 }
 
 // RedisConfig holds Redis Stack connection settings.
@@ -156,11 +152,5 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.EmbeddingModel.Provider == "" {
 		cfg.EmbeddingModel.Provider = "openai"
-	}
-	if cfg.EmbeddingModel.OllamaBaseURL == "" {
-		cfg.EmbeddingModel.OllamaBaseURL = "http://localhost:11434"
-	}
-	if cfg.EmbeddingModel.OllamaModel == "" {
-		cfg.EmbeddingModel.OllamaModel = "nomic-embed-text"
 	}
 }

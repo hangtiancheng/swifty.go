@@ -66,7 +66,7 @@ On top sits a monitoring bridge: the browser SDK (`@swifty.js/sentry`) posts rep
 | **Quick model**     | Chat responses and tool execution.        | `quick_chat_model` |
 | **Embedding model** | Vectorizing documents and queries.        | `embedding_model`  |
 
-Both chat models accept an OpenAI-compatible endpoint or Anthropic; the embedding model supports OpenAI-compatible or Ollama. The vector dimension is probed from the live provider at startup, so it never needs to be configured.
+Both chat models accept an OpenAI-compatible endpoint or Anthropic; the embedding model supports OpenAI-compatible only. The vector dimension is probed from the live provider at startup, so it never needs to be configured.
 
 ## Features
 
@@ -164,7 +164,7 @@ Responses use the `{ "message", "data" }` envelope. `data` is `null` on errors, 
 | `model_provider`                    | `openai`                | `openai` or `anthropic`.                                        |
 | `think_chat_model`                  | --                      | `{ api_key, base_url, model, max_tokens, thinking }`.           |
 | `quick_chat_model`                  | --                      | Same shape; used for chat and tool calls.                       |
-| `embedding_model`                   | --                      | `provider` (`openai` / `ollama`), OpenAI fields, Ollama fields. |
+| `embedding_model`                   | --                      | `provider` (`openai`only), OpenAI fields. |
 | `file_dir`                          | `./data/docs`           | Upload and indexing directory.                                  |
 | `mcp_url`                           | --                      | MCP log-tool SSE endpoint.                                      |
 | `prometheus_url`                    | `http://127.0.0.1:9090` | Empty disables `query_prometheus_alerts`.                       |
